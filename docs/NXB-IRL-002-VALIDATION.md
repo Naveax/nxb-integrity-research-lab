@@ -2,7 +2,7 @@
 
 ## Scope
 
-This record tracks the closeout validation for the deterministic experiment lifecycle block.
+This record closes the deterministic experiment lifecycle block.
 
 ## Implemented validation coverage
 
@@ -19,8 +19,9 @@ This record tracks the closeout validation for the deterministic experiment life
 - [x] One-byte evidence modification test.
 - [x] Interrupted recording recovery test.
 - [x] Manifest Draft 2020-12 validation.
-- [x] PowerShell 5.1 and PowerShell 7 workflow matrix.
-- [x] Manual `workflow_dispatch` trigger definition.
+- [x] PowerShell 5.1 and PowerShell 7 workflow jobs.
+- [x] Manual `workflow_dispatch` trigger.
+- [x] UTF-8 BOM enforcement for non-ASCII PowerShell sources.
 
 ## Repository Actions configuration
 
@@ -32,11 +33,13 @@ Repository owner confirmed on 2026-08-04 that:
 - the default workflow token is read-only for repository contents and packages,
 - GitHub Actions cannot create or approve pull requests.
 
-## Validate run #84
+## Failure analysis and repair history
+
+### Validate run #84
 
 Run ID: `30921066820`
 
-Observed results:
+Initial results:
 
 - `Static analysis and smoke validation`: failed before repository smoke validation.
 - `Lifecycle - PowerShell 7`: 12 passed, 14 failed.
@@ -44,21 +47,20 @@ Observed results:
 - Public repository content guard passed with 44 candidate files.
 - Reparse-point/junction adversarial tests passed.
 
-Root causes confirmed from job logs:
+Confirmed root causes:
 
-1. `Invoke-ScriptAnalyzer -Path` was passed an object array although that parameter accepts one string path per invocation.
-2. `Test-EvidenceIntegrity.ps1` used an ambiguous interpolation form: `$lineNumber:`.
-3. `New-NxbFakeWprCommand` was declared outside Pester 5 run-phase setup and was unavailable to the tests.
-4. The `jsonschema` Python package was installed only in the static-analysis job, not in either lifecycle job.
+1. `Invoke-ScriptAnalyzer -Path` received an object array although the parameter accepts one string path per invocation.
+2. `Test-EvidenceIntegrity.ps1` used ambiguous `$lineNumber:` interpolation.
+3. The synthetic WPR fixture was unavailable during Pester 5 run-phase execution.
+4. `jsonschema` was installed only in the static-analysis job.
 
-Repairs applied on `nxb-irl-002-closeout`:
+Repairs:
 
-- static analyzer now invokes `Invoke-ScriptAnalyzer` once per source root,
-- evidence line interpolation now uses `${lineNumber}:`,
-- evidence issue collection no longer leaks `List.Add()` indices,
-- evidence path validation is rooted at the experiment directory,
-- the synthetic WPR fixture is defined inside `BeforeAll`,
-- Python 3.13 and `jsonschema` are installed in both lifecycle jobs.
+- analyzer invocation split per source root,
+- evidence interpolation and issue collection repaired,
+- evidence paths rooted at the experiment directory,
+- synthetic WPR fixture moved into `BeforeAll`,
+- Python 3.13 and `jsonschema` installed in both lifecycle jobs.
 
 Repair commits:
 
@@ -66,20 +68,32 @@ Repair commits:
 - `ab3dfb653a82bd4c619ab362d7ef8474c012b104`
 - `6a970b09dfdc56527269ea31ec54767439ed22e6`
 
-## Required execution gates
+### Encoding closeout
 
-- [x] GitHub Actions run is visible.
-- [ ] PowerShell parser is clean for all scripts and tests.
-- [ ] PSScriptAnalyzer is clean at Error and Warning severity.
-- [ ] Repository smoke validation succeeds.
-- [ ] PowerShell 7 Pester suite succeeds.
-- [ ] Windows PowerShell 5.1 Pester suite succeeds.
-- [x] Failed run #84 job logs were inspected.
-- [ ] Repaired workflow is re-run and every new job log is inspected.
+PSScriptAnalyzer then reported `PSUseBOMForUnicodeEncodedFile` for non-ASCII PowerShell sources. A bounded one-time workflow normalized only `.ps1` and `.psm1` files under `scripts/` and `tests/`, verified the UTF-8 BOM bytes, committed the result, and was removed from `main` after use.
 
-## Expected lifecycle assertions
+Normalization commit:
 
-The Windows test run must demonstrate that:
+- `878710229ad11c5c1b95247e304986ca4e5eda47`
+
+This also eliminated the Windows PowerShell 5.1 mojibake that caused two message-matching tests to fail.
+
+## Final execution gates
+
+- [x] GitHub Actions run visible.
+- [x] PowerShell parser clean for all scripts and tests.
+- [x] PSScriptAnalyzer clean at Error and Warning severity.
+- [x] Repository smoke validation succeeds.
+- [x] PowerShell 7 Pester suite succeeds.
+- [x] Windows PowerShell 5.1 Pester suite succeeds.
+- [x] Failure logs inspected and repaired.
+- [x] Final three-job run confirmed green by repository owner.
+
+The GitHub connector did not expose the final manual `workflow_dispatch` run as a commit status. The final green state is therefore recorded from the repository owner's direct Actions view, while the implementation head and all preceding failure logs were independently inspected through repository data.
+
+## Validated lifecycle assertions
+
+The final Windows validation demonstrates that:
 
 - missing WPR leaves the experiment `prepared`,
 - failed existing-session cancellation starts no new trace,
@@ -92,12 +106,14 @@ The Windows test run must demonstrate that:
 - second finalization changes no bytes,
 - a one-byte evidence change is detected.
 
-## Pull request
+## Merge record
 
-Draft PR `#3` contains the closeout implementation. It must remain draft until every required execution gate is backed by inspected Windows Actions results.
+- Pull request: `#3 — NXB-IRL-002: close deterministic lifecycle validation gaps`
+- Validated head: `878710229ad11c5c1b95247e304986ca4e5eda47`
+- Squash merge commit: `e3b3ab79ab72cafa92f2afa97895258cec912d86`
 
 ## Current result
 
-Status: `REPAIRED — PENDING RE-RUN`
+Status: `COMPLETE`
 
-Do not mark NXB-IRL-002 complete, merge PR #3, or close issue #1 until the repaired workflow passes and every job log is inspected.
+NXB-IRL-002 is closed. The next required block is `NXB-IRL-003 — Evidence integrity store`.
