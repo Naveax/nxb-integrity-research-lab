@@ -121,11 +121,21 @@ function Get-NxbSafeChildItem {
     param(
         [Parameter(Mandatory)]
         [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
-        [string]$RootPath
+        [string]$RootPath,
+
+        [Parameter()]
+        [string[]]$ExcludeDirectoryName = @()
     )
 
     $rootFull = Get-NxbFullPath -Path $RootPath
     [void](Test-NxbPathSafety -Path $rootFull -RootPath $rootFull)
+
+    $excluded = @{}
+    foreach ($name in $ExcludeDirectoryName) {
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $excluded[$name.ToLowerInvariant()] = $true
+        }
+    }
 
     $pending = [System.Collections.Generic.Stack[string]]::new()
     $result = [System.Collections.Generic.List[object]]::new()
@@ -135,15 +145,19 @@ function Get-NxbSafeChildItem {
         $directory = $pending.Pop()
         foreach ($child in @(Get-ChildItem -LiteralPath $directory -Force)) {
             [void](Test-NxbPathSafety -Path $child.FullName -RootPath $rootFull)
-            [void]$result.Add($child)
 
+            if ($child.PSIsContainer -and $excluded.ContainsKey($child.Name.ToLowerInvariant())) {
+                continue
+            }
+
+            [void]$result.Add($child)
             if ($child.PSIsContainer) {
                 $pending.Push($child.FullName)
             }
         }
     }
 
-    return @($result)
+    return $result.ToArray()
 }
 
 function Read-NxbJson {
