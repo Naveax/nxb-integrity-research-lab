@@ -74,6 +74,7 @@ New-Item -ItemType Directory -Path $recordsPath -Force | Out-Null
 [void](Test-NxbPathSafety -Path $recordsPath -RootPath $experimentFull)
 
 $lockStream = $null
+$stagedRecordPath = $null
 try {
     try {
         $lockStream = [IO.File]::Open(
@@ -155,14 +156,20 @@ try {
         throw "Evidence record zaten mevcut: $recordPath"
     }
 
+    $stagedRecordPath = Join-Path $storePath (
+        'pending-record.{0}.json' -f [guid]::NewGuid().ToString('N')
+    )
     Write-NxbCanonicalJsonAtomic `
-        -Path $recordPath `
+        -Path $stagedRecordPath `
         -InputObject $record `
         -Confirm:$false
 
     & (Join-Path $PSScriptRoot 'Test-EvidenceStoreSchema.ps1') `
-        -Path $recordPath `
+        -Path $stagedRecordPath `
         -DocumentType record
+
+    Move-Item -LiteralPath $stagedRecordPath -Destination $recordPath
+    $stagedRecordPath = $null
 
     & (Join-Path $PSScriptRoot 'Update-EvidenceStoreChainHead.ps1') `
         -ExperimentPath $experimentFull `
@@ -184,6 +191,10 @@ try {
 finally {
     if ($null -ne $lockStream) {
         $lockStream.Dispose()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($stagedRecordPath) -and
+        (Test-Path -LiteralPath $stagedRecordPath -PathType Leaf)) {
+        Remove-Item -LiteralPath $stagedRecordPath -Force
     }
     if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
         Remove-Item -LiteralPath $lockPath -Force
