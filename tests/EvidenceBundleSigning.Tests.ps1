@@ -4,7 +4,7 @@
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.Lab.Common.psm1') -Force
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.EvidenceStore.psm1') -Force
 
-    function New-NxbSigningExperiment {
+    function Initialize-NxbSigningExperiment {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)][string]$Root,
@@ -70,7 +70,7 @@
         }
     }
 
-    function New-NxbTestCertificatePair {
+    function Initialize-NxbTestCertificatePair {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)][string]$Root,
@@ -78,7 +78,12 @@
         )
 
         $passwordText = "nxb-$Name-password"
-        $password = ConvertTo-SecureString $passwordText -AsPlainText -Force
+        $password = [Security.SecureString]::new()
+        foreach ($character in $passwordText.ToCharArray()) {
+            $password.AppendChar($character)
+        }
+        $password.MakeReadOnly()
+
         $certificate = New-SelfSignedCertificate `
             -Subject ("CN=NXB Evidence Test {0}" -f [guid]::NewGuid()) `
             -KeyAlgorithm RSA `
@@ -147,10 +152,10 @@ Describe 'NXB detached evidence bundle signatures' {
     }
 
     It 'preserves unsigned bundle identity and verifies with a public certificate' {
-        $experiment = New-NxbSigningExperiment `
+        $experiment = Initialize-NxbSigningExperiment `
             -Root $script:TemporaryRoot `
             -Name 'valid'
-        $certificate = New-NxbTestCertificatePair `
+        $certificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'valid'
         $unsignedCopy = Join-Path $script:TemporaryRoot 'unsigned-bundle.json'
@@ -189,10 +194,10 @@ Describe 'NXB detached evidence bundle signatures' {
     }
 
     It 'rejects a one-byte detached signature modification' {
-        $experiment = New-NxbSigningExperiment `
+        $experiment = Initialize-NxbSigningExperiment `
             -Root $script:TemporaryRoot `
             -Name 'tamper'
-        $certificate = New-NxbTestCertificatePair `
+        $certificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'tamper'
         $signed = Add-NxbTestBundleSignature `
@@ -211,13 +216,13 @@ Describe 'NXB detached evidence bundle signatures' {
     }
 
     It 'rejects a different public certificate' {
-        $experiment = New-NxbSigningExperiment `
+        $experiment = Initialize-NxbSigningExperiment `
             -Root $script:TemporaryRoot `
             -Name 'wrong-cert'
-        $signingCertificate = New-NxbTestCertificatePair `
+        $signingCertificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'signing-cert'
-        $wrongCertificate = New-NxbTestCertificatePair `
+        $wrongCertificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'wrong-cert'
         [void](Add-NxbTestBundleSignature `
@@ -232,10 +237,10 @@ Describe 'NXB detached evidence bundle signatures' {
     }
 
     It 'rejects a missing detached signature file' {
-        $experiment = New-NxbSigningExperiment `
+        $experiment = Initialize-NxbSigningExperiment `
             -Root $script:TemporaryRoot `
             -Name 'missing'
-        $certificate = New-NxbTestCertificatePair `
+        $certificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'missing'
         $signed = Add-NxbTestBundleSignature `
@@ -250,10 +255,10 @@ Describe 'NXB detached evidence bundle signatures' {
     }
 
     It 'requires a public certificate for a declared valid signature state' {
-        $experiment = New-NxbSigningExperiment `
+        $experiment = Initialize-NxbSigningExperiment `
             -Root $script:TemporaryRoot `
             -Name 'valid-state'
-        $certificate = New-NxbTestCertificatePair `
+        $certificate = Initialize-NxbTestCertificatePair `
             -Root $script:TemporaryRoot `
             -Name 'valid-state'
         [void](Add-NxbTestBundleSignature `
