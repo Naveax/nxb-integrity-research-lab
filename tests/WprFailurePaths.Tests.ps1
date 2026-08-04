@@ -1,35 +1,34 @@
 BeforeAll {
     $script:ScriptsRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts'
-}
 
-function New-NxbFakeWprCommand {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Path,
+    function New-NxbFakeWprCommand {
+        [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
+        param(
+            [Parameter(Mandatory)]
+            [ValidateNotNullOrEmpty()]
+            [string]$Path,
 
-        [Parameter()]
-        [int]$StartExitCode = 0,
+            [Parameter()]
+            [int]$StartExitCode = 0,
 
-        [Parameter()]
-        [int]$StopExitCode = 0,
+            [Parameter()]
+            [int]$StopExitCode = 0,
 
-        [Parameter()]
-        [int]$CancelExitCode = 0,
+            [Parameter()]
+            [int]$CancelExitCode = 0,
 
-        [Parameter()]
-        [switch]$CreateEtl
-    )
+            [Parameter()]
+            [switch]$CreateEtl
+        )
 
-    $etlCommand = if ($CreateEtl) {
-        '> "%~2" echo synthetic-etl'
-    }
-    else {
-        'rem synthetic stop intentionally creates no ETL'
-    }
+        $etlCommand = if ($CreateEtl) {
+            '> "%~2" echo synthetic-etl'
+        }
+        else {
+            'rem synthetic stop intentionally creates no ETL'
+        }
 
-    $content = @"
+        $content = @"
 @echo off
 if /I "%~1"=="-start" (
   echo synthetic-start
@@ -47,11 +46,12 @@ if /I "%~1"=="-cancel" (
 exit /b 99
 "@
 
-    if ($PSCmdlet.ShouldProcess($Path, 'Write synthetic WPR command fixture')) {
-        Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
-    }
+        if ($PSCmdlet.ShouldProcess($Path, 'Write synthetic WPR command fixture')) {
+            Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
+        }
 
-    return $Path
+        return $Path
+    }
 }
 
 Describe 'NXB WPR failure paths' {
