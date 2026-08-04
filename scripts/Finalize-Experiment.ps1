@@ -36,7 +36,7 @@ if ($currentState -notin @('prepared', 'stopped')) {
     throw "Deney '$currentState' durumundan finalize edilemez."
 }
 
-$files = Get-NxbEvidenceFiles -ExperimentPath $experimentFull
+$files = Get-NxbEvidenceFile -ExperimentPath $experimentFull
 $lines = foreach ($file in $files) {
     $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256
     $relative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName
