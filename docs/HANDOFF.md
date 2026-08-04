@@ -100,26 +100,33 @@ Initial implementation completed while keeping issue `#1` as the active required
 - [x] full-system architecture document,
 - [x] `schemas/system-capabilities.schema.json`,
 - [x] `scripts/Get-SystemCapabilities.ps1`,
-- [x] baseline collector integration,
+- [x] baseline capability integration,
 - [x] `scripts/Test-SystemCapabilities.ps1`,
-- [x] repository smoke validation integration,
+- [x] repository smoke capability validation,
 - [x] `tests/SystemCapabilities.Tests.ps1`,
-- [x] issue `#2` tracking record.
+- [x] `schemas/observability-event.schema.json`,
+- [x] `schemas/observation-identity.schema.json`,
+- [x] `scripts/Get-ObservationIdentity.ps1`,
+- [x] `scripts/Test-ObservationIdentity.ps1`,
+- [x] baseline machine/boot/clock identity integration,
+- [x] repository smoke identity validation,
+- [x] `tests/ObservationIdentity.Tests.ps1`,
+- [x] issue `#2` tracking record,
+- [x] canonical master plan and roadmap expansion.
 
 Next NXB-IRL-004 tasks after prerequisite blocks:
 
-1. normalized cross-domain event schema,
-2. machine/boot/clock identity contract,
-3. minimal CPU/scheduler profile,
-4. RAM/page-fault/working-set profile,
-5. disk/file-system/storage queue profile,
-6. GPU/DXGKRNL/present profile,
-7. network/NDIS/connection profile,
-8. device/driver/PCIe provider inventory,
-9. power/frequency/thermal snapshot,
-10. trace-loss and collector-overhead accounting,
-11. cross-domain correlation engine,
-12. controlled CPU/RAM/disk/GPU/network fixtures.
+1. minimal CPU/scheduler profile,
+2. RAM/page-fault/working-set profile,
+3. disk/file-system/storage queue profile,
+4. GPU/DXGKRNL/present profile,
+5. network/NDIS/connection profile,
+6. device/driver/PCIe provider inventory,
+7. power/frequency/thermal snapshot,
+8. firmware/security experiment binding,
+9. trace-loss and collector-overhead accounting,
+10. cross-domain correlation engine,
+11. controlled CPU/RAM/disk/GPU/network fixtures.
 
 ## Important implementation files
 
@@ -141,13 +148,18 @@ Next NXB-IRL-004 tasks after prerequisite blocks:
 - `tools/validate_manifest.py`
 - `tests/ExperimentLifecycle.Tests.ps1`
 
-### Full-system inventory
+### Full-system inventory and identity
 
 - `docs/FULL_SYSTEM_OBSERVABILITY.md`
 - `scripts/Get-SystemCapabilities.ps1`
 - `scripts/Test-SystemCapabilities.ps1`
+- `scripts/Get-ObservationIdentity.ps1`
+- `scripts/Test-ObservationIdentity.ps1`
 - `schemas/system-capabilities.schema.json`
+- `schemas/observation-identity.schema.json`
+- `schemas/observability-event.schema.json`
 - `tests/SystemCapabilities.Tests.ps1`
+- `tests/ObservationIdentity.Tests.ps1`
 - `scripts/Capture-Baseline.ps1`
 
 ### CI
@@ -168,7 +180,29 @@ Workflow definition includes:
 
 GitHub connector has not yet returned a visible successful workflow status. Do not claim CI success until a workflow run and its jobs are inspected.
 
-The new capability collector and tests were committed, but they must be validated by the first visible Windows Actions run before being marked fully verified.
+A clean checkout from the execution container could not be performed because that container had no DNS resolution to GitHub. This is not a source or test failure, but it means no independent local checkout validation was completed in that environment.
+
+The capability, event and identity contracts must be validated by the first visible Windows Actions run before being marked fully verified.
+
+## Canonical event identity
+
+Every future event must carry:
+
+```text
+experiment_id
+machine_id
+boot_id
+event_id
+timestamp_utc
+timestamp_monotonic_ns
+domain
+source
+event_type
+collector version
+overhead profile
+```
+
+Schema: `schemas/observability-event.schema.json`.
 
 ## Full-system correlation target
 
@@ -231,8 +265,15 @@ In a new chat, ask the assistant to:
 - architecture: `c0c500e8c47f132e94fcebe1d0efe667828d4aa8`
 - capability schema: `f6f82bfdbdf50f6220754b85f48c88824939725f`
 - capability collector: `ca43ef695470bbe6216197227619f21287c0f77c`
-- baseline integration: `fc9a8de1ad88a308d3a01ad2e4575d5e2c55a20b`
+- capability baseline integration: `fc9a8de1ad88a308d3a01ad2e4575d5e2c55a20b`
 - capability validator: `2ff6f2ce6f66217e77c22fbb9e002b3b700eb026`
-- repository smoke integration: `04c8ecec9410a8acfec695dbac8f7da1eed48db1`
-- capability Pester tests: `ff4d9d3321b1cf6d324813bb93466d3260c5dc4c`
-- roadmap update: `d2ae5aafb0751a21dff84c08c14dc40e8d21a7f9`
+- capability smoke integration: `04c8ecec9410a8acfec695dbac8f7da1eed48db1`
+- capability tests: `ff4d9d3321b1cf6d324813bb93466d3260c5dc4c`
+- master plan expansion: `34846ca3c685aefa6cf313f3fe250c39ad99f94e`
+- observability event schema: `47a0d84f8bc100b40df7057f1fa3a80954febdc3`
+- observation identity schema: `f4c7c8dfc181f3e63a01c82587cd54543d5d28b8`
+- observation identity collector: `d442b057d95eae3be00c8d00af95660c366ecde3`
+- observation identity validator: `9bd0a22f15b473bd96b90b1c6664b9fe8804f328`
+- baseline identity integration: `20c0d17dd5e66314db4ac182679484a5dde1368e`
+- identity-aware smoke validation: `557ca2753f0f3fb245c25e1fd41ddaef67744cfe`
+- observation identity tests: `406b9569c6ce700ecb58e0f678952bdb36270cbe`
