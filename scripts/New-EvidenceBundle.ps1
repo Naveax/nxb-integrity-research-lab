@@ -30,13 +30,20 @@ function ConvertTo-NxbBundleRelativePath {
         [string]$Path
     )
 
-    if ([IO.Path]::IsPathRooted($Path)) {
+    if ([IO.Path]::IsPathRooted($Path) -or $Path -match '^[A-Za-z]:') {
         throw "Bundle relative path mutlak olamaz: $Path"
     }
 
-    $normalized = $Path.Replace('\\', '/').TrimStart('/')
-    if ([string]::IsNullOrWhiteSpace($normalized)) {
-        throw 'Bundle relative path boş olamaz.'
+    $normalized = $Path.Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
+    if ([string]::IsNullOrWhiteSpace($normalized) -or
+        $normalized.StartsWith('/', [StringComparison]::Ordinal)) {
+        throw "Bundle relative path geçersiz: $Path"
+    }
+
+    foreach ($segment in $normalized.Split([char]'/')) {
+        if ([string]::IsNullOrEmpty($segment) -or $segment -eq '.' -or $segment -eq '..') {
+            throw "Bundle relative path canonical değil: $Path"
+        }
     }
 
     return $normalized
@@ -49,7 +56,7 @@ function Resolve-NxbBundleFile {
         [Parameter(Mandatory)][string]$RelativePath
     )
 
-    $nativeRelative = $RelativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $nativeRelative = $RelativePath.Replace([char]'/', [IO.Path]::DirectorySeparatorChar)
     $candidate = [IO.Path]::GetFullPath((Join-Path $ExperimentRoot $nativeRelative))
     [void](Get-NxbRelativePath -BasePath $ExperimentRoot -ChildPath $candidate)
 
@@ -61,6 +68,30 @@ function Resolve-NxbBundleFile {
     return Get-Item -LiteralPath $candidate -Force
 }
 
+function Add-NxbBundlePathIdentity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Collections.Generic.Dictionary[string, string]]$CaseMap,
+
+        [Parameter(Mandatory)]
+        [Collections.Generic.HashSet[string]]$ExactSet,
+
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    if ($ExactSet.Contains($RelativePath)) {
+        throw "Bundle envanterinde yinelenen path bulundu: $RelativePath"
+    }
+    if ($CaseMap.ContainsKey($RelativePath)) {
+        throw "Bundle path case-collision bulundu: '$RelativePath' ve '$($CaseMap[$RelativePath])'"
+    }
+
+    [void]$ExactSet.Add($RelativePath)
+    $CaseMap[$RelativePath] = $RelativePath
+}
+
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 $storePath = Join-Path $experimentFull 'evidence-store'
 $recordsPath = Join-Path $storePath 'records'
@@ -69,20 +100,32 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $storePath 'bundle-manifest.json'
 }
 $outputFull = Get-NxbFullPath -Path $OutputPath
-[void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $outputFull)
+$outputRelative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $outputFull
+$outputRelative = $outputRelative.Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
+if ($outputRelative.StartsWith('evidence-store/records/', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Bundle manifest records dizini altında yazılamaz.'
+}
 [void](Test-NxbPathSafety -Path $outputFull -RootPath $experimentFull)
 
 $verifiedChain = & (Join-Path $PSScriptRoot 'Test-EvidenceStoreChain.ps1') `
     -ExperimentPath $experimentFull `
     -PassThru
 
+$caseMap = [Collections.Generic.Dictionary[string, string]]::new(
+    [StringComparer]::OrdinalIgnoreCase
+)
+$exactSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $recordInventory = [Collections.Generic.List[object]]::new()
+
 for ($sequence = [int64]0; $sequence -lt $verifiedChain.RecordCount; $sequence++) {
     $recordName = [string]::Format(
         [Globalization.CultureInfo]::InvariantCulture,
         '{0:D16}.json',
         $sequence
     )
+    $relative = "evidence-store/records/$recordName"
+    Add-NxbBundlePathIdentity -CaseMap $caseMap -ExactSet $exactSet -RelativePath $relative
+
     $recordPath = Join-Path $recordsPath $recordName
     [void](Test-NxbPathSafety -Path $recordPath -RootPath $experimentFull)
     if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) {
@@ -93,21 +136,16 @@ for ($sequence = [int64]0; $sequence -lt $verifiedChain.RecordCount; $sequence++
     $recordHash = (Get-FileHash -LiteralPath $recordPath -Algorithm SHA256).Hash.ToLowerInvariant()
     [void]$recordInventory.Add([ordered]@{
         sequence = $sequence
-        relative_path = "evidence-store/records/$recordName"
+        relative_path = $relative
         length = [int64]$recordItem.Length
         sha256 = $recordHash
     })
 }
 
-$caseMap = [Collections.Generic.Dictionary[string, string]]::new(
-    [StringComparer]::OrdinalIgnoreCase
-)
-$exactSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $normalizedPaths = [Collections.Generic.List[string]]::new()
-
 foreach ($candidatePath in $IncludeRelativePath) {
     $relative = ConvertTo-NxbBundleRelativePath -Path $candidatePath
-    if ($relative -ceq 'evidence-store/bundle-manifest.json') {
+    if ($relative.Equals($outputRelative, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Bundle manifest kendi dosya envanterine dahil edilemez.'
     }
 
@@ -118,12 +156,11 @@ foreach ($candidatePath in $IncludeRelativePath) {
         throw "Bundle path case-collision bulundu: '$relative' ve '$($caseMap[$relative])'"
     }
 
-    [void]$exactSet.Add($relative)
-    $caseMap[$relative] = $relative
+    Add-NxbBundlePathIdentity -CaseMap $caseMap -ExactSet $exactSet -RelativePath $relative
     [void]$normalizedPaths.Add($relative)
 }
 
-$sortedPaths = $normalizedPaths.ToArray()
+[string[]]$sortedPaths = $normalizedPaths.ToArray()
 [Array]::Sort($sortedPaths, [StringComparer]::Ordinal)
 
 $fileInventory = [Collections.Generic.List[object]]::new()
