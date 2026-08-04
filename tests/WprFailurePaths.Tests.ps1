@@ -4,7 +4,7 @@ BeforeAll {
 }
 
 function New-NxbFakeWprCommand {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -48,7 +48,10 @@ if /I "%~1"=="-cancel" (
 exit /b 99
 "@
 
-    Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
+    if ($PSCmdlet.ShouldProcess($Path, 'Write synthetic WPR command fixture')) {
+        Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
+    }
+
     return $Path
 }
 
@@ -90,7 +93,8 @@ Describe 'NXB WPR failure paths' {
     It 'preserves prepared state when WPR start returns a failure code' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'start-failure.cmd') `
-            -StartExitCode 17
+            -StartExitCode 17 `
+            -Confirm:$false
 
         {
             & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
@@ -108,7 +112,8 @@ Describe 'NXB WPR failure paths' {
     It 'preserves recording state when WPR stop returns a failure code' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'stop-failure.cmd') `
-            -StopExitCode 23
+            -StopExitCode 23 `
+            -Confirm:$false
 
         & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
             -ExperimentPath $script:ExperimentPath `
@@ -133,7 +138,8 @@ Describe 'NXB WPR failure paths' {
 
     It 'rejects a successful stop code that did not create an ETL file' {
         $fakeWpr = New-NxbFakeWprCommand `
-            -Path (Join-Path $script:TempRoot 'missing-etl.cmd')
+            -Path (Join-Path $script:TempRoot 'missing-etl.cmd') `
+            -Confirm:$false
 
         & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
             -ExperimentPath $script:ExperimentPath `
@@ -153,7 +159,8 @@ Describe 'NXB WPR failure paths' {
     It 'completes a synthetic start and stop lifecycle deterministically' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'success.cmd') `
-            -CreateEtl
+            -CreateEtl `
+            -Confirm:$false
 
         & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
             -ExperimentPath $script:ExperimentPath `
