@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NXB Integrity Research Lab Experiment Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "name",
+    "hypothesis",
+    "created_utc",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_utc": {
+      "type": "string"
+    },
+    "completed_utc": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "enum": ["prepared", "recording", "stopped", "finalized", "failed"]
+    },
+    "machine": {
+      "type": "object"
+    },
+    "target_version": {
+      "type": ["string", "null"]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
