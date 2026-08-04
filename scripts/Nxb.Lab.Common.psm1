@@ -135,7 +135,7 @@ function Get-NxbSafeChildItem {
         $directory = $pending.Pop()
         foreach ($child in @(Get-ChildItem -LiteralPath $directory -Force)) {
             [void](Test-NxbPathSafety -Path $child.FullName -RootPath $rootFull)
-            $result.Add($child)
+            [void]$result.Add($child)
 
             if ($child.PSIsContainer) {
                 $pending.Push($child.FullName)
