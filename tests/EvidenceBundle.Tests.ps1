@@ -4,7 +4,7 @@
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.Lab.Common.psm1') -Force
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.EvidenceStore.psm1') -Force
 
-    function New-NxbSyntheticBundleExperiment {
+    function Initialize-NxbSyntheticBundleExperiment {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)][string]$Root,
@@ -58,7 +58,7 @@
         return $experimentPath
     }
 
-    function New-NxbSyntheticBundle {
+    function Invoke-NxbSyntheticBundle {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)][string]$ExperimentPath
@@ -91,12 +91,12 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'creates the same bundle identity for unchanged inputs' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'deterministic'
 
-        $first = New-NxbSyntheticBundle -ExperimentPath $experiment
-        $second = New-NxbSyntheticBundle -ExperimentPath $experiment
+        $first = Invoke-NxbSyntheticBundle -ExperimentPath $experiment
+        $second = Invoke-NxbSyntheticBundle -ExperimentPath $experiment
 
         $first.BundleSha256 | Should -Be $second.BundleSha256
         $second.RecordCount | Should -Be 2
@@ -111,10 +111,10 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'detects a changed listed evidence file' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'file-tamper'
-        [void](New-NxbSyntheticBundle -ExperimentPath $experiment)
+        [void](Invoke-NxbSyntheticBundle -ExperimentPath $experiment)
 
         [IO.File]::WriteAllText(
             (Join-Path $experiment 'logs\evidence.txt'),
@@ -129,10 +129,10 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'detects bundle record inventory truncation even after rehashing' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'truncation'
-        $created = New-NxbSyntheticBundle -ExperimentPath $experiment
+        $created = Invoke-NxbSyntheticBundle -ExperimentPath $experiment
         $bundle = Read-NxbJson -Path $created.BundlePath
         $bundle.records = @($bundle.records[0])
         $bundle.bundle_sha256 = Get-NxbCanonicalJsonHash `
@@ -150,10 +150,10 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'rejects case-colliding inventory paths after a valid rehash' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'case-collision'
-        $created = New-NxbSyntheticBundle -ExperimentPath $experiment
+        $created = Invoke-NxbSyntheticBundle -ExperimentPath $experiment
         $bundle = Read-NxbJson -Path $created.BundlePath
         $manifestEntry = @($bundle.files | Where-Object {
             $_.relative_path -ceq 'manifest.json'
@@ -180,10 +180,10 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'rejects traversal paths through schema validation' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'traversal'
-        $created = New-NxbSyntheticBundle -ExperimentPath $experiment
+        $created = Invoke-NxbSyntheticBundle -ExperimentPath $experiment
         $bundle = Read-NxbJson -Path $created.BundlePath
         $bundle.files[0].relative_path = '../manifest.json'
         $bundle.bundle_sha256 = Get-NxbCanonicalJsonHash `
@@ -201,7 +201,7 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'rejects a reparse-point path before adding it to a bundle' {
-        $experiment = New-NxbSyntheticBundleExperiment `
+        $experiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'reparse'
         $outsidePath = Join-Path $script:TemporaryRoot 'outside'
@@ -232,14 +232,14 @@ Describe 'NXB deterministic offline evidence bundles' {
     }
 
     It 'compares identical and same-identity changed bundles deterministically' {
-        $leftExperiment = New-NxbSyntheticBundleExperiment `
+        $leftExperiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'left'
-        $rightExperiment = New-NxbSyntheticBundleExperiment `
+        $rightExperiment = Initialize-NxbSyntheticBundleExperiment `
             -Root $script:TemporaryRoot `
             -Name 'right'
-        $leftBundle = New-NxbSyntheticBundle -ExperimentPath $leftExperiment
-        $rightBundle = New-NxbSyntheticBundle -ExperimentPath $rightExperiment
+        $leftBundle = Invoke-NxbSyntheticBundle -ExperimentPath $leftExperiment
+        $rightBundle = Invoke-NxbSyntheticBundle -ExperimentPath $rightExperiment
 
         $identical = & (Join-Path $script:ScriptsRoot 'Compare-EvidenceBundle.ps1') `
             -LeftBundlePath $leftBundle.BundlePath `
@@ -255,7 +255,7 @@ Describe 'NXB deterministic offline evidence bundles' {
             'different evidence',
             [Text.UTF8Encoding]::new($false)
         )
-        $rightBundle = New-NxbSyntheticBundle -ExperimentPath $rightExperiment
+        $rightBundle = Invoke-NxbSyntheticBundle -ExperimentPath $rightExperiment
 
         $changed = & (Join-Path $script:ScriptsRoot 'Compare-EvidenceBundle.ps1') `
             -LeftBundlePath $leftBundle.BundlePath `
