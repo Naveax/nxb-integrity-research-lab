@@ -8,6 +8,12 @@ param(
     [string]$BundlePath,
 
     [Parameter()]
+    [string]$CertificatePath,
+
+    [Parameter()]
+    [Security.SecureString]$CertificatePassword,
+
+    [Parameter()]
     [switch]$PassThru
 )
 
@@ -28,7 +34,7 @@ function ConvertTo-NxbVerifiedRelativePath {
     if ([IO.Path]::IsPathRooted($Path) -or $Path -match '^[A-Za-z]:') {
         throw "Bundle relative path mutlak olamaz: $Path"
     }
-    if ($Path.IndexOf([IO.Path]::DirectorySeparatorChar) -ge 0) {
+    if ($Path.Contains([string][IO.Path]::DirectorySeparatorChar)) {
         throw "Bundle relative path forward-slash kullanmalıdır: $Path"
     }
     if ($Path.StartsWith('/', [StringComparison]::Ordinal)) {
@@ -104,16 +110,9 @@ if (-not (Test-Path -LiteralPath $bundleFull -PathType Leaf)) {
     -DocumentType bundle-manifest
 
 $bundle = Read-NxbJson -Path $bundleFull
-if ([string]$bundle.signature_state -cne 'unsigned') {
-    throw "Signature adapter olmadan bundle doğrulanamaz: $($bundle.signature_state)"
-}
-if ($null -ne $bundle.PSObject.Properties['signature']) {
-    throw 'Unsigned bundle signature metadata içeremez.'
-}
-
 $actualBundleHash = Get-NxbCanonicalJsonHash `
     -InputObject $bundle `
-    -ExcludeRootProperty @('bundle_sha256', 'signature')
+    -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
 if ([string]$bundle.bundle_sha256 -cne $actualBundleHash) {
     throw 'Bundle SHA-256 uyuşmuyor.'
 }
@@ -184,7 +183,7 @@ $declaredPaths = [Collections.Generic.List[string]]::new()
 $hasChainHead = $false
 foreach ($fileEntry in $files) {
     $relative = ConvertTo-NxbVerifiedRelativePath -Path ([string]$fileEntry.relative_path)
-    if ($relative.Equals($bundleRelative, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($relative -ceq $bundleRelative) {
         throw 'Bundle manifest kendi envanterinde listelenemez.'
     }
     if ($relative -ceq 'evidence-store/chain-head.json') {
@@ -219,6 +218,70 @@ for ($index = 0; $index -lt $sortedPaths.Count; $index++) {
     }
 }
 
+$declaredSignatureState = [string]$bundle.signature_state
+$effectiveSignatureState = $declaredSignatureState
+if ($declaredSignatureState -ceq 'unsigned') {
+    if ($null -ne $bundle.PSObject.Properties['signature']) {
+        throw 'Unsigned bundle signature metadata içeremez.'
+    }
+}
+else {
+    if ($null -eq $bundle.PSObject.Properties['signature']) {
+        throw 'İmzalı bundle signature metadata içermiyor.'
+    }
+
+    $signatureRelative = ConvertTo-NxbVerifiedRelativePath `
+        -Path ([string]$bundle.signature.relative_path)
+    if (-not $signatureRelative.StartsWith(
+        'evidence-store/signatures/',
+        [StringComparison]::Ordinal
+    )) {
+        throw 'Detached signature evidence-store/signatures altında olmalıdır.'
+    }
+    if ($signatureRelative -ceq $bundleRelative) {
+        throw 'Detached signature bundle manifest ile aynı dosya olamaz.'
+    }
+
+    Add-NxbBundlePathIdentity `
+        -CaseMap $caseMap `
+        -ExactSet $exactSet `
+        -RelativePath $signatureRelative
+    $signatureItem = Resolve-NxbVerifiedBundleFile `
+        -ExperimentRoot $experimentFull `
+        -RelativePath $signatureRelative
+    $signatureHash = (Get-FileHash `
+        -LiteralPath $signatureItem.FullName `
+        -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($signatureHash -cne [string]$bundle.signature.signature_sha256) {
+        throw 'Detached signature file SHA-256 uyuşmuyor.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($CertificatePath)) {
+        if ($declaredSignatureState -ceq 'valid') {
+            throw 'Bundle valid signature state iddiası public certificate olmadan doğrulanamaz.'
+        }
+        $effectiveSignatureState = 'present_unverified'
+    }
+    else {
+        $signatureParameters = @{
+            ExperimentPath = $experimentFull
+            BundlePath = $bundleFull
+            CertificatePath = $CertificatePath
+            PassThru = $true
+        }
+        if ($null -ne $CertificatePassword) {
+            $signatureParameters['CertificatePassword'] = $CertificatePassword
+        }
+
+        $signatureVerification = & (Join-Path $PSScriptRoot 'Test-EvidenceBundleSignature.ps1') `
+            @signatureParameters
+        if (-not $signatureVerification.IsValid) {
+            throw 'Detached evidence bundle signature doğrulanamadı.'
+        }
+        $effectiveSignatureState = 'valid'
+    }
+}
+
 $result = [pscustomobject]@{
     IsValid = $true
     BundlePath = $bundleFull
@@ -226,7 +289,8 @@ $result = [pscustomobject]@{
     ChainSha256 = [string]$chain.ChainSha256
     RecordCount = [int64]$records.Count
     FileCount = [int64]$files.Count
-    SignatureState = [string]$bundle.signature_state
+    DeclaredSignatureState = $declaredSignatureState
+    SignatureState = $effectiveSignatureState
 }
 
 if ($PassThru) {
