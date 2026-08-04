@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/experiment.schema.json",
   "title": "NXB Integrity Research Lab Experiment Manifest",
   "type": "object",
   "required": [
@@ -8,7 +9,11 @@
     "name",
     "hypothesis",
     "created_utc",
-    "status"
+    "completed_utc",
+    "status",
+    "machine",
+    "target_version",
+    "notes"
   ],
   "properties": {
     "schema_version": {
@@ -17,7 +22,7 @@
     },
     "experiment_id": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]+-[0-9a-f]{8}$"
     },
     "name": {
       "type": "string",
@@ -28,16 +33,43 @@
       "minLength": 1
     },
     "created_utc": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
     },
     "completed_utc": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "failed_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "failure_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
     },
     "status": {
       "enum": ["prepared", "recording", "stopped", "finalized", "failed"]
     },
     "machine": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "computer_name",
+        "user_name",
+        "os_version",
+        "powershell"
+      ],
+      "properties": {
+        "computer_name": {"type": "string", "minLength": 1},
+        "user_name": {"type": "string", "minLength": 1},
+        "os_version": {"type": "string", "minLength": 1},
+        "powershell": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
     },
     "target_version": {
       "type": ["string", "null"]
@@ -48,5 +80,33 @@
         "type": "string"
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "finalized"}
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["evidence_sha256"],
+        "properties": {
+          "completed_utc": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "failed"}
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["failed_utc", "failure_reason"]
+      }
+    }
+  ],
+  "additionalProperties": true
 }
