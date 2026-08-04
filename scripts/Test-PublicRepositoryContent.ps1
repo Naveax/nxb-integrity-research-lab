@@ -41,7 +41,10 @@ if ($git) {
 }
 else {
     $trackedPaths = @(Get-NxbSafeChildItem -RootPath $repositoryFull |
-        Where-Object { -not $_.PSIsContainer } |
+        Where-Object {
+            -not $_.PSIsContainer -and
+            $_.FullName -notmatch '[\\/]\.git[\\/]'
+        } |
         ForEach-Object {
             Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $_.FullName
         })
