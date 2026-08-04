@@ -13,25 +13,16 @@ Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için kanoni
 - Merged PR: `#3 — NXB-IRL-002: close deterministic lifecycle validation gaps`
 - Active draft PR: `#5 — NXB-IRL-003: deterministic evidence integrity store`
 - Active branch: `nxb-irl-003-evidence-integrity-store`
-- NXB-IRL-002 validated head: `878710229ad11c5c1b95247e304986ca4e5eda47`
-- NXB-IRL-002 squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`
 
 ## Current objective
 
-Complete `NXB-IRL-003 — Evidence integrity store`.
+Close `NXB-IRL-003` after final Windows CI repair. The implementation scope is now complete; remaining work is validation, documentation closeout and exact-head merge.
 
-Required scope:
+## Canonical project direction
 
-- canonical evidence identity,
-- append-only record chain,
-- tool provenance,
-- controller/target clock offset,
-- machine/boot/session identity,
-- deterministic offline evidence bundle,
-- bundle verification and comparison,
-- optional detached local signature.
+The platform is a full-system observability and evidence system for authorized security and performance research across CPU, scheduler, memory, GPU, storage, network, devices, drivers, kernel lifecycle, power, firmware and boot security.
 
-## Canonical references
+Required references:
 
 1. `docs/MASTER_PLAN.md`
 2. `docs/FULL_SYSTEM_OBSERVABILITY.md`
@@ -49,7 +40,7 @@ Required scope:
 - workspace and experiment creation,
 - baseline collection,
 - WPR trace lifecycle,
-- KDNET preparation check,
+- KDNET preparation checks,
 - evidence hashing and finalization,
 - public/private evidence boundary.
 
@@ -57,33 +48,32 @@ Required scope:
 
 Status: `COMPLETE`
 
-Validated on GitHub Actions:
+- canonical state machine,
+- atomic JSON writes,
+- idempotent finalization,
+- evidence integrity verification,
+- interrupted-experiment recovery,
+- explicit failed state,
+- path escape and reparse rejection,
+- manifest JSON Schema validation,
+- WPR failure-path matrix,
+- PowerShell 5.1, PowerShell 7 and PSScriptAnalyzer validation.
 
-- static analysis and repository smoke validation,
-- PowerShell 7 lifecycle suite,
-- Windows PowerShell 5.1 lifecycle suite.
+Validated head: `878710229ad11c5c1b95247e304986ca4e5eda47`.
 
-Detailed record: `docs/NXB-IRL-002-VALIDATION.md`.
+Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 
-### NXB-IRL-004 preparation already on main
+## NXB-IRL-003 implementation on draft PR #5
 
-- full-system observability architecture,
-- system-capability schema and collector,
-- normalized event schema,
-- machine/boot/monotonic-clock identity,
-- issue `#2`.
+### Canonical identity and schemas
 
-## NXB-IRL-003 implemented on draft PR #5
-
-### Contracts and canonical identity
-
-- Draft 2020-12 record, chain-head and bundle schemas,
-- record-type-specific provenance and clock payload schemas,
+- Draft 2020-12 record, chain-head and bundle-manifest schemas,
+- tool provenance and clock-offset payload schemas,
 - ordinal case-sensitive canonical JSON,
-- manual JSON escaping and invalid-surrogate rejection,
+- array-order preservation,
+- JSON escaping and invalid-surrogate rejection,
 - integer-only hash-bearing values,
-- UTF-8 without BOM hash bytes,
-- lowercase SHA-256,
+- UTF-8 without BOM SHA-256,
 - root-only self-hash exclusions,
 - atomic canonical JSON writes.
 
@@ -91,122 +81,117 @@ Detailed record: `docs/NXB-IRL-002-VALIDATION.md`.
 
 - exclusive append lock,
 - staged schema validation before final append,
-- fixed-width 16-digit record filenames,
-- payload and record SHA-256,
-- exact previous-record linkage,
+- fixed-width record filenames,
+- payload, record and previous-record hashes,
 - experiment/machine/boot/session identity binding,
 - deterministic chain-head,
 - raw digest-concatenation chain hash,
-- complete chain verifier.
+- independent chain verification.
 
-### Tool provenance
+### Tool provenance and clock evidence
 
-- executable path/hash/length/version capture,
-- invocation and collector identity,
-- redacted argument-envelope digest,
-- no raw argument persistence,
-- independent executable verification.
-
-### Clock-offset evidence
-
-- four-timestamp midpoint method,
-- controller and target elapsed accounting,
-- adjusted round-trip,
-- midpoint offset,
-- upward-rounded uncertainty,
+- executable path/hash/length/version provenance,
+- redacted argument-envelope digest without raw arguments,
+- independent executable verification,
+- four-timestamp midpoint clock-offset calculation,
 - independent arithmetic verification.
 
-### Deterministic offline bundle
+### Deterministic offline bundles
 
-Implemented commands:
+- deterministic record and selected-file inventories,
+- canonical relative paths,
+- byte length and SHA-256 binding,
+- mandatory chain-head,
+- complete offline verification without network access,
+- bundle comparison semantics,
+- traversal, duplicate, case-collision, truncation and reparse rejection.
 
-- `scripts/New-EvidenceBundle.ps1`
-- `scripts/Test-EvidenceBundle.ps1`
-- `scripts/Compare-EvidenceBundle.ps1`
+### Detached local signing
 
-Implemented behavior:
+- `scripts/Add-EvidenceBundleSignature.ps1`,
+- `scripts/Test-EvidenceBundleSignature.ps1`,
+- RSA SHA-256 PKCS#1 v1.5 detached signatures,
+- unsigned bundle identity preserved across signing,
+- PFX private key used locally only,
+- public CER/PFX verification,
+- `unsigned`, `present_unverified` and `valid` states,
+- missing, modified and wrong-certificate signatures rejected.
 
-- exact record inventory in sequence order,
-- selected-file inventory in ordinal canonical path order,
-- relative path, byte length and file SHA-256 binding,
-- mandatory chain-head inventory,
-- offline schema/self-hash/chain/file verification,
-- no network dependency,
-- no raw evidence copying,
-- exact duplicate and case-collision rejection,
-- absolute/traversal/non-canonical path rejection,
-- reparse-point rejection,
-- bundle self-reference rejection,
-- identical/same-identity-different-content/different-identity comparison.
+### Repository smoke integration
+
+The repository smoke flow now executes:
+
+```text
+experiment lifecycle
+→ observation identity
+→ evidence finalization
+→ evidence-store records
+→ chain verification
+→ deterministic unsigned bundle
+→ offline verification
+```
 
 ### Adversarial coverage
 
-- canonical property insertion order,
-- array-order sensitivity,
-- floating-point rejection,
-- payload tamper,
+- canonical property and array ordering,
+- one-byte payload and signature changes,
 - record deletion and sequence gaps,
-- identity substitution with recomputed record hash,
-- sensitive argument non-persistence,
-- changed tool binary,
-- inconsistent clock arithmetic after rehash,
-- invalid clock samples,
-- deterministic repeated bundle generation,
-- selected-file mutation,
-- record-inventory truncation,
-- case-colliding paths,
-- traversal paths,
-- bundle comparison semantics.
+- identity substitution,
+- tool binary mutation,
+- clock arithmetic tamper,
+- bundle truncation,
+- traversal and case-collision,
+- reparse-point path,
+- missing signature,
+- wrong certificate,
+- unverified `valid` state.
 
 ## Current validation state
 
-Status: `WINDOWS CI QUEUED`
+Status: `FINAL WINDOWS CI REPAIR`
 
-The workflow uses PR/ref concurrency with `cancel-in-progress`. Resolve the current head and latest Validate run from PR #5; do not trust a stale SHA stored in this document.
+The first complete static run after the four parallel implementation blocks reported eight analyzer findings:
 
-Required jobs:
+- seven helper functions used the `New-*` verb without `ShouldProcess`,
+- one synthetic PFX fixture used plaintext `ConvertTo-SecureString`.
+
+All eight were repaired without disabling rules:
+
+- pure helpers use `Get-*`,
+- fixture helpers use `Initialize-*` or `Invoke-*`,
+- SecureString test fixture is built character-by-character.
+
+Resolve the current head and latest Validate run from PR #5; do not rely on a stale SHA stored here.
+
+Required final jobs:
 
 - Static analysis and repository smoke validation,
 - Lifecycle — PowerShell 7,
 - Lifecycle — Windows PowerShell 5.1.
 
-PR #5 remains draft until full NXB-IRL-003 completion and final green CI.
+PR #5 remains draft until all three jobs and logs are inspected.
 
 ## Remaining NXB-IRL-003 sequence
 
-1. Implement optional detached local signing while preserving unsigned bundle identity.
-2. Add explicit unsigned, present-unverified, valid and invalid-signature tests.
-3. Add a bundle reparse-point adversarial test.
-4. Integrate evidence-store and bundle creation into repository smoke validation.
-5. Inspect the first completed final-head Windows CI logs.
-6. Repair parser, PSScriptAnalyzer or Pester failures without weakening gates.
-7. Update PR #5 and issue #4 closeout records.
-8. Mark ready and merge only after every final job is green.
+1. Inspect the latest Validate run.
+2. Repair remaining PSScriptAnalyzer, smoke or Pester failures.
+3. Add a final validation/closeout record.
+4. Update issue `#4` and PR `#5` with exact run/job evidence.
+5. Mark PR ready and squash merge using the exact validated head.
+6. Close issue `#4`.
+7. Start `NXB-IRL-004 — Full-system observability fabric` from issue `#2`.
 
-## Required quality gates
+## Public repository boundary
 
-- deterministic serialization and hashing,
-- append-only chain verification,
-- record deletion/reordering/substitution detection,
-- identity mismatch rejection,
-- independent tool provenance verification,
-- independent clock arithmetic verification,
-- offline bundle verification,
-- bundle truncation and path ambiguity rejection,
-- explicit signature-state semantics,
-- PowerShell 5.1 and PowerShell 7 CI,
-- clean PSScriptAnalyzer and repository smoke gates,
-- no raw private evidence or signing key committed.
+Never commit raw ETL, packet captures, dumps, protected binaries, drivers, private keys, PFX files, credentials, tokens or undisclosed findings.
 
 ## Continuation prompt
 
 ```text
 Inspect Naveax/nxb-integrity-research-lab.
 Read docs/HANDOFF.md, docs/MASTER_PLAN.md and docs/NXB-IRL-003-EVIDENCE-STORE.md.
-Confirm PR #3 is merged and issue #1 is closed.
-Inspect issue #4 and draft PR #5.
-Resolve the current PR #5 head and latest Validate run.
-Continue from the first incomplete item: optional detached local signing, then final CI repair.
-Keep issue #2 as the prepared NXB-IRL-004 full-system observability track.
-Update HANDOFF.md and the active issue/PR after every completed block.
+Resolve draft PR #5 current head and latest Validate run.
+Inspect every completed job log.
+Repair remaining static, smoke, PowerShell 7 and Windows PowerShell 5.1 failures without weakening quality rules.
+When all jobs are green, write the exact validation record, mark PR #5 ready, squash merge with exact-head locking, close issue #4 and begin NXB-IRL-004 from issue #2.
 ```
