@@ -176,7 +176,7 @@ function Set-NxbExperimentState {
     return $manifest
 }
 
-function Get-NxbEvidenceFiles {
+function Get-NxbEvidenceFile {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -207,5 +207,5 @@ Export-ModuleMember -Function @(
     'Write-NxbJsonAtomic',
     'Test-NxbStateTransition',
     'Set-NxbExperimentState',
-    'Get-NxbEvidenceFiles'
+    'Get-NxbEvidenceFile'
 )
