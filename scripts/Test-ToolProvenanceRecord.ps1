@@ -16,6 +16,10 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
 
+& (Join-Path $PSScriptRoot 'Test-EvidenceStoreSchema.ps1') `
+    -Path $RecordPath `
+    -DocumentType record
+
 $record = Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json
 if ([string]$record.record_type -cne 'tool_provenance') {
     throw "Record tool_provenance değil: $RecordPath"
