@@ -128,4 +128,7 @@ $hashRows |
     Sort-Object Path |
     Export-Csv -LiteralPath (Join-Path $baseline 'target-hashes.csv') -NoTypeInformation -Encoding utf8
 
+& (Join-Path $PSScriptRoot 'Get-SystemCapabilities.ps1') `
+    -ExperimentPath $ExperimentPath | Out-Null
+
 Write-Host "Baseline tamamlandı: $baseline"
