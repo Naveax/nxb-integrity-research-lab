@@ -2,6 +2,8 @@
 
 Bu belge projenin kanonik planıdır. Yeni bir sohbette veya yeni bir geliştiriciyle devam edilirken ilk okunacak dosyadır.
 
+Tam sistem gözlem ayrıntıları için ayrıca [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERVABILITY.md) zorunlu referanstır. Bu belge, önceki yalnız CPU/GPU odaklı hattı CPU, RAM, GPU, disk, ağ, PCIe/aygıt, kernel, güç/termal ve firmware kapsamına genişletir.
+
 ## 1. Nihai hedef
 
 Genel amaçlı, tekrar üretilebilir ve kanıta dayalı bir araştırma platformu oluşturmak:
@@ -26,7 +28,9 @@ Platformun görevi hedefi etkisizleştirmek değildir. Görevi hedefin davranı�
 7. Performans iyileştirmesi güvenlik kapsamını azaltamaz.
 8. Platform çekirdeği hedefe özel olmamalı; ürünler adapter olarak eklenmelidir.
 9. Ölçüm sisteminin kendi ek yükü ayrıca kalibre edilir.
-10. Anti-detection, görünmezlik veya koruma atlatma özelliği proje hedefi değildir.
+10. Veri kaybı, trace overflow veya collector failure sessizce gerçekleşemez.
+11. Bütün domainler ortak experiment/machine/boot/time kimliği kullanır.
+12. Anti-detection, görünmezlik veya koruma atlatma özelliği proje hedefi değildir.
 
 ## 3. Üst seviye mimari
 
@@ -34,8 +38,10 @@ Platformun görevi hedefi etkisizleştirmek değildir. Görevi hedefin davranı�
 Protected target
     -> target adapter
     -> target runtime environment
-    -> CPU/GPU/system observability
+    -> CPU / RAM / GPU / disk / network / device observability
+    -> kernel / power / firmware context
     -> evidence controller
+    -> cross-domain common timeline
     -> static/runtime correlation
     -> semantic intermediate representation
     -> LLM-assisted hypotheses
@@ -94,26 +100,56 @@ Yapılacaklar:
 - experiment chain,
 - tool provenance,
 - controller/target clock offset,
-- boot/session identity,
+- machine/boot/session identity,
 - offline evidence bundle,
 - integrity comparison,
 - isteğe bağlı yerel imza.
 
-### NXB-IRL-004 — Custom WPR/ETW profiles
+### NXB-IRL-004 — Full-system observability fabric
 
-Yapılacaklar:
+Durum: `PLANNED / INITIAL IMPLEMENTATION STARTED`
 
-- CPU sampling,
-- stack capture,
-- context switch,
-- DPC/ISR,
-- process/thread/image load,
-- disk/file/registry I/O,
-- hard faults ve working set,
-- DXGKRNL GPU olayları,
-- minimal/performance/kernel/full profilleri,
-- trace loss ve buffer overflow kaydı,
-- ölçüm overhead kalibrasyonu.
+GitHub takip kaydı: issue `#2`.
+
+Kapsam:
+
+- CPU sampling, stack, scheduler, context switch, DPC/ISR,
+- RAM, commit, working set, hard/soft fault, memory region yaşam döngüsü,
+- GPU/DXGKRNL queue, resource, residency ve present,
+- disk/storage queue/file-system/paging I/O,
+- network/NDIS/connection/DNS/retransmit metadata,
+- PCIe/PnP/device/driver topolojisi,
+- kernel/service/driver yaşam döngüsü,
+- power/frequency/thermal state,
+- firmware/Secure Boot/TPM/VBS/HVCI/boot state,
+- trace loss ve collector overhead,
+- ortak zaman çizelgesi ve cross-domain correlation.
+
+İlk tamamlananlar:
+
+- full-system mimari belgesi,
+- system capability JSON Schema,
+- Windows capability inventory collector,
+- baseline entegrasyonu,
+- capability validator ve Pester testleri.
+
+Sıradaki işler:
+
+- normalized cross-domain event schema,
+- machine/boot/clock identity contract,
+- minimal CPU/RAM/disk/GPU/network profilleri,
+- device/driver ve power/firmware snapshot,
+- overhead ve dropped-event accounting,
+- cross-domain correlation engine,
+- controlled CPU, memory, storage, GPU ve network fixtures.
+
+Tamamlanma kapısı:
+
+- bütün domainler aynı experiment ve zaman sözleşmesine bağlıdır,
+- desteklenmeyen capability açıkça `unavailable/partial` görünür,
+- collector overhead ve dropped events ölçülür,
+- bir latency veya frame-time problemi en az üç domain boyunca izlenebilir,
+- target adapter eklemek platform çekirdeğini değiştirmez.
 
 ### NXB-IRL-005 — Controlled kernel test driver
 
@@ -208,7 +244,8 @@ Yapılacaklar:
 - side effects,
 - error paths,
 - security boundary,
-- performance cost.
+- performance cost,
+- CPU/RAM/GPU/storage/network resource attribution.
 
 ### NXB-IRL-012 — LLM-assisted semantic analysis
 
@@ -217,7 +254,7 @@ Yapılacaklar:
 - function summary,
 - call-context analysis,
 - data-flow analysis,
-- runtime correlation,
+- runtime ve cross-domain correlation,
 - alternative explanation generation,
 - validation test generation,
 - confidence/provenance enforcement,
@@ -233,6 +270,7 @@ Adapter sözleşmesi:
 - lifecycle,
 - process tree,
 - ETW providers,
+- system-domain metrics,
 - experiment scenarios,
 - security boundaries,
 - performance metrics.
@@ -247,7 +285,8 @@ Adapter sözleşmesi:
 - steady state,
 - lobby/loading/gameplay/alt-tab,
 - shutdown/teardown,
-- process/service/driver/thread/event/runtime-region haritası.
+- process/service/driver/thread/event/runtime-region haritası,
+- CPU/RAM/GPU/disk/network etkilerinin ortak zaman çizelgesi.
 
 ### NXB-IRL-015 — Performance harness
 
@@ -260,7 +299,11 @@ Yapılacaklar:
 - 1% ve 0.1% low,
 - confidence interval,
 - effect size,
-- CPU/kernel/DPC/ISR/context-switch/I/O/working-set ölçümleri.
+- CPU/kernel/DPC/ISR/context-switch,
+- commit/working-set/page-fault,
+- GPU queue/present/residency,
+- disk/file/network I/O,
+- power/frequency/thermal ölçümleri.
 
 ### NXB-IRL-016 — Performance root-cause analysis
 
@@ -276,7 +319,12 @@ Aranacak sınıflar:
 - yanlış priority,
 - batching eksikliği,
 - bounded olmayan queue,
-- gereksiz telemetry ve disk sorgusu.
+- gereksiz telemetry ve disk sorgusu,
+- working-set thrashing/page-fault burst,
+- storage queue saturation,
+- GPU queue starvation/residency churn,
+- network retransmit veya NDIS/DPC yoğunluğu,
+- thermal/power throttling.
 
 ### NXB-IRL-017 — Security analysis workflow
 
@@ -321,7 +369,8 @@ Her optimizasyon için:
 - queue overflow,
 - fail-open,
 - teardown blind spot,
-- false-positive ve stability regresyonları ölçülür.
+- false-positive ve stability regresyonları,
+- CPU/RAM/GPU/disk/network kapsam değişiklikleri ölçülür.
 
 ### NXB-IRL-020 — Reporting pipeline
 
@@ -349,56 +398,42 @@ Yapılacaklar:
 - recovery/operator/reproducibility belgeleri,
 - manifest migration.
 
-## 5. CPU/GPU Instrumented Execution Track
+## 5. Full-System Instrumented Observability Track
 
-Bu hat uygulamaların arasına gizlice giren veya fiziksel donanımı görünmez biçimde taklit eden bir bypass sistemi değildir. Amaç, kendi test ortamımızda CPU ve GPU yürütmesini daha ayrıntılı gözlemlemektir.
+Bu hat uygulamaların arasına gizlice giren veya fiziksel donanımı görünmez biçimde taklit eden bir bypass sistemi değildir. Amaç, kontrollü araştırma ortamında bütün sistem kaynaklarını ortak zaman çizelgesinde gözlemlemektir.
 
-### CPU hattı
+### Domainler
 
-Öncelik sırası:
+1. CPU ve scheduler.
+2. RAM ve virtual memory.
+3. GPU ve presentation.
+4. Disk, storage queue ve file system.
+5. Network ve NDIS.
+6. PCIe, PnP, device ve signed drivers.
+7. Kernel, services ve driver lifecycle.
+8. Power, frequency ve thermal state.
+9. Firmware, boot ve security configuration.
 
-1. ETW/WPR CPU sampling ve stack capture.
-2. Context switch, scheduler, DPC/ISR ve loader korelasyonu.
-3. Desteklenen donanımda Intel Processor Trace benzeri control-flow izleri.
-4. Kendi test binary'lerimiz için emulator/hypervisor tabanlı instruction trace.
-5. Runtime adres -> module base -> RVA -> static function korelasyonu.
+### Örnek korelasyon
 
-Toplanacak çıktılar:
-
-- branch/control-flow trace,
-- execution timestamps,
-- thread/core migration,
-- exception ve mode transition,
-- module/RVA,
-- page execution timeline,
-- instrumentation overhead.
-
-### GPU hattı
-
-Öncelik sırası:
-
-1. DXGKRNL ETW/GPUView zaman çizelgesi.
-2. Command buffer submission.
-3. Queue/context scheduling.
-4. Resource create/destroy/lock/bind.
-5. Present ve frame pacing.
-6. D3D11/D3D12 için izinli PIX capture senaryoları.
-7. Kendi test workload'larımız için synthetic GPU command mediator.
-
-Toplanacak çıktılar:
-
-- CPU submission -> GPU execution korelasyonu,
-- queue wait ve preemption,
-- resource lifetime,
-- copy/compute/graphics queue maliyeti,
-- present gecikmesi,
-- GPU capture overhead.
+```text
+frame-time spike
+ -> thread ready
+ -> hard page fault
+ -> disk read
+ -> RAM page-in
+ -> CPU scheduling delay
+ -> late GPU submission
+ -> queue bubble
+ -> delayed present
+```
 
 ### Kabul kriterleri
 
 - hedef davranışı instrumentation olmadan ve instrumentation ile karşılaştırılır,
 - ölçüm ek yükü sayısal olarak raporlanır,
 - veri kaybı veya trace overflow görünür olmalıdır,
+- bütün olaylar experiment/machine/boot/time kimliğine bağlanır,
 - görünmezlik garantisi verilmez,
 - anti-debug/anti-VM atlatma uygulanmaz,
 - gerçek hedef için yalnız program kapsamındaki ve zarar vermeyen gözlem yöntemleri kullanılır.
@@ -407,7 +442,7 @@ Toplanacak çıktılar:
 
 1. `NXB-IRL-002` deterministic lifecycle.
 2. `NXB-IRL-003` evidence store.
-3. `NXB-IRL-004` özel CPU/GPU ETW profilleri.
+3. `NXB-IRL-004` full-system observability fabric.
 4. `NXB-IRL-005` kontrollü test sürücüsü.
 5. `NXB-IRL-006` controller/target transport.
 6. `NXB-IRL-007` debugger evidence.
@@ -422,9 +457,10 @@ Yeni sohbet başladığında şu dosyalar sırasıyla okunmalıdır:
 
 1. `docs/HANDOFF.md`
 2. `docs/MASTER_PLAN.md`
-3. `docs/ROADMAP.md`
-4. `docs/ARCHITECTURE.md`
-5. ilgili aktif blok dosyaları ve testleri.
+3. `docs/FULL_SYSTEM_OBSERVABILITY.md`
+4. `docs/ROADMAP.md`
+5. `docs/ARCHITECTURE.md`
+6. ilgili aktif blok dosyaları ve testleri.
 
 Aktif blok tamamlanmadan sonraki zorunlu bloğa geçilmez. Her blok sonunda:
 
