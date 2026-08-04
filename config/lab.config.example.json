@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "lab_root": "C:\\NXB-Lab",
+  "role": "Target",
+  "controller_ipv4": "192.168.1.10",
+  "kdnet_port": 50005,
+  "target_paths": [
+    "C:\\Path\\To\\Target"
+  ],
+  "notes": "Copy to lab.config.json and edit for the test machine."
+}
