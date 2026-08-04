@@ -22,6 +22,18 @@ This record tracks the closeout validation for the deterministic experiment life
 - [x] PowerShell 5.1 and PowerShell 7 workflow matrix.
 - [x] Manual `workflow_dispatch` trigger definition.
 
+## Repository Actions configuration
+
+Repository owner confirmed on 2026-08-04 that:
+
+- Actions are enabled,
+- all actions and reusable workflows are allowed,
+- full-length SHA pinning is not required,
+- the default workflow token is read-only for repository contents and packages,
+- GitHub Actions cannot create or approve pull requests.
+
+This commit intentionally retriggers the pull-request validation workflow after those settings were saved.
+
 ## Required execution gates
 
 - [ ] GitHub Actions run is visible.
@@ -56,10 +68,10 @@ Draft PR `#3` contains the closeout implementation. It must remain draft until e
 
 Status: `PENDING WINDOWS CI`
 
-Observed limitation:
+Observed limitation before Actions were enabled:
 
-- GitHub connector queries return no workflow runs or status checks for the PR head or merge ref.
+- GitHub connector queries returned no workflow runs or status checks for the PR head or merge ref.
 - The execution environment has no authenticated GitHub CLI.
 - The execution environment has no local Windows PowerShell or PowerShell 7 runtime.
 
-No CI success is claimed. Do not mark NXB-IRL-002 complete, merge PR #3, or close issue #1 until the required execution gates above are satisfied.
+No CI success is claimed until the retriggered run and every job log are inspected. Do not mark NXB-IRL-002 complete, merge PR #3, or close issue #1 until the required execution gates above are satisfied.
