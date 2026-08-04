@@ -91,7 +91,7 @@ foreach ($entry in $expected.GetEnumerator()) {
 }
 
 try {
-    $actualFiles = Get-NxbEvidenceFiles -ExperimentPath $experimentFull
+    $actualFiles = Get-NxbEvidenceFile -ExperimentPath $experimentFull
     foreach ($file in $actualFiles) {
         $relative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName
         if (-not $expected.ContainsKey($relative)) {
