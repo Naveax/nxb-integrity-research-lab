@@ -19,15 +19,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+
 $experimentsRoot = Join-Path $Root 'experiments'
-if (-not (Test-Path -LiteralPath $experimentsRoot)) {
+if (-not (Test-Path -LiteralPath $experimentsRoot -PathType Container)) {
     throw "Laboratuvar başlatılmamış: $experimentsRoot"
 }
 
 $safeName = ($Name -replace '[^a-zA-Z0-9._-]', '-').Trim('-')
+if ([string]::IsNullOrWhiteSpace($safeName)) {
+    throw 'Deney adı güvenli bir dizin adı üretemedi.'
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$experimentId = "$stamp-$safeName"
+$experimentId = "$stamp-$safeName-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $experimentPath = Join-Path $experimentsRoot $experimentId
+
+if (Test-Path -LiteralPath $experimentPath) {
+    throw "Deney dizini zaten var: $experimentPath"
+}
 
 @('baseline', 'traces', 'dumps', 'binaries', 'notes', 'logs') | ForEach-Object {
     New-Item -ItemType Directory -Path (Join-Path $experimentPath $_) -Force | Out-Null
@@ -51,8 +61,10 @@ $manifest = [ordered]@{
     notes          = @()
 }
 
-$manifest | ConvertTo-Json -Depth 8 |
-    Set-Content -LiteralPath (Join-Path $experimentPath 'manifest.json') -Encoding UTF8
+Write-NxbJsonAtomic `
+    -Path (Join-Path $experimentPath 'manifest.json') `
+    -InputObject $manifest `
+    -Depth 16
 
 Write-Host "Deney hazır: $experimentPath"
 Write-Output $experimentPath
