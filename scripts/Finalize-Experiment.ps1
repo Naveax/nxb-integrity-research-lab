@@ -8,32 +8,65 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$hashFile = Join-Path $ExperimentPath 'evidence.sha256'
-$manifestPath = Join-Path $ExperimentPath 'manifest.json'
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
 
-$files = Get-ChildItem -LiteralPath $ExperimentPath -File -Recurse -Force |
-    Where-Object {
-        $_.FullName -ne $hashFile -and
-        $_.FullName -ne $manifestPath
-    } |
-    Sort-Object FullName
+$experimentFull = Get-NxbFullPath -Path $ExperimentPath
+$hashFile = Join-Path $experimentFull 'evidence.sha256'
+$manifestPath = Join-Path $experimentFull 'manifest.json'
 
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "Manifest bulunamadı: $manifestPath"
+}
+
+$manifest = Read-NxbJson -Path $manifestPath
+$currentState = [string]$manifest.status
+
+if ($currentState -eq 'finalized') {
+    & (Join-Path $PSScriptRoot 'Test-EvidenceIntegrity.ps1') `
+        -ExperimentPath $experimentFull
+    Write-Host "Deney daha önce finalize edilmiş ve bütünlüğü geçerli: $experimentFull"
+    return
+}
+
+if ($currentState -eq 'recording') {
+    throw 'Aktif kayıt durdurulmadan deney finalize edilemez.'
+}
+
+if ($currentState -notin @('prepared', 'stopped')) {
+    throw "Deney '$currentState' durumundan finalize edilemez."
+}
+
+$files = Get-NxbEvidenceFiles -ExperimentPath $experimentFull
 $lines = foreach ($file in $files) {
     $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256
-    $relative = [IO.Path]::GetRelativePath($ExperimentPath, $file.FullName)
+    $relative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName
     "$($hash.Hash.ToLowerInvariant())  $relative"
 }
 
-$lines | Set-Content -LiteralPath $hashFile -Encoding ascii
-
-if (Test-Path -LiteralPath $manifestPath) {
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    $manifest.status = 'finalized'
-    $manifest.completed_utc = [DateTime]::UtcNow.ToString('o')
-    $manifest.evidence_sha256 = (Get-FileHash -LiteralPath $hashFile -Algorithm SHA256).Hash
-    $manifest | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$temporaryHashFile = "$hashFile.tmp.$([guid]::NewGuid().ToString('N'))"
+try {
+    $lines | Set-Content -LiteralPath $temporaryHashFile -Encoding ascii
+    Move-Item -LiteralPath $temporaryHashFile -Destination $hashFile -Force
+}
+finally {
+    if (Test-Path -LiteralPath $temporaryHashFile) {
+        Remove-Item -LiteralPath $temporaryHashFile -Force
+    }
 }
 
-Write-Host "Deney finalize edildi: $ExperimentPath"
+$evidenceHash = (Get-FileHash -LiteralPath $hashFile -Algorithm SHA256).Hash
+$completedUtc = [DateTime]::UtcNow.ToString('o')
+
+Set-NxbExperimentState `
+    -ExperimentPath $experimentFull `
+    -State finalized `
+    -Updates @{
+        completed_utc = $completedUtc
+        evidence_sha256 = $evidenceHash
+    } | Out-Null
+
+& (Join-Path $PSScriptRoot 'Test-EvidenceIntegrity.ps1') `
+    -ExperimentPath $experimentFull
+
+Write-Host "Deney finalize edildi: $experimentFull"
 Write-Host "Kanıt listesi: $hashFile"
