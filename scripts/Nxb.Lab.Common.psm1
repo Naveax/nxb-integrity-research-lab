@@ -116,6 +116,36 @@ function Test-NxbPathSafety {
     return $true
 }
 
+function Get-NxbSafeChildItem {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$RootPath
+    )
+
+    $rootFull = Get-NxbFullPath -Path $RootPath
+    [void](Test-NxbPathSafety -Path $rootFull -RootPath $rootFull)
+
+    $pending = [System.Collections.Generic.Stack[string]]::new()
+    $result = [System.Collections.Generic.List[object]]::new()
+    $pending.Push($rootFull)
+
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($child in @(Get-ChildItem -LiteralPath $directory -Force)) {
+            [void](Test-NxbPathSafety -Path $child.FullName -RootPath $rootFull)
+            $result.Add($child)
+
+            if ($child.PSIsContainer) {
+                $pending.Push($child.FullName)
+            }
+        }
+    }
+
+    return @($result)
+}
+
 function Read-NxbJson {
     [CmdletBinding()]
     param(
@@ -247,11 +277,7 @@ function Get-NxbEvidenceFile {
 
     $experimentFull = Get-NxbFullPath -Path $ExperimentPath
     $excludedNames = @('manifest.json', 'evidence.sha256')
-    $items = @(Get-ChildItem -LiteralPath $experimentFull -Recurse -Force)
-
-    foreach ($item in $items) {
-        [void](Test-NxbPathSafety -Path $item.FullName -RootPath $experimentFull)
-    }
+    $items = Get-NxbSafeChildItem -RootPath $experimentFull
 
     $files = @($items |
         Where-Object { -not $_.PSIsContainer -and $excludedNames -notcontains $_.Name } |
@@ -269,6 +295,7 @@ Export-ModuleMember -Function @(
     'Get-NxbRelativePath',
     'Resolve-NxbExecutablePath',
     'Test-NxbPathSafety',
+    'Get-NxbSafeChildItem',
     'Read-NxbJson',
     'Write-NxbJsonAtomic',
     'Test-NxbStateTransition',
