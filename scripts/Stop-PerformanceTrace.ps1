@@ -8,12 +8,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+
+$experimentFull = Get-NxbFullPath -Path $ExperimentPath
+$manifestPath = Join-Path $experimentFull 'manifest.json'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "Manifest bulunamadı: $manifestPath"
+}
+
+$manifest = Read-NxbJson -Path $manifestPath
+if ([string]$manifest.status -ne 'recording') {
+    throw "WPR yalnız recording deneyde durdurulabilir. Mevcut durum: $($manifest.status)"
+}
+
 $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
 if (-not $wpr) {
     throw 'wpr.exe bulunamadı.'
 }
 
-$traces = Join-Path $ExperimentPath 'traces'
+$traces = Join-Path $experimentFull 'traces'
 New-Item -ItemType Directory -Path $traces -Force | Out-Null
 $etl = Join-Path $traces 'performance.etl'
 
@@ -23,30 +36,30 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $hash = Get-FileHash -LiteralPath $etl -Algorithm SHA256
-[pscustomobject]@{
-    Path = $etl
-    SHA256 = $hash.Hash
-    Length = (Get-Item -LiteralPath $etl).Length
-    StoppedUtc = [DateTime]::UtcNow.ToString('o')
-} | ConvertTo-Json |
-    Set-Content -LiteralPath (Join-Path $traces 'performance.etl.json') -Encoding UTF8
+$traceMetadata = [ordered]@{
+    path = $etl
+    sha256 = $hash.Hash
+    length = (Get-Item -LiteralPath $etl).Length
+    stopped_utc = [DateTime]::UtcNow.ToString('o')
+}
+Write-NxbJsonAtomic `
+    -Path (Join-Path $traces 'performance.etl.json') `
+    -InputObject $traceMetadata `
+    -Depth 8
 
-$sessionPath = Join-Path $ExperimentPath 'trace-session.json'
-if (Test-Path -LiteralPath $sessionPath) {
-    $session = Get-Content -LiteralPath $sessionPath -Raw | ConvertFrom-Json
-    $session.status = 'stopped'
-    $session.stopped_utc = [DateTime]::UtcNow.ToString('o')
-    $session.etl = $etl
-    $session | ConvertTo-Json -Depth 5 |
-        Set-Content -LiteralPath $sessionPath -Encoding UTF8
+$sessionPath = Join-Path $experimentFull 'trace-session.json'
+if (-not (Test-Path -LiteralPath $sessionPath -PathType Leaf)) {
+    throw "Trace session manifesti bulunamadı: $sessionPath"
 }
 
-$manifestPath = Join-Path $ExperimentPath 'manifest.json'
-if (Test-Path -LiteralPath $manifestPath) {
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    $manifest.status = 'stopped'
-    $manifest | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $manifestPath -Encoding UTF8
-}
+$session = Read-NxbJson -Path $sessionPath
+$session.status = 'stopped'
+$session | Add-Member -MemberType NoteProperty -Name stopped_utc -Value $traceMetadata.stopped_utc -Force
+$session | Add-Member -MemberType NoteProperty -Name etl -Value $etl -Force
+Write-NxbJsonAtomic -Path $sessionPath -InputObject $session -Depth 8
+
+Set-NxbExperimentState `
+    -ExperimentPath $experimentFull `
+    -State stopped | Out-Null
 
 Write-Host "WPR kaydı tamamlandı: $etl"
