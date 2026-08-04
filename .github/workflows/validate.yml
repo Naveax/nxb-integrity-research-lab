@@ -45,10 +45,12 @@ jobs:
       - name: Analyze PowerShell
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer `
-            -Path @('./scripts', './tests') `
-            -Recurse `
-            -Settings ./.github/PSScriptAnalyzerSettings.psd1
+          $results = foreach ($path in @('./scripts', './tests')) {
+            Invoke-ScriptAnalyzer `
+              -Path $path `
+              -Recurse `
+              -Settings ./.github/PSScriptAnalyzerSettings.psd1
+          }
           $results | Format-Table -AutoSize
           if ($results) {
             throw "PSScriptAnalyzer reported $($results.Count) issue(s)."
@@ -66,6 +68,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install JSON Schema validator
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check jsonschema
 
       - name: Install Pester 5
         shell: pwsh
@@ -86,6 +97,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install JSON Schema validator
+        shell: powershell
+        run: python -m pip install --disable-pip-version-check jsonschema
 
       - name: Install Pester 5
         shell: powershell
