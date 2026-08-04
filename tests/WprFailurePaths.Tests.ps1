@@ -89,6 +89,26 @@ Describe 'NXB WPR failure paths' {
             Should -BeFalse
     }
 
+    It 'does not start a trace when cancellation of an existing session fails' {
+        $fakeWpr = New-NxbFakeWprCommand `
+            -Path (Join-Path $script:TempRoot 'cancel-failure.cmd') `
+            -CancelExitCode 31 `
+            -Confirm:$false
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
+                -ExperimentPath $script:ExperimentPath `
+                -WprExecutablePath $fakeWpr `
+                -CancelExistingSession
+        } | Should -Throw '*iptal edilemedi*exit 31*'
+
+        $manifest = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'manifest.json') -Raw |
+            ConvertFrom-Json
+        $manifest.status | Should -Be 'prepared'
+        Test-Path -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') |
+            Should -BeFalse
+    }
+
     It 'preserves prepared state when WPR start returns a failure code' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'start-failure.cmd') `
