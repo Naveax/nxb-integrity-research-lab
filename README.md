@@ -4,6 +4,18 @@ Yetkilendirilmiş güvenlik, runtime gözlemlenebilirliği, tersine mühendislik
 
 Proje yalnızca Easy Anti-Cheat'e bağlı değildir. Anti-cheat, anti-tamper, DRM, integrity kontrolü, korumalı kullanıcı modu bileşenleri ve kernel sürücüleri gibi farklı hedefler için ortak deney altyapısı sağlar.
 
+## Devam etme ve plan
+
+Yeni bir sohbet veya geliştirme oturumu başlarken sırayla okuyun:
+
+1. [Project handoff](docs/HANDOFF.md)
+2. [Canonical master plan](docs/MASTER_PLAN.md)
+3. [Roadmap](docs/ROADMAP.md)
+4. [CPU/GPU observability track](docs/CPU_GPU_OBSERVABILITY.md)
+5. [Architecture](docs/ARCHITECTURE.md)
+
+Aktif çalışma kaydı: **NXB-IRL-002 — issue #1**.
+
 ## İlk kapsam
 
 - Deney manifestleri ve kanıt sınıflandırması
@@ -13,6 +25,7 @@ Proje yalnızca Easy Anti-Cheat'e bağlı değildir. Anti-cheat, anti-tamper, DR
 - KDNET hazırlık denetimi
 - Deney sonunda evidence hash listesi
 - Statik analiz ile runtime kanıtlarını eşleştirmek için not şablonları
+- CPU/GPU instruction, scheduling ve command-queue gözlem hattı
 
 ## Mimari
 
@@ -32,8 +45,9 @@ Proje yalnızca Easy Anti-Cheat'e bağlı değildir. Anti-cheat, anti-tamper, DR
 
 1. **Kontrollü VM hattı:** Kendi test sürücülerimizi, telemetriyi ve otomasyonu doğrular.
 2. **Fiziksel target hattı:** Program kapsamındaki gerçek korumalı yazılımı standart Windows gözlem araçlarıyla inceler.
+3. **CPU/GPU observability hattı:** ETW/WPR, DXGKRNL/GPUView, uyumlu PIX senaryoları ve proje tarafından sahip olunan fixture'larda kontrollü instruction/command tracing.
 
-Bu başlangıç sürümü anti-VM atlatma, anti-debug bypass, koruma etkisizleştirme veya hedef kodu değiştirme özelliği içermez.
+Bu proje anti-VM atlatma, anti-debug bypass, koruma etkisizleştirme veya hedef kodu değiştirme özelliği geliştirmez. Görünmezlik yerine düşük ve ölçülebilir overhead, provenance ve tekrar üretilebilirlik hedeflenir.
 
 ## Başlangıç
 
@@ -74,6 +88,13 @@ Performans izi:
 .\scripts\Finalize-Experiment.ps1 -ExperimentPath $exp
 ```
 
+Durum ve bütünlük:
+
+```powershell
+.\scripts\Get-ExperimentStatus.ps1 -ExperimentPath $exp
+.\scripts\Test-EvidenceIntegrity.ps1 -ExperimentPath $exp
+```
+
 ## Kanıt sınıfları
 
 - `OBSERVED`: Trace, debugger, hash veya kontrollü deneyle doğrudan görüldü.
@@ -88,6 +109,9 @@ Binary, memory dump, ETL, sembol önbelleği, kişisel veri veya raporlanmamış
 
 Ayrıntılar:
 
+- [Master plan](docs/MASTER_PLAN.md)
+- [Handoff](docs/HANDOFF.md)
 - [Mimari](docs/ARCHITECTURE.md)
+- [CPU/GPU gözlem hattı](docs/CPU_GPU_OBSERVABILITY.md)
 - [Yol haritası](docs/ROADMAP.md)
 - [Güvenlik politikası](SECURITY.md)
