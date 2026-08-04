@@ -39,10 +39,33 @@ $jsonFiles = @(
     (Join-Path $repositoryRoot 'schemas\experiment.schema.json'),
     (Join-Path $repositoryRoot 'schemas\system-capabilities.schema.json'),
     (Join-Path $repositoryRoot 'schemas\observation-identity.schema.json'),
-    (Join-Path $repositoryRoot 'schemas\observability-event.schema.json')
+    (Join-Path $repositoryRoot 'schemas\observability-event.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\evidence-store-record.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\evidence-chain-head.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\evidence-bundle-manifest.schema.json')
 )
 foreach ($jsonFile in $jsonFiles) {
     Get-Content -LiteralPath $jsonFile -Raw | ConvertFrom-Json | Out-Null
+}
+
+Write-Host 'Canonical evidence-store JSON ve SHA-256 sözleşmesi denetleniyor...'
+Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
+$canonicalFixture = [ordered]@{
+    z = 1
+    list = @(3, "x`n", $false)
+    a = [ordered]@{
+        b = $true
+        a = $null
+    }
+}
+$expectedCanonicalJson = '{"a":{"a":null,"b":true},"list":[3,"x\n",false],"z":1}'
+$expectedCanonicalHash = '170f36671e659fda9fdc5237be36ae283a2e5a63c03029ce11cb6b4c17f839a7'
+
+if ((ConvertTo-NxbCanonicalJson -InputObject $canonicalFixture) -ne $expectedCanonicalJson) {
+    throw 'Canonical JSON smoke vektörü uyuşmuyor.'
+}
+if ((Get-NxbCanonicalJsonHash -InputObject $canonicalFixture) -ne $expectedCanonicalHash) {
+    throw 'Canonical SHA-256 smoke vektörü uyuşmuyor.'
 }
 
 Write-Host 'Workspace, capability, identity, schema ve evidence smoke testi çalıştırılıyor...'
