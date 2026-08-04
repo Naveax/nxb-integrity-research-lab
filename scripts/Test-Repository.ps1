@@ -7,7 +7,10 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 
 Write-Host 'PowerShell syntax denetleniyor...'
-$scriptFiles = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'scripts') -Filter '*.ps1' -File
+$scriptFiles = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'scripts') -File |
+    Where-Object { $_.Extension -in @('.ps1', '.psm1') }
+$scriptFiles += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Filter '*.ps1' -File
+
 foreach ($file in $scriptFiles) {
     $tokens = $null
     $parseErrors = $null
@@ -57,19 +60,36 @@ try {
         -ExperimentPath $experimentPath
 
     $manifestPath = Join-Path $experimentPath 'manifest.json'
+    $evidencePath = Join-Path $experimentPath 'evidence.sha256'
+    $manifestHashBefore = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+    $evidenceHashBefore = (Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash
+
+    & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
+        -ExperimentPath $experimentPath
+
+    if ((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash -ne $manifestHashBefore) {
+        throw 'İkinci finalization manifesti değiştirdi.'
+    }
+    if ((Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash -ne $evidenceHashBefore) {
+        throw 'İkinci finalization evidence listesini değiştirdi.'
+    }
+
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     if ($manifest.status -ne 'finalized') {
         throw "Manifest finalized değil: $($manifest.status)"
     }
 
-    $evidencePath = Join-Path $experimentPath 'evidence.sha256'
-    if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
-        throw 'evidence.sha256 oluşturulmadı.'
+    $integrity = & (Join-Path $PSScriptRoot 'Test-EvidenceIntegrity.ps1') `
+        -ExperimentPath $experimentPath `
+        -PassThru
+    if (-not $integrity.IsValid) {
+        throw 'Evidence doğrulaması başarısız.'
     }
 
-    $evidenceText = Get-Content -LiteralPath $evidencePath -Raw
-    if ($evidenceText -notmatch 'logs[\\/]synthetic-evidence\.txt') {
-        throw 'Sentetik kanıt evidence listesine eklenmedi.'
+    $status = & (Join-Path $PSScriptRoot 'Get-ExperimentStatus.ps1') `
+        -ExperimentPath $experimentPath
+    if ($status.EvidenceStatus -ne 'valid') {
+        throw "Beklenmeyen evidence durumu: $($status.EvidenceStatus)"
     }
 }
 finally {
