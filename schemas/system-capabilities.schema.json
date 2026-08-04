@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/system-capabilities.schema.json",
+  "title": "NXB Full-System Capability Inventory",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "captured_utc",
+    "machine_id",
+    "computer_name",
+    "domains",
+    "collection_errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "captured_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "computer_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "powershell_version": {
+      "type": "string"
+    },
+    "domains": {
+      "type": "object",
+      "required": [
+        "operating_system",
+        "cpu",
+        "memory",
+        "gpu",
+        "storage",
+        "network",
+        "bus_and_devices",
+        "firmware",
+        "security",
+        "power",
+        "tooling"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "operating_system": { "$ref": "#/$defs/domain" },
+        "cpu": { "$ref": "#/$defs/domain" },
+        "memory": { "$ref": "#/$defs/domain" },
+        "gpu": { "$ref": "#/$defs/domain" },
+        "storage": { "$ref": "#/$defs/domain" },
+        "network": { "$ref": "#/$defs/domain" },
+        "bus_and_devices": { "$ref": "#/$defs/domain" },
+        "firmware": { "$ref": "#/$defs/domain" },
+        "security": { "$ref": "#/$defs/domain" },
+        "power": { "$ref": "#/$defs/domain" },
+        "tooling": { "$ref": "#/$defs/domain" }
+      }
+    },
+    "collection_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["domain", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "domain": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "domain": {
+      "type": "object",
+      "required": ["status", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["available", "partial", "unavailable"]
+        },
+        "data": {}
+      }
+    }
+  }
+}
