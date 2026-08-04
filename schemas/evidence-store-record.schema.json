@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/evidence-store-record.schema.json",
+  "title": "NXB Evidence Store Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sequence",
+    "previous_record_sha256",
+    "record_type",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "session_id",
+    "captured_utc",
+    "monotonic_ns",
+    "payload",
+    "payload_sha256",
+    "record_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "previous_record_sha256": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/sha256" }
+      ]
+    },
+    "record_type": {
+      "type": "string",
+      "enum": [
+        "manifest_snapshot",
+        "evidence_index_snapshot",
+        "tool_provenance",
+        "clock_offset",
+        "observation_identity",
+        "bundle_seal"
+      ]
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "boot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "captured_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "payload": {
+      "type": "object"
+    },
+    "payload_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "record_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "sequence": { "const": 0 }
+        },
+        "required": ["sequence"]
+      },
+      "then": {
+        "properties": {
+          "previous_record_sha256": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "previous_record_sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
