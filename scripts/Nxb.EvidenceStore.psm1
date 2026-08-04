@@ -34,15 +34,21 @@ function ConvertTo-NxbJsonStringLiteral {
     for ($index = 0; $index -lt $Value.Length; $index++) {
         $character = $Value[$index]
         $codeUnit = [int]$character
+        $escaped = $null
 
         switch ($codeUnit) {
-            0x08 { [void]$builder.Append('\b'); continue }
-            0x09 { [void]$builder.Append('\t'); continue }
-            0x0A { [void]$builder.Append('\n'); continue }
-            0x0C { [void]$builder.Append('\f'); continue }
-            0x0D { [void]$builder.Append('\r'); continue }
-            0x22 { [void]$builder.Append('\"'); continue }
-            0x5C { [void]$builder.Append('\\'); continue }
+            0x08 { $escaped = '\b' }
+            0x09 { $escaped = '\t' }
+            0x0A { $escaped = '\n' }
+            0x0C { $escaped = '\f' }
+            0x0D { $escaped = '\r' }
+            0x22 { $escaped = '\"' }
+            0x5C { $escaped = '\\' }
+        }
+
+        if ($null -ne $escaped) {
+            [void]$builder.Append($escaped)
+            continue
         }
 
         if ($codeUnit -lt 0x20) {
@@ -127,7 +133,9 @@ function ConvertTo-NxbCanonicalJsonValue {
         throw "Floating-point value is not allowed in canonical JSON: $Value"
     }
 
-    $propertyValues = @{}
+    $propertyValues = [Collections.Generic.Dictionary[string, object]]::new(
+        [StringComparer]::Ordinal
+    )
     if ($Value -is [Collections.IDictionary]) {
         foreach ($key in $Value.Keys) {
             if ($key -isnot [string]) {
