@@ -79,7 +79,7 @@ foreach ($entry in $expected.GetEnumerator()) {
     }
 
     try {
-        Assert-NxbNoReparsePoint -Path $path
+        [void](Test-NxbPathSafety -Path $path)
         $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actualHash -ne $entry.Value) {
             $issues.Add("Hash uyuşmazlığı: $($entry.Key)")
