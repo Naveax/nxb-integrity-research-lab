@@ -6,15 +6,57 @@ Yeni sohbet/devralma durumu: [`HANDOFF.md`](HANDOFF.md)
 
 Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERVABILITY.md)
 
-Önceki CPU/GPU tasarım notları: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
-
 ## Current block
 
-### NXB-IRL-002 — Deterministic experiment lifecycle
+### NXB-IRL-003 — Evidence integrity store
 
 Durum: `IN PROGRESS`
 
+Kapsam:
+
+- [ ] Canonical manifest hash
+- [ ] Append-only experiment chain
+- [ ] Tool provenance
+- [ ] Controller/target clock offset evidence
+- [ ] Machine/boot/session identity binding
+- [ ] Deterministic offline evidence bundle
+- [ ] Independent integrity comparison
+- [ ] Optional local signature
+- [ ] Tamper, truncation, reordering and substitution tests
+- [ ] PowerShell 5.1 / PowerShell 7 validation
+
+Tamamlanma kapısı:
+
+- aynı girdiler aynı canonical hash ve bundle manifestini üretir,
+- tek byte değişikliği bulunur,
+- kayıt silme, yeniden sıralama veya substitution zincir doğrulamasında reddedilir,
+- machine/boot/experiment identity uyuşmazlığı fail-closed davranır,
+- verification ağ bağlantısı olmadan yapılır,
+- imza opsiyoneldir; imza yokluğu unsigned durumu olarak görünür, bozuk imza geçersiz sayılır,
+- private evidence ve signing key public repoya girmez.
+
+## Completed
+
+### NXB-IRL-001 — Repository bootstrap
+
+- [x] Deney çalışma alanı
+- [x] Baseline collector
+- [x] WPR trace başlatma/durdurma
+- [x] Evidence hash finalization
+- [x] KDNET hazırlık denetimi
+- [x] Manifest şeması ve analiz notu
+
+### NXB-IRL-002 — Deterministic experiment lifecycle
+
+Durum: `COMPLETE`
+
 GitHub takip kaydı: issue `#1`
+
+Merge kaydı:
+
+- PR `#3`
+- validated head `878710229ad11c5c1b95247e304986ca4e5eda47`
+- squash merge `e3b3ab79ab72cafa92f2afa97895258cec912d86`
 
 Tamamlananlar:
 
@@ -23,23 +65,18 @@ Tamamlananlar:
 - [x] Experiment status ve failed-state komutları
 - [x] Interrupted experiment recovery
 - [x] Atomik manifest oluşturma
-- [x] WPR start/stop durum geçişleri
+- [x] Guarded WPR start/stop ve failure paths
 - [x] Atomik ve idempotent finalization
 - [x] Draft 2020-12 manifest schema validation
-- [x] Pester lifecycle/recovery testleri
-- [x] PowerShell 5.1 / PowerShell 7 CI matrisi
-- [x] PSScriptAnalyzer workflow tanımı
 - [x] Public repository sensitive-artifact guard
+- [x] Reparse-point ve path traversal adversarial testleri
 - [x] Canonical evidence ordering ve tamper testleri
+- [x] PowerShell 5.1 / PowerShell 7 CI
+- [x] PSScriptAnalyzer Error/Warning gate
+- [x] UTF-8 BOM compatibility
+- [x] Final üç-job Actions doğrulaması
 
-Kalanlar:
-
-- [ ] GitHub Actions çalışmasını doğrulama ve gerekirse onarma
-- [ ] WPR unavailable/start/stop failure-path testleri
-- [ ] Gerçek Windows reparse-point adversarial testi
-- [ ] Sentetik blocked-artifact guard testi
-- [ ] İlk CI loglarını inceleme ve tüm hataları düzeltme
-- [ ] Final validation report ve issue `#1` kapanışı
+Ayrıntılı kayıt: [`NXB-IRL-002-VALIDATION.md`](NXB-IRL-002-VALIDATION.md)
 
 ## Full-system track preparation
 
@@ -58,11 +95,11 @@ GitHub takip kaydı: issue `#2`
 - [x] Capability schema validator
 - [x] Repository smoke validation entegrasyonu
 - [x] Pester capability testleri
+- [x] Canonical cross-domain event schema
+- [x] Machine/boot/clock identity contract
 
 Sıradaki alt görevler:
 
-- [ ] Canonical cross-domain event schema
-- [ ] Machine/boot/clock identity contract
 - [ ] Minimal CPU + scheduler profile
 - [ ] RAM/page-fault/working-set profile
 - [ ] Disk/file-system/storage queue profile
@@ -74,38 +111,26 @@ Sıradaki alt görevler:
 - [ ] Cross-domain correlation engine
 - [ ] Controlled CPU/RAM/disk/GPU/network fixtures
 
-## Completed
-
-### NXB-IRL-001 — Repository bootstrap
-
-- [x] Deney çalışma alanı
-- [x] Baseline collector
-- [x] WPR trace başlatma/durdurma
-- [x] Evidence hash finalization
-- [x] KDNET hazırlık denetimi
-- [x] Manifest şeması ve analiz notu
-
 ## Upcoming blocks
 
-1. `NXB-IRL-003` — Evidence integrity store
-2. `NXB-IRL-004` — Full-system observability fabric
-3. `NXB-IRL-005` — Controlled kernel test driver
-4. `NXB-IRL-006` — Controller/target transport
-5. `NXB-IRL-007` — Debugger evidence pipeline
-6. `NXB-IRL-008` — PE and binary inventory
-7. `NXB-IRL-009` — Static-analysis import
-8. `NXB-IRL-010` — Runtime snapshot correlation
-9. `NXB-IRL-011` — Semantic intermediate representation
-10. `NXB-IRL-012` — LLM-assisted semantic analysis
-11. `NXB-IRL-013` — Target adapter framework
-12. `NXB-IRL-014` — EAC adapter
-13. `NXB-IRL-015` — Performance harness
-14. `NXB-IRL-016` — Performance root-cause analysis
-15. `NXB-IRL-017` — Security analysis workflow
-16. `NXB-IRL-018` — Clean-room behavioral model
-17. `NXB-IRL-019` — Security equivalence/regression
-18. `NXB-IRL-020` — Reporting pipeline
-19. `NXB-IRL-021` — Additional adapters
-20. `NXB-IRL-022` — Release/operator tooling
+1. `NXB-IRL-004` — Full-system observability fabric
+2. `NXB-IRL-005` — Controlled kernel test driver
+3. `NXB-IRL-006` — Controller/target transport
+4. `NXB-IRL-007` — Debugger evidence pipeline
+5. `NXB-IRL-008` — PE and binary inventory
+6. `NXB-IRL-009` — Static-analysis import
+7. `NXB-IRL-010` — Runtime snapshot correlation
+8. `NXB-IRL-011` — Semantic intermediate representation
+9. `NXB-IRL-012` — LLM-assisted semantic analysis
+10. `NXB-IRL-013` — Target adapter framework
+11. `NXB-IRL-014` — EAC adapter
+12. `NXB-IRL-015` — Performance harness
+13. `NXB-IRL-016` — Performance root-cause analysis
+14. `NXB-IRL-017` — Security analysis workflow
+15. `NXB-IRL-018` — Clean-room behavioral model
+16. `NXB-IRL-019` — Security equivalence/regression
+17. `NXB-IRL-020` — Reporting pipeline
+18. `NXB-IRL-021` — Additional adapters
+19. `NXB-IRL-022` — Release/operator tooling
 
 Her blok için ayrıntılı görevler ve tamamlanma kapıları `MASTER_PLAN.md` ve ilgili özel mimari belgesinde tutulur.
