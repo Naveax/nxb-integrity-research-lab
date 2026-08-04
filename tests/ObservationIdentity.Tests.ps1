@@ -37,8 +37,8 @@ Describe 'NXB observation identity' {
         $identity.machine_id | Should -Not -BeNullOrEmpty
         $identity.boot_id | Should -Match '^[0-9a-f]{64}$'
         $identity.clock.stopwatch_frequency_hz | Should -BeGreaterThan 0
-        $identity.clock.sample_ticks | Should -BeGreaterOrEqual 0
-        $identity.clock.sample_monotonic_ns | Should -BeGreaterOrEqual 0
+        $identity.clock.sample_ticks | Should -BeGreaterThan -1
+        $identity.clock.sample_monotonic_ns | Should -BeGreaterThan -1
     }
 
     It 'passes the Draft 2020-12 identity schema' {
