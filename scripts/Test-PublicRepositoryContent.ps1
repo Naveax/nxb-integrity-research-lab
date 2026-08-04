@@ -2,13 +2,18 @@
 param(
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot),
+
+    [Parameter()]
+    [string[]]$AdditionalRelativePath = @()
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repositoryFull = [IO.Path]::GetFullPath($RepositoryRoot)
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+
+$repositoryFull = Get-NxbFullPath -Path $RepositoryRoot
 $policyPath = Join-Path $repositoryFull 'config\public-repository-policy.json'
 if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
     throw "Public repository policy bulunamadı: $policyPath"
@@ -33,27 +38,48 @@ if ($git) {
     $relativePaths = @($tracked | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 else {
-    $relativePaths = Get-ChildItem -LiteralPath $repositoryFull -File -Recurse -Force |
+    $relativePaths = @(Get-ChildItem -LiteralPath $repositoryFull -File -Recurse -Force |
         Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
         ForEach-Object {
-            $root = $repositoryFull.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-            $_.FullName.Substring($root.Length).Replace('\', '/')
-        }
+            Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $_.FullName
+        })
 }
+
+$relativePaths = @(
+    @($relativePaths) + @($AdditionalRelativePath) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        ForEach-Object { ([string]$_).Replace('\', '/') } |
+        Sort-Object -Unique
+)
 
 $issues = [System.Collections.Generic.List[string]]::new()
 $privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----'
 $encryptedPrivateKeyMarker = '-----BEGIN ENCRYPTED ' + 'PRIVATE KEY-----'
 
-foreach ($relativePathRaw in $relativePaths) {
-    $relativePath = ([string]$relativePathRaw).Replace('\', '/')
+foreach ($relativePath in $relativePaths) {
     if ($allowed.ContainsKey($relativePath)) {
         continue
     }
 
-    $fullPath = Join-Path $repositoryFull $relativePath
+    $fullPath = Get-NxbFullPath -Path (Join-Path $repositoryFull $relativePath)
+    try {
+        [void](Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $fullPath)
+    }
+    catch {
+        $issues.Add("Repository kökü dışındaki aday yol: $relativePath")
+        continue
+    }
+
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-        $issues.Add("Tracked dosya bulunamadı: $relativePath")
+        $issues.Add("Aday dosya bulunamadı: $relativePath")
+        continue
+    }
+
+    try {
+        [void](Test-NxbPathSafety -Path $fullPath -RootPath $repositoryFull)
+    }
+    catch {
+        $issues.Add("Güvensiz repository yolu: $relativePath ($($_.Exception.Message))")
         continue
     }
 
@@ -92,4 +118,4 @@ if ($issues.Count -gt 0) {
     throw ("Public repository content guard başarısız:`n- " + ($issues -join "`n- "))
 }
 
-Write-Host "Public repository content guard başarılı: $($relativePaths.Count) tracked dosya denetlendi."
+Write-Host "Public repository content guard başarılı: $($relativePaths.Count) aday dosya denetlendi."
