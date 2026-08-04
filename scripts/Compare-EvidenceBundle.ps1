@@ -35,7 +35,7 @@ function Read-NxbComparisonBundle {
     $bundle = Get-Content -LiteralPath $fullPath -Raw | ConvertFrom-Json
     $actualHash = Get-NxbCanonicalJsonHash `
         -InputObject $bundle `
-        -ExcludeRootProperty @('bundle_sha256', 'signature')
+        -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
     if ([string]$bundle.bundle_sha256 -cne $actualHash) {
         throw "Bundle SHA-256 uyuşmuyor: $fullPath"
     }
