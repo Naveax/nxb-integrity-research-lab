@@ -40,11 +40,10 @@ if ($git) {
     $trackedPaths = @($tracked | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 else {
-    $trackedPaths = @(Get-NxbSafeChildItem -RootPath $repositoryFull |
-        Where-Object {
-            -not $_.PSIsContainer -and
-            $_.FullName -notmatch '[\\/]\.git[\\/]'
-        } |
+    $trackedPaths = @(Get-NxbSafeChildItem `
+        -RootPath $repositoryFull `
+        -ExcludeDirectoryName '.git' |
+        Where-Object { -not $_.PSIsContainer } |
         ForEach-Object {
             Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $_.FullName
         })
