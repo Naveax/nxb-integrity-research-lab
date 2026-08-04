@@ -52,7 +52,34 @@ if ($stopExitCode -ne 0) {
 }
 
 if (-not (Test-Path -LiteralPath $etl -PathType Leaf)) {
-    throw "WPR başarı kodu döndürdü ancak ETL oluşturulmadı: $etl"
+    $failedUtc = [DateTime]::UtcNow.ToString('o')
+    $failureMessage = "WPR başarı kodu döndürdü ancak ETL oluşturulmadı: $etl"
+
+    try {
+        $session.status = 'failed'
+        $session | Add-Member -MemberType NoteProperty -Name failed_utc -Value $failedUtc -Force
+        $session | Add-Member -MemberType NoteProperty -Name failure_reason -Value $failureMessage -Force
+        Write-NxbJsonAtomic -Path $sessionPath -InputObject $session -Depth 8
+    }
+    catch {
+        Write-Warning "Trace session failed durumu yazılamadı: $($_.Exception.Message)"
+    }
+
+    try {
+        Set-NxbExperimentState `
+            -ExperimentPath $experimentFull `
+            -State failed `
+            -Updates @{
+                failed_utc     = $failedUtc
+                failure_reason = $failureMessage
+            } `
+            -Confirm:$false | Out-Null
+    }
+    catch {
+        Write-Warning "Deney failed durumuna alınamadı: $($_.Exception.Message)"
+    }
+
+    throw $failureMessage
 }
 
 try {
@@ -81,13 +108,26 @@ try {
         -Confirm:$false | Out-Null
 }
 catch {
-    $failureMessage = "WPR durdu ancak trace finalization başarısız: $($_.Exception.Message)"
+    $finalizationError = $_.Exception.Message
+    $failedUtc = [DateTime]::UtcNow.ToString('o')
+    $failureMessage = "WPR durdu ancak trace finalization başarısız: $finalizationError"
+
+    try {
+        $session.status = 'failed'
+        $session | Add-Member -MemberType NoteProperty -Name failed_utc -Value $failedUtc -Force
+        $session | Add-Member -MemberType NoteProperty -Name failure_reason -Value $failureMessage -Force
+        Write-NxbJsonAtomic -Path $sessionPath -InputObject $session -Depth 8
+    }
+    catch {
+        Write-Warning "Trace session failed durumu yazılamadı: $($_.Exception.Message)"
+    }
+
     try {
         Set-NxbExperimentState `
             -ExperimentPath $experimentFull `
             -State failed `
             -Updates @{
-                failed_utc     = [DateTime]::UtcNow.ToString('o')
+                failed_utc     = $failedUtc
                 failure_reason = $failureMessage
             } `
             -Confirm:$false | Out-Null
