@@ -37,13 +37,15 @@ $jsonFiles = @(
     (Join-Path $repositoryRoot 'config\lab.config.example.json'),
     (Join-Path $repositoryRoot 'config\public-repository-policy.json'),
     (Join-Path $repositoryRoot 'schemas\experiment.schema.json'),
-    (Join-Path $repositoryRoot 'schemas\system-capabilities.schema.json')
+    (Join-Path $repositoryRoot 'schemas\system-capabilities.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\observation-identity.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\observability-event.schema.json')
 )
 foreach ($jsonFile in $jsonFiles) {
     Get-Content -LiteralPath $jsonFile -Raw | ConvertFrom-Json | Out-Null
 }
 
-Write-Host 'Workspace, capability, schema ve evidence smoke testi çalıştırılıyor...'
+Write-Host 'Workspace, capability, identity, schema ve evidence smoke testi çalıştırılıyor...'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("nxb-lab-test-{0}" -f [guid]::NewGuid())
 try {
     $initializedRoot = & (Join-Path $PSScriptRoot 'Initialize-Lab.ps1') `
@@ -57,7 +59,7 @@ try {
     $experimentPath = & (Join-Path $PSScriptRoot 'New-Experiment.ps1') `
         -Root $tempRoot `
         -Name 'Repository-Smoke-Test' `
-        -Hypothesis 'Manifest, capability ve evidence akışı çalışır'
+        -Hypothesis 'Manifest, capability, identity ve evidence akışı çalışır'
 
     & (Join-Path $PSScriptRoot 'Test-ExperimentManifest.ps1') `
         -ExperimentPath $experimentPath
@@ -78,6 +80,24 @@ try {
     }
     if ($capability.domains.PSObject.Properties.Name.Count -lt 11) {
         throw 'System capability envanterinde beklenen domainler bulunamadı.'
+    }
+
+    $identityPath = & (Join-Path $PSScriptRoot 'Get-ObservationIdentity.ps1') `
+        -ExperimentPath $experimentPath
+
+    if (-not (Test-Path -LiteralPath $identityPath -PathType Leaf)) {
+        throw 'Observation identity oluşturulmadı.'
+    }
+
+    & (Join-Path $PSScriptRoot 'Test-ObservationIdentity.ps1') `
+        -ExperimentPath $experimentPath
+
+    $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+    if ([string]$identity.experiment_id -ne [string](Split-Path -Leaf $experimentPath)) {
+        throw 'Observation identity experiment_id ile deney dizini uyuşmuyor.'
+    }
+    if ([string]$identity.machine_id -ne [string]$capability.machine_id) {
+        throw 'Capability ve observation identity machine_id değerleri uyuşmuyor.'
     }
 
     $syntheticEvidence = Join-Path $experimentPath 'logs\synthetic-evidence.txt'
