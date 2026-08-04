@@ -24,7 +24,7 @@ function New-NxbFakeWprCommand {
     )
 
     $etlCommand = if ($CreateEtl) {
-        '> "%~2" echo synthetic-etl'
+        '> "%~2" echo synthetic-etl'.Replace('\', '')
     }
     else {
         'rem synthetic stop intentionally creates no ETL'
@@ -46,7 +46,7 @@ if /I "%~1"=="-cancel" (
   exit /b $CancelExitCode
 )
 exit /b 99
-"@
+"@.Replace('\"', '"')
 
     Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
     return $Path
