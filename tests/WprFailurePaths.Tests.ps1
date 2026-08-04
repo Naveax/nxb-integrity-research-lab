@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:ScriptsRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts'
 
     function New-NxbFakeWprCommand {
