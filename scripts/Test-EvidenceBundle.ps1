@@ -25,14 +25,20 @@ function ConvertTo-NxbVerifiedRelativePath {
         [string]$Path
     )
 
-    if ([IO.Path]::IsPathRooted($Path)) {
+    if ([IO.Path]::IsPathRooted($Path) -or $Path -match '^[A-Za-z]:') {
         throw "Bundle relative path mutlak olamaz: $Path"
     }
-    if ($Path.Contains('\\')) {
+    if ($Path.IndexOf([IO.Path]::DirectorySeparatorChar) -ge 0) {
         throw "Bundle relative path forward-slash kullanmalıdır: $Path"
     }
     if ($Path.StartsWith('/', [StringComparison]::Ordinal)) {
         throw "Bundle relative path kökten başlayamaz: $Path"
+    }
+
+    foreach ($segment in $Path.Split([char]'/')) {
+        if ([string]::IsNullOrEmpty($segment) -or $segment -eq '.' -or $segment -eq '..') {
+            throw "Bundle relative path canonical değil: $Path"
+        }
     }
 
     return $Path
@@ -45,7 +51,7 @@ function Resolve-NxbVerifiedBundleFile {
         [Parameter(Mandatory)][string]$RelativePath
     )
 
-    $nativeRelative = $RelativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $nativeRelative = $RelativePath.Replace([char]'/', [IO.Path]::DirectorySeparatorChar)
     $candidate = [IO.Path]::GetFullPath((Join-Path $ExperimentRoot $nativeRelative))
     [void](Get-NxbRelativePath -BasePath $ExperimentRoot -ChildPath $candidate)
 
@@ -134,7 +140,7 @@ $caseMap = [Collections.Generic.Dictionary[string, string]]::new(
 )
 $exactSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $bundleRelative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $bundleFull
-$bundleRelative = $bundleRelative.Replace([IO.Path]::DirectorySeparatorChar, '/')
+$bundleRelative = $bundleRelative.Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
 
 $records = @($bundle.records)
 if ($records.Count -ne [int64]$chain.RecordCount) {
@@ -178,7 +184,7 @@ $declaredPaths = [Collections.Generic.List[string]]::new()
 $hasChainHead = $false
 foreach ($fileEntry in $files) {
     $relative = ConvertTo-NxbVerifiedRelativePath -Path ([string]$fileEntry.relative_path)
-    if ($relative -ceq $bundleRelative) {
+    if ($relative.Equals($bundleRelative, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Bundle manifest kendi envanterinde listelenemez.'
     }
     if ($relative -ceq 'evidence-store/chain-head.json') {
@@ -205,7 +211,7 @@ if (-not $hasChainHead) {
     throw 'Bundle envanteri chain-head.json içermiyor.'
 }
 
-$sortedPaths = $declaredPaths.ToArray()
+[string[]]$sortedPaths = $declaredPaths.ToArray()
 [Array]::Sort($sortedPaths, [StringComparer]::Ordinal)
 for ($index = 0; $index -lt $sortedPaths.Count; $index++) {
     if ($declaredPaths[$index] -cne $sortedPaths[$index]) {
