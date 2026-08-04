@@ -1,0 +1,47 @@
+# Experiment outputs and evidence
+experiments/
+exports/
+data/
+evidence/
+dumps/
+traces/
+binaries/
+symbols/
+tools/
+*.etl
+*.dmp
+*.dump
+*.mdmp
+*.bin
+*.sys
+*.dll
+*.exe
+*.pdb
+*.cab
+*.zip
+*.7z
+
+# Local configuration and secrets
+lab.config.json
+*.local.json
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.cer
+*.crt
+
+# Windows / IDE
+Thumbs.db
+Desktop.ini
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# PowerShell temporary output
+*.tmp
+*.log
+*.transcript.txt
