@@ -83,7 +83,7 @@ foreach ($relativePathRaw in $relativePaths) {
             }
         }
         catch {
-            # Binary/non-text content is handled by extension and size policy.
+            Write-Verbose "Metin taraması atlandı: $relativePath ($($_.Exception.Message))"
         }
     }
 }
