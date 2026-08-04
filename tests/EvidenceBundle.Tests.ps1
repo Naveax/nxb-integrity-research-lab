@@ -137,7 +137,7 @@ Describe 'NXB deterministic offline evidence bundles' {
         $bundle.records = @($bundle.records[0])
         $bundle.bundle_sha256 = Get-NxbCanonicalJsonHash `
             -InputObject $bundle `
-            -ExcludeRootProperty @('bundle_sha256', 'signature')
+            -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
         Write-NxbCanonicalJsonAtomic `
             -Path $created.BundlePath `
             -InputObject $bundle `
@@ -167,7 +167,7 @@ Describe 'NXB deterministic offline evidence bundles' {
         )
         $bundle.bundle_sha256 = Get-NxbCanonicalJsonHash `
             -InputObject $bundle `
-            -ExcludeRootProperty @('bundle_sha256', 'signature')
+            -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
         Write-NxbCanonicalJsonAtomic `
             -Path $created.BundlePath `
             -InputObject $bundle `
@@ -188,7 +188,7 @@ Describe 'NXB deterministic offline evidence bundles' {
         $bundle.files[0].relative_path = '../manifest.json'
         $bundle.bundle_sha256 = Get-NxbCanonicalJsonHash `
             -InputObject $bundle `
-            -ExcludeRootProperty @('bundle_sha256', 'signature')
+            -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
         Write-NxbCanonicalJsonAtomic `
             -Path $created.BundlePath `
             -InputObject $bundle `
@@ -198,6 +198,37 @@ Describe 'NXB deterministic offline evidence bundles' {
             & (Join-Path $script:ScriptsRoot 'Test-EvidenceBundle.ps1') `
                 -ExperimentPath $experiment
         } | Should -Throw '*schema doğrulaması başarısız*'
+    }
+
+    It 'rejects a reparse-point path before adding it to a bundle' {
+        $experiment = New-NxbSyntheticBundleExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'reparse'
+        $outsidePath = Join-Path $script:TemporaryRoot 'outside'
+        New-Item -ItemType Directory -Path $outsidePath -Force | Out-Null
+        [IO.File]::WriteAllText(
+            (Join-Path $outsidePath 'outside.txt'),
+            'outside evidence',
+            [Text.UTF8Encoding]::new($false)
+        )
+
+        $junctionPath = Join-Path $experiment 'logs\linked'
+        New-Item `
+            -ItemType Junction `
+            -Path $junctionPath `
+            -Target $outsidePath | Out-Null
+
+        {
+            & (Join-Path $script:ScriptsRoot 'New-EvidenceBundle.ps1') `
+                -ExperimentPath $experiment `
+                -IncludeRelativePath @(
+                    'manifest.json',
+                    'baseline/observation-identity.json',
+                    'evidence-store/chain-head.json',
+                    'logs/linked/outside.txt'
+                ) `
+                -Confirm:$false
+        } | Should -Throw '*reparse*'
     }
 
     It 'compares identical and same-identity changed bundles deterministically' {
