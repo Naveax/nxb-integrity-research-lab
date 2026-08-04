@@ -73,7 +73,10 @@ for ($index = 0; $index -lt $ArgumentList.Count; $index++) {
     }
 }
 
-$argumentDigest = Get-NxbCanonicalJsonHash -InputObject $normalizedArguments.ToArray()
+$argumentEnvelope = [ordered]@{
+    arguments = [object[]]$normalizedArguments.ToArray()
+}
+$argumentDigest = Get-NxbCanonicalJsonHash -InputObject $argumentEnvelope
 $fileHash = (Get-FileHash -LiteralPath $toolFull -Algorithm SHA256).Hash.ToLowerInvariant()
 $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($toolFull)
 
