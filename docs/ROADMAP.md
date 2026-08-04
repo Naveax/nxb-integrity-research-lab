@@ -1,6 +1,47 @@
 # Roadmap
 
-## NXB-IRL-001 — Repository bootstrap
+Kanonik uçtan uca plan: [`MASTER_PLAN.md`](MASTER_PLAN.md)
+
+Yeni sohbet/devralma durumu: [`HANDOFF.md`](HANDOFF.md)
+
+CPU/GPU gözlem hattı: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
+
+## Current block
+
+### NXB-IRL-002 — Deterministic experiment lifecycle
+
+Durum: `IN PROGRESS`
+
+GitHub takip kaydı: issue `#1`
+
+Tamamlananlar:
+
+- [x] Ortak path/lifecycle/atomic-write modülü
+- [x] Evidence integrity verifier
+- [x] Experiment status command
+- [x] Atomik manifest oluşturma
+- [x] WPR start/stop durum geçişleri
+- [x] Atomik ve idempotent finalization
+- [x] İlk Pester lifecycle testleri
+- [x] PowerShell 5.1 / PowerShell 7 CI matrisi
+- [x] PSScriptAnalyzer workflow tanımı
+
+Kalanlar:
+
+- [ ] GitHub Actions çalışmasını doğrulama ve gerekirse onarma
+- [ ] Gerçek JSON Schema validation
+- [ ] Interrupted experiment recovery
+- [ ] Failed-state writer
+- [ ] Path traversal/reparse-point adversarial tests
+- [ ] Sensitive artifact commit guard
+- [ ] WPR unavailable/failure-path tests
+- [ ] Canonical evidence ordering tests
+- [ ] Lifecycle schema update
+- [ ] Final validation report
+
+## Completed
+
+### NXB-IRL-001 — Repository bootstrap
 
 - [x] Deney çalışma alanı
 - [x] Baseline collector
@@ -9,47 +50,27 @@
 - [x] KDNET hazırlık denetimi
 - [x] Manifest şeması ve analiz notu
 
-## NXB-IRL-002 — Validation and tests
+## Upcoming blocks
 
-- [ ] Pester test altyapısı
-- [ ] PowerShell syntax ve ScriptAnalyzer kapısı
-- [ ] Manifest schema doğrulaması
-- [ ] WPR bulunmadığında kontrollü hata testleri
-- [ ] Finalization idempotency testleri
+1. `NXB-IRL-003` — Evidence integrity store
+2. `NXB-IRL-004` — Custom CPU/GPU WPR/ETW profiles
+3. `NXB-IRL-005` — Controlled kernel test driver
+4. `NXB-IRL-006` — Controller/target transport
+5. `NXB-IRL-007` — Debugger evidence pipeline
+6. `NXB-IRL-008` — PE and binary inventory
+7. `NXB-IRL-009` — Static-analysis import
+8. `NXB-IRL-010` — Runtime snapshot correlation
+9. `NXB-IRL-011` — Semantic intermediate representation
+10. `NXB-IRL-012` — LLM-assisted semantic analysis
+11. `NXB-IRL-013` — Target adapter framework
+12. `NXB-IRL-014` — EAC adapter
+13. `NXB-IRL-015` — Performance harness
+14. `NXB-IRL-016` — Performance root-cause analysis
+15. `NXB-IRL-017` — Security analysis workflow
+16. `NXB-IRL-018` — Clean-room behavioral model
+17. `NXB-IRL-019` — Security equivalence/regression
+18. `NXB-IRL-020` — Reporting pipeline
+19. `NXB-IRL-021` — Additional adapters
+20. `NXB-IRL-022` — Release/operator tooling
 
-## NXB-IRL-003 — Custom performance profile
-
-- [ ] CPU sampling ve stack capture
-- [ ] Context switch, DPC ve ISR
-- [ ] Disk/file I/O
-- [ ] Process/thread/image load
-- [ ] Ölçüm overhead kalibrasyonu
-
-## NXB-IRL-004 — Controlled test driver
-
-- [ ] Kendi imzalı benign test sürücüsü
-- [ ] Load/unload yaşam döngüsü
-- [ ] Process/thread/image callback telemetrisi
-- [ ] Pool allocation ve synchronization ölçümü
-- [ ] Driver Verifier test matrisi
-
-## NXB-IRL-005 — Debugger evidence pipeline
-
-- [ ] Salt-okuma WinDbg komut dosyaları
-- [ ] Module base ve RVA korelasyonu
-- [ ] Symbol provenance kaydı
-- [ ] Debugger transcript bütünlük hash'i
-
-## NXB-IRL-006 — Static/runtime semantic model
-
-- [ ] Fonksiyon ve çağrı grafı şeması
-- [ ] `OBSERVED/INFERRED/VALIDATED` alanları
-- [ ] Runtime olaylarının statik offsetlerle eşleştirilmesi
-- [ ] LLM çıktılarına confidence ve provenance zorunluluğu
-
-## NXB-IRL-007 — Performance experiment harness
-
-- [ ] Tekrarlı deney matrisi
-- [ ] Ortalama, p95, p99 ve confidence interval
-- [ ] Frame-time 1%/0.1% low analizi
-- [ ] Güvenlik kapsamı regresyon kapıları
+Her blok için ayrıntılı görevler ve tamamlanma kapıları `MASTER_PLAN.md` içindedir.
