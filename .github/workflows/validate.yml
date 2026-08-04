@@ -6,12 +6,15 @@ on:
     branches:
       - main
   pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   static-analysis:
+    name: Static analysis and smoke validation
     runs-on: windows-latest
     timeout-minutes: 15
 
@@ -22,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Install JSON Schema validator
         shell: pwsh
@@ -37,12 +40,13 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          Import-Module PSScriptAnalyzer -Force
 
       - name: Analyze PowerShell
         shell: pwsh
         run: |
           $results = Invoke-ScriptAnalyzer `
-            -Path ./scripts, ./tests `
+            -Path @('./scripts', './tests') `
             -Recurse `
             -Settings ./.github/PSScriptAnalyzerSettings.psd1
           $results | Format-Table -AutoSize
@@ -54,33 +58,42 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-Repository.ps1
 
-  lifecycle-tests:
+  lifecycle-powershell-7:
+    name: Lifecycle - PowerShell 7
     runs-on: windows-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runtime: PowerShell 7
-            shell_name: pwsh
-          - runtime: Windows PowerShell 5.1
-            shell_name: powershell
-
-    name: Lifecycle — ${{ matrix.runtime }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Pester 5
-        shell: ${{ matrix.shell_name }}
+        shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
           Import-Module Pester -MinimumVersion 5.5.0 -Force
 
-      - name: Run lifecycle tests
-        shell: ${{ matrix.shell_name }}
+      - name: Run Pester
+        shell: pwsh
+        run: Invoke-Pester -Path ./tests -CI
+
+  lifecycle-windows-powershell-5-1:
+    name: Lifecycle - Windows PowerShell 5.1
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pester 5
+        shell: powershell
         run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
           Import-Module Pester -MinimumVersion 5.5.0 -Force
-          Invoke-Pester -Path ./tests -CI
+
+      - name: Run Pester
+        shell: powershell
+        run: Invoke-Pester -Path ./tests -CI
