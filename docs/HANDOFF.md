@@ -8,12 +8,31 @@ Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için tutulu
 - Default branch: `main`
 - Visibility: public
 - Active issue: `#1 — NXB-IRL-002`
+- Planned observability issue: `#2 — NXB-IRL-004`
 
 ## Current objective
 
 `NXB-IRL-002 — Deterministic experiment lifecycle`
 
-Mevcut deney altyapısını deterministik, idempotent, atomik ve doğrulanabilir hâle getirmek.
+Mevcut deney altyapısını deterministik, idempotent, atomik ve doğrulanabilir hâle getirmek. Bu blok kapanmadan gerçek hedef trace hattı ana çalışma bloğu olarak başlatılmaz.
+
+## Expanded project direction
+
+CPU/GPU gözlem hattı artık **full-system observability fabric** olarak genişletildi.
+
+Kapsanan alanlar:
+
+- CPU ve scheduler,
+- RAM, virtual memory, page fault ve working set,
+- GPU, DXGKRNL, queue ve present,
+- disk, storage queue ve file system,
+- network ve NDIS,
+- PCIe, PnP device ve signed-driver topolojisi,
+- kernel/driver/service yaşam döngüsü,
+- güç, frekans ve termal durum,
+- firmware, Secure Boot, TPM, VBS/HVCI ve boot state.
+
+Kanonik ayrıntı: `docs/FULL_SYSTEM_OBSERVABILITY.md`.
 
 ## Completed
 
@@ -31,7 +50,8 @@ Mevcut deney altyapısını deterministik, idempotent, atomik ve doğrulanabilir
 ### Planning documentation
 
 - `docs/MASTER_PLAN.md` kanonik uçtan uca plan,
-- `docs/CPU_GPU_OBSERVABILITY.md` CPU/GPU gözlem hattı,
+- `docs/FULL_SYSTEM_OBSERVABILITY.md` tam sistem gözlem hattı,
+- `docs/CPU_GPU_OBSERVABILITY.md` önceki CPU/GPU tasarım notları,
 - `docs/ARCHITECTURE.md` mevcut mimari,
 - `docs/ROADMAP.md` blok özeti.
 
@@ -73,7 +93,37 @@ Remaining:
 - [ ] inspect first CI logs and repair every failure,
 - [ ] final validation report and issue closure.
 
+## NXB-IRL-004 preparation progress
+
+Initial implementation completed while keeping issue `#1` as the active required block:
+
+- [x] full-system architecture document,
+- [x] `schemas/system-capabilities.schema.json`,
+- [x] `scripts/Get-SystemCapabilities.ps1`,
+- [x] baseline collector integration,
+- [x] `scripts/Test-SystemCapabilities.ps1`,
+- [x] repository smoke validation integration,
+- [x] `tests/SystemCapabilities.Tests.ps1`,
+- [x] issue `#2` tracking record.
+
+Next NXB-IRL-004 tasks after prerequisite blocks:
+
+1. normalized cross-domain event schema,
+2. machine/boot/clock identity contract,
+3. minimal CPU/scheduler profile,
+4. RAM/page-fault/working-set profile,
+5. disk/file-system/storage queue profile,
+6. GPU/DXGKRNL/present profile,
+7. network/NDIS/connection profile,
+8. device/driver/PCIe provider inventory,
+9. power/frequency/thermal snapshot,
+10. trace-loss and collector-overhead accounting,
+11. cross-domain correlation engine,
+12. controlled CPU/RAM/disk/GPU/network fixtures.
+
 ## Important implementation files
+
+### Lifecycle and evidence
 
 - `scripts/Nxb.Lab.Common.psm1`
 - `scripts/New-Experiment.ps1`
@@ -90,12 +140,24 @@ Remaining:
 - `schemas/experiment.schema.json`
 - `tools/validate_manifest.py`
 - `tests/ExperimentLifecycle.Tests.ps1`
+
+### Full-system inventory
+
+- `docs/FULL_SYSTEM_OBSERVABILITY.md`
+- `scripts/Get-SystemCapabilities.ps1`
+- `scripts/Test-SystemCapabilities.ps1`
+- `schemas/system-capabilities.schema.json`
+- `tests/SystemCapabilities.Tests.ps1`
+- `scripts/Capture-Baseline.ps1`
+
+### CI
+
 - `.github/PSScriptAnalyzerSettings.psd1`
 - `.github/workflows/validate.yml`
 
 ## Current CI state
 
-Workflow definition exists and now includes:
+Workflow definition includes:
 
 - public repository content guard,
 - PSScriptAnalyzer,
@@ -104,19 +166,47 @@ Workflow definition exists and now includes:
 - PowerShell 7 Pester tests,
 - Windows PowerShell 5.1 Pester tests.
 
-GitHub connector still returns no commit statuses for the latest commit `ace14ca7679339a7a27d34c598f9c71cc874dcb9`. Do not claim CI success until a workflow run and its jobs are visible. The first next action is to verify whether Actions is enabled and inspect the first run/logs.
+GitHub connector has not yet returned a visible successful workflow status. Do not claim CI success until a workflow run and its jobs are inspected.
 
-## CPU/GPU track decision
+The new capability collector and tests were committed, but they must be validated by the first visible Windows Actions run before being marked fully verified.
 
-User requested a structure behaving between applications and CPU/GPU to collect runtime outputs.
+## Full-system correlation target
+
+```text
+experiment
+ -> machine/boot/target hash
+ -> process/thread/device
+ -> CPU/RAM/GPU/disk/network events
+ -> common timeline
+ -> module/RVA/static function
+ -> root-cause hypothesis
+ -> controlled validation
+```
+
+Example performance chain:
+
+```text
+thread wake-up
+ -> hard page fault
+ -> disk read queue
+ -> RAM page-in
+ -> CPU scheduling delay
+ -> late GPU submission
+ -> queue bubble
+ -> delayed present
+```
+
+## Safety and engineering boundary
 
 Accepted engineering direction:
 
-- ETW/WPR and hardware-supported execution trace,
+- ETW/WPR and supported hardware trace,
+- RAM/page-fault/working-set correlation,
 - DXGKRNL/GPUView and compatible PIX evidence,
-- controlled emulator/hypervisor tracing for project-owned fixtures,
+- storage/file-system/network/device event correlation,
+- controlled emulator/hypervisor or synthetic devices for project-owned fixtures,
 - runtime address to module/RVA/static-function correlation,
-- explicit overhead calibration.
+- explicit overhead and trace-loss accounting.
 
 Not a project goal:
 
@@ -131,20 +221,18 @@ In a new chat, ask the assistant to:
 
 1. inspect this file,
 2. inspect `docs/MASTER_PLAN.md`,
-3. inspect issue `#1`, latest commits and CI state,
-4. continue the first unchecked task under `NXB-IRL-002`,
-5. update this file after each completed block.
+3. inspect `docs/FULL_SYSTEM_OBSERVABILITY.md`,
+4. inspect issues `#1` and `#2`, latest commits and CI state,
+5. continue the first unchecked task under active issue `#1`,
+6. update this file after each completed block.
 
-## Latest implementation commits
+## Latest full-system commits
 
-- recovery failed-state command: `29ebfca69d300cb01f3073c6b78c02b9f7d6ff6f`
-- recovery controller: `e2499e1cba65d0279b034944cd53d5ca22972dc4`
-- public artifact policy: `7d46917ec92a33d6c7901f40b8ac8ce00833e7d8`
-- public artifact guard: `22b4ca3ea0652ee12ee70461b784d4884904c153`
-- analyzer-compliant module: `db8895206e3a4be835fecfb64f2a45cffb6aad2a`
-- recovery and guard tests: `432afd167ae9cfc0e85bbfbac61ece8c25585a49`
-- lifecycle schema: `68147a1a31417487899aaf8bb83725ce776bef74`
-- Python schema validator: `087e61b8a5565da1c27b37633f367bb882db32ce`
-- PowerShell schema wrapper: `13e51e8c0d3228d367fbdeb83ff4567122877178`
-- schema-aware smoke validation: `b4404ad066d32e803630d16b1ad1910996c47500`
-- CI Python/schema setup: `ace14ca7679339a7a27d34c598f9c71cc874dcb9`
+- architecture: `c0c500e8c47f132e94fcebe1d0efe667828d4aa8`
+- capability schema: `f6f82bfdbdf50f6220754b85f48c88824939725f`
+- capability collector: `ca43ef695470bbe6216197227619f21287c0f77c`
+- baseline integration: `fc9a8de1ad88a308d3a01ad2e4575d5e2c55a20b`
+- capability validator: `2ff6f2ce6f66217e77c22fbb9e002b3b700eb026`
+- repository smoke integration: `04c8ecec9410a8acfec695dbac8f7da1eed48db1`
+- capability Pester tests: `ff4d9d3321b1cf6d324813bb93466d3260c5dc4c`
+- roadmap update: `d2ae5aafb0751a21dff84c08c14dc40e8d21a7f9`
