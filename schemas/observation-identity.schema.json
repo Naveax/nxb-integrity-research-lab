@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/observation-identity.schema.json",
+  "title": "NXB Observation Identity",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "captured_utc",
+    "clock"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "captured_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_boot_utc": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "os_build": {
+      "type": ["string", "null"]
+    },
+    "clock": {
+      "type": "object",
+      "required": [
+        "source",
+        "stopwatch_frequency_hz",
+        "sample_ticks",
+        "sample_monotonic_ns",
+        "utc_offset_minutes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "const": "System.Diagnostics.Stopwatch"
+        },
+        "stopwatch_frequency_hz": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_monotonic_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "utc_offset_minutes": {
+          "type": "integer",
+          "minimum": -840,
+          "maximum": 840
+        }
+      }
+    }
+  }
+}
