@@ -51,6 +51,23 @@ Describe 'NXB experiment lifecycle' {
         $result.CheckedEntries | Should -BeGreaterThan 0
     }
 
+    It 'writes evidence entries in canonical sorted order' {
+        $experiment = & (Join-Path $script:ScriptsRoot 'New-Experiment.ps1') `
+            -Root $script:TempRoot `
+            -Name 'Canonical Order Test' `
+            -Hypothesis 'Evidence ordering is deterministic'
+
+        'z' | Set-Content -LiteralPath (Join-Path $experiment 'logs\z.txt') -Encoding UTF8
+        'a' | Set-Content -LiteralPath (Join-Path $experiment 'baseline\a.txt') -Encoding UTF8
+        & (Join-Path $script:ScriptsRoot 'Finalize-Experiment.ps1') `
+            -ExperimentPath $experiment
+
+        $paths = Get-Content -LiteralPath (Join-Path $experiment 'evidence.sha256') |
+            ForEach-Object { ($_ -split '  ', 2)[1] }
+
+        ($paths -join '|') | Should -Be (($paths | Sort-Object) -join '|')
+    }
+
     It 'is idempotent when an already-finalized experiment is unchanged' {
         $experiment = & (Join-Path $script:ScriptsRoot 'New-Experiment.ps1') `
             -Root $script:TempRoot `
@@ -96,10 +113,57 @@ Describe 'NXB experiment lifecycle' {
         } | Should -Throw '*Hash uyuşmazlığı*'
     }
 
-    It 'rejects forbidden state transitions' {
+    It 'rejects forbidden state transitions and unsafe relative paths' {
         Test-NxbStateTransition -From prepared -To stopped | Should -BeFalse
         Test-NxbStateTransition -From finalized -To recording | Should -BeFalse
         Test-NxbStateTransition -From recording -To stopped | Should -BeTrue
+
+        {
+            Get-NxbRelativePath `
+                -BasePath $script:TempRoot `
+                -ChildPath ([IO.Path]::GetTempPath())
+        } | Should -Throw '*deney kökünün dışında*'
+    }
+
+    It 'marks an interrupted recording as failed through recovery' {
+        $experiment = & (Join-Path $script:ScriptsRoot 'New-Experiment.ps1') `
+            -Root $script:TempRoot `
+            -Name 'Interrupted Recording' `
+            -Hypothesis 'Interrupted recording fails closed'
+
+        Set-NxbExperimentState `
+            -ExperimentPath $experiment `
+            -State recording `
+            -Confirm:$false | Out-Null
+
+        $result = & (Join-Path $script:ScriptsRoot 'Repair-Experiment.ps1') `
+            -ExperimentPath $experiment `
+            -MarkInterruptedRecordingFailed `
+            -Confirm:$false
+
+        $result.PreviousState | Should -Be 'recording'
+        $result.CurrentState | Should -Be 'failed'
+
+        $manifest = Get-Content -LiteralPath (Join-Path $experiment 'manifest.json') -Raw |
+            ConvertFrom-Json
+        $manifest.failure_reason | Should -Match 'interrupted'
+    }
+
+    It 'removes abandoned atomic temporary files only when requested' {
+        $experiment = & (Join-Path $script:ScriptsRoot 'New-Experiment.ps1') `
+            -Root $script:TempRoot `
+            -Name 'Temporary Recovery' `
+            -Hypothesis 'Temporary files are removed explicitly'
+
+        $temporaryFile = Join-Path $experiment 'manifest.json.tmp.0123456789abcdef0123456789abcdef'
+        '{}' | Set-Content -LiteralPath $temporaryFile -Encoding UTF8
+
+        & (Join-Path $script:ScriptsRoot 'Repair-Experiment.ps1') `
+            -ExperimentPath $experiment `
+            -CleanTemporaryFiles `
+            -Confirm:$false | Out-Null
+
+        Test-Path -LiteralPath $temporaryFile | Should -BeFalse
     }
 
     It 'reports finalized experiment status' {
@@ -118,5 +182,12 @@ Describe 'NXB experiment lifecycle' {
 
         $status.Status | Should -Be 'finalized'
         $status.EvidenceStatus | Should -Be 'valid'
+    }
+
+    It 'passes the public repository content guard for tracked source files' {
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-PublicRepositoryContent.ps1') `
+                -RepositoryRoot $script:RepositoryRoot
+        } | Should -Not -Throw
     }
 }
