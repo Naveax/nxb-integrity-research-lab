@@ -3,7 +3,7 @@
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.EvidenceStore.psm1') -Force
 
-    function New-NxbProvenanceClockExperiment {
+    function Initialize-NxbProvenanceClockExperiment {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)]
@@ -49,7 +49,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
     }
 
     It 'records verifiable tool metadata without storing a sensitive argument' {
-        $experimentPath = New-NxbProvenanceClockExperiment `
+        $experimentPath = Initialize-NxbProvenanceClockExperiment `
             -Root $script:TemporaryRoot `
             -Name 'tool-provenance'
         $toolPath = Join-Path $script:TemporaryRoot 'synthetic-tool.bin'
@@ -87,7 +87,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
     }
 
     It 'detects a changed tool binary independently of the chain' {
-        $experimentPath = New-NxbProvenanceClockExperiment `
+        $experimentPath = Initialize-NxbProvenanceClockExperiment `
             -Root $script:TemporaryRoot `
             -Name 'tool-change'
         $toolPath = Join-Path $script:TemporaryRoot 'synthetic-tool.bin'
@@ -111,7 +111,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
     }
 
     It 'computes and verifies bounded four-timestamp clock evidence' {
-        $experimentPath = New-NxbProvenanceClockExperiment `
+        $experimentPath = Initialize-NxbProvenanceClockExperiment `
             -Root $script:TemporaryRoot `
             -Name 'clock-valid'
 
@@ -142,7 +142,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
     }
 
     It 'rejects a rehashed clock payload with inconsistent arithmetic' {
-        $experimentPath = New-NxbProvenanceClockExperiment `
+        $experimentPath = Initialize-NxbProvenanceClockExperiment `
             -Root $script:TemporaryRoot `
             -Name 'clock-tamper'
 
@@ -175,7 +175,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
     }
 
     It 'rejects a clock sample whose target processing exceeds controller elapsed time' {
-        $experimentPath = New-NxbProvenanceClockExperiment `
+        $experimentPath = Initialize-NxbProvenanceClockExperiment `
             -Root $script:TemporaryRoot `
             -Name 'clock-invalid'
 
