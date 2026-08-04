@@ -48,22 +48,29 @@ Completed:
 - [x] atomic and idempotent finalization,
 - [x] evidence integrity verifier,
 - [x] experiment status command,
-- [x] Pester lifecycle tests,
-- [x] PSScriptAnalyzer workflow definition,
+- [x] explicit failed-state command,
+- [x] interrupted experiment recovery command,
+- [x] abandoned atomic temporary-file cleanup,
+- [x] canonical evidence ordering test,
+- [x] evidence tamper test,
+- [x] unsafe relative-path rejection test,
+- [x] public repository sensitive-artifact policy and guard,
+- [x] Draft 2020-12 lifecycle schema conditions,
+- [x] Python JSON Schema validator,
+- [x] PowerShell schema wrapper,
+- [x] Pester lifecycle/recovery tests,
+- [x] PSScriptAnalyzer policy and workflow definition,
 - [x] Windows PowerShell 5.1 / PowerShell 7 CI matrix definition,
-- [x] strengthened repository smoke test.
+- [x] Python/jsonschema CI setup,
+- [x] strengthened repository smoke validation.
 
 Remaining:
 
 - [ ] confirm and repair GitHub Actions execution,
-- [ ] real JSON Schema validation,
-- [ ] interrupted experiment recovery,
-- [ ] explicit failed-state writer,
-- [ ] path traversal and reparse-point adversarial tests,
-- [ ] sensitive artifact commit guard,
-- [ ] WPR unavailable/failure-path tests,
-- [ ] canonical evidence ordering tests,
-- [ ] lifecycle schema update,
+- [ ] WPR unavailable/start failure/stop failure tests,
+- [ ] reparse-point adversarial test on a suitable Windows runner,
+- [ ] synthetic blocked-artifact guard test without committing an artifact,
+- [ ] inspect first CI logs and repair every failure,
 - [ ] final validation report and issue closure.
 
 ## Important implementation files
@@ -75,13 +82,29 @@ Remaining:
 - `scripts/Finalize-Experiment.ps1`
 - `scripts/Test-EvidenceIntegrity.ps1`
 - `scripts/Get-ExperimentStatus.ps1`
+- `scripts/Set-ExperimentFailed.ps1`
+- `scripts/Repair-Experiment.ps1`
+- `scripts/Test-ExperimentManifest.ps1`
+- `scripts/Test-PublicRepositoryContent.ps1`
 - `scripts/Test-Repository.ps1`
+- `schemas/experiment.schema.json`
+- `tools/validate_manifest.py`
 - `tests/ExperimentLifecycle.Tests.ps1`
+- `.github/PSScriptAnalyzerSettings.psd1`
 - `.github/workflows/validate.yml`
 
 ## Current CI state
 
-Workflow definition exists, but GitHub connector returned no commit statuses after the latest pushes. Do not claim CI success until a run and its jobs are visible. First next action is to verify whether Actions is enabled and inspect the first run/logs.
+Workflow definition exists and now includes:
+
+- public repository content guard,
+- PSScriptAnalyzer,
+- Python 3.13 + `jsonschema`,
+- repository smoke validation,
+- PowerShell 7 Pester tests,
+- Windows PowerShell 5.1 Pester tests.
+
+GitHub connector still returns no commit statuses for the latest commit `ace14ca7679339a7a27d34c598f9c71cc874dcb9`. Do not claim CI success until a workflow run and its jobs are visible. The first next action is to verify whether Actions is enabled and inspect the first run/logs.
 
 ## CPU/GPU track decision
 
@@ -112,23 +135,16 @@ In a new chat, ask the assistant to:
 4. continue the first unchecked task under `NXB-IRL-002`,
 5. update this file after each completed block.
 
-## Relevant commits
+## Latest implementation commits
 
-Planning:
-
-- master plan: `09c9f681ee850f08ac54b8ac1ed4d7f015bd5891`
-- CPU/GPU observability: `fff42dd6c9597274df2ff087b4c8749cd9a25098`
-- initial handoff: `a68ca097dfbd60cef4cfedd55190ee9fec3b7d3b`
-
-Lifecycle implementation:
-
-- common lifecycle module: `ea7b97d9bb88e15a32391772f7144268d12a7b6b`
-- evidence verifier: `afdc5fe0dd8633ccf7d6829246797649baf6f30b`
-- status command: `4f768127679b35f86ca6cccf050d9afb2c43def9`
-- idempotent finalizer: `5fa2d5eeaf0f8774e87d38cd2659fe8e22b79cba`
-- atomic experiment creation: `124e16760b9cb9f19dbc94c815c1ff48b7a1e0c1`
-- guarded trace start: `52e704a93baa7911fa6aa638618315f0f63e4c27`
-- guarded trace stop: `792a47e9cba8a13fc55e50383a42aff0d2fd3a3a`
-- lifecycle tests: `248bcd0359bbdd1d635e88e6081a66047da2a14c`
-- CI matrix: `efdf0b6b3c3be68da72884572b4d829b1ac02154`
-- smoke validation: `630f1b00bf77afd15a99bc73dde30cd8cc97728c`
+- recovery failed-state command: `29ebfca69d300cb01f3073c6b78c02b9f7d6ff6f`
+- recovery controller: `e2499e1cba65d0279b034944cd53d5ca22972dc4`
+- public artifact policy: `7d46917ec92a33d6c7901f40b8ac8ce00833e7d8`
+- public artifact guard: `22b4ca3ea0652ee12ee70461b784d4884904c153`
+- analyzer-compliant module: `db8895206e3a4be835fecfb64f2a45cffb6aad2a`
+- recovery and guard tests: `432afd167ae9cfc0e85bbfbac61ece8c25585a49`
+- lifecycle schema: `68147a1a31417487899aaf8bb83725ce776bef74`
+- Python schema validator: `087e61b8a5565da1c27b37633f367bb882db32ce`
+- PowerShell schema wrapper: `13e51e8c0d3228d367fbdeb83ff4567122877178`
+- schema-aware smoke validation: `b4404ad066d32e803630d16b1ad1910996c47500`
+- CI Python/schema setup: `ace14ca7679339a7a27d34c598f9c71cc874dcb9`
