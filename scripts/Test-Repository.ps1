@@ -36,13 +36,14 @@ Write-Host 'JSON dosyaları denetleniyor...'
 $jsonFiles = @(
     (Join-Path $repositoryRoot 'config\lab.config.example.json'),
     (Join-Path $repositoryRoot 'config\public-repository-policy.json'),
-    (Join-Path $repositoryRoot 'schemas\experiment.schema.json')
+    (Join-Path $repositoryRoot 'schemas\experiment.schema.json'),
+    (Join-Path $repositoryRoot 'schemas\system-capabilities.schema.json')
 )
 foreach ($jsonFile in $jsonFiles) {
     Get-Content -LiteralPath $jsonFile -Raw | ConvertFrom-Json | Out-Null
 }
 
-Write-Host 'Workspace, schema ve evidence smoke testi çalıştırılıyor...'
+Write-Host 'Workspace, capability, schema ve evidence smoke testi çalıştırılıyor...'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("nxb-lab-test-{0}" -f [guid]::NewGuid())
 try {
     $initializedRoot = & (Join-Path $PSScriptRoot 'Initialize-Lab.ps1') `
@@ -56,10 +57,28 @@ try {
     $experimentPath = & (Join-Path $PSScriptRoot 'New-Experiment.ps1') `
         -Root $tempRoot `
         -Name 'Repository-Smoke-Test' `
-        -Hypothesis 'Manifest ve evidence finalization akışı çalışır'
+        -Hypothesis 'Manifest, capability ve evidence akışı çalışır'
 
     & (Join-Path $PSScriptRoot 'Test-ExperimentManifest.ps1') `
         -ExperimentPath $experimentPath
+
+    $capabilityPath = & (Join-Path $PSScriptRoot 'Get-SystemCapabilities.ps1') `
+        -ExperimentPath $experimentPath
+
+    if (-not (Test-Path -LiteralPath $capabilityPath -PathType Leaf)) {
+        throw 'System capability envanteri oluşturulmadı.'
+    }
+
+    & (Join-Path $PSScriptRoot 'Test-SystemCapabilities.ps1') `
+        -ExperimentPath $experimentPath
+
+    $capability = Get-Content -LiteralPath $capabilityPath -Raw | ConvertFrom-Json
+    if ($capability.schema_version -ne 1) {
+        throw "Beklenmeyen capability schema version: $($capability.schema_version)"
+    }
+    if ($capability.domains.PSObject.Properties.Name.Count -lt 11) {
+        throw 'System capability envanterinde beklenen domainler bulunamadı.'
+    }
 
     $syntheticEvidence = Join-Path $experimentPath 'logs\synthetic-evidence.txt'
     'synthetic test evidence' | Set-Content -LiteralPath $syntheticEvidence -Encoding utf8
