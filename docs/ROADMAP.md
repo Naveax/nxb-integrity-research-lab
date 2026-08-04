@@ -6,77 +6,49 @@ Yeni sohbet/devralma durumu: [`HANDOFF.md`](HANDOFF.md)
 
 Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERVABILITY.md)
 
+Önceki CPU/GPU tasarım notları: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
+
 ## Current block
 
 ### NXB-IRL-003 — Evidence integrity store
 
-Durum: `IN PROGRESS`
+Durum: `ACTIVE IMPLEMENTATION`
 
-Kapsam:
+GitHub takip kaydı: issue `#4`
 
-- [ ] Canonical manifest hash
-- [ ] Append-only experiment chain
-- [ ] Tool provenance
-- [ ] Controller/target clock offset evidence
-- [ ] Machine/boot/session identity binding
-- [ ] Deterministic offline evidence bundle
-- [ ] Independent integrity comparison
-- [ ] Optional local signature
-- [ ] Tamper, truncation, reordering and substitution tests
-- [ ] PowerShell 5.1 / PowerShell 7 validation
-
-Tamamlanma kapısı:
-
-- aynı girdiler aynı canonical hash ve bundle manifestini üretir,
-- tek byte değişikliği bulunur,
-- kayıt silme, yeniden sıralama veya substitution zincir doğrulamasında reddedilir,
-- machine/boot/experiment identity uyuşmazlığı fail-closed davranır,
-- verification ağ bağlantısı olmadan yapılır,
-- imza opsiyoneldir; imza yokluğu unsigned durumu olarak görünür, bozuk imza geçersiz sayılır,
-- private evidence ve signing key public repoya girmez.
-
-## Completed
-
-### NXB-IRL-001 — Repository bootstrap
-
-- [x] Deney çalışma alanı
-- [x] Baseline collector
-- [x] WPR trace başlatma/durdurma
-- [x] Evidence hash finalization
-- [x] KDNET hazırlık denetimi
-- [x] Manifest şeması ve analiz notu
-
-### NXB-IRL-002 — Deterministic experiment lifecycle
-
-Durum: `COMPLETE`
-
-GitHub takip kaydı: issue `#1`
-
-Merge kaydı:
-
-- PR `#3`
-- validated head `878710229ad11c5c1b95247e304986ca4e5eda47`
-- squash merge `e3b3ab79ab72cafa92f2afa97895258cec912d86`
+Draft PR: `#5`
 
 Tamamlananlar:
 
-- [x] Ortak path/lifecycle/atomic-write modülü
-- [x] Evidence integrity verifier
-- [x] Experiment status ve failed-state komutları
-- [x] Interrupted experiment recovery
-- [x] Atomik manifest oluşturma
-- [x] Guarded WPR start/stop ve failure paths
-- [x] Atomik ve idempotent finalization
-- [x] Draft 2020-12 manifest schema validation
-- [x] Public repository sensitive-artifact guard
-- [x] Reparse-point ve path traversal adversarial testleri
-- [x] Canonical evidence ordering ve tamper testleri
-- [x] PowerShell 5.1 / PowerShell 7 CI
-- [x] PSScriptAnalyzer Error/Warning gate
-- [x] UTF-8 BOM compatibility
-- [x] Final üç-job Actions doğrulaması
+- [x] Version-1 evidence-store contract
+- [x] Record, chain-head ve bundle-manifest Draft 2020-12 şemaları
+- [x] Canonical JSON serializer
+- [x] UTF-8 BOM'suz deterministic SHA-256
+- [x] Root-only self-hash exclusion
+- [x] Atomik canonical JSON writer
+- [x] Append-only record zinciri
+- [x] Staged schema validation before append
+- [x] Previous-record hash linkage
+- [x] Experiment/machine/boot/session identity binding
+- [x] Deterministic chain-head ve chain verifier
+- [x] Tool provenance record helper ve executable verifier
+- [x] Hassas argümanları saklamayan redacted argument digest
+- [x] Four-timestamp clock-offset record helper
+- [x] Clock arithmetic verifier
+- [x] Canonicalization/schema/chain/provenance/clock adversarial tests
+- [x] PR/ref concurrency ile superseded Actions run cancellation
 
-Ayrıntılı kayıt: [`NXB-IRL-002-VALIDATION.md`](NXB-IRL-002-VALIDATION.md)
+Sıradaki işler:
+
+- [ ] İlk tamamlanan Windows CI loglarını inceleme ve onarma
+- [ ] Deterministic offline bundle oluşturma
+- [ ] Offline bundle doğrulama
+- [ ] Evidence-store/bundle karşılaştırma
+- [ ] Optional detached local signing
+- [ ] Bundle truncation ve case-collision testleri
+- [ ] Reparse/path traversal bundle testleri
+- [ ] Unsigned/invalid-signature durum testleri
+- [ ] Final validation report ve issue `#4` kapanışı
 
 ## Full-system track preparation
 
@@ -84,7 +56,7 @@ Ayrıntılı kayıt: [`NXB-IRL-002-VALIDATION.md`](NXB-IRL-002-VALIDATION.md)
 
 Durum: `PLANNED / INITIAL IMPLEMENTATION STARTED`
 
-GitHub takip kaydı: issue `#2`
+GitHub takip kaydı: issue `#2`.
 
 İlk tamamlananlar:
 
@@ -110,6 +82,27 @@ Sıradaki alt görevler:
 - [ ] Trace-loss ve overhead accounting
 - [ ] Cross-domain correlation engine
 - [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+
+## Completed
+
+### NXB-IRL-001 — Repository bootstrap
+
+- [x] Deney çalışma alanı
+- [x] Baseline collector
+- [x] WPR trace başlatma/durdurma
+- [x] Evidence hash finalization
+- [x] KDNET hazırlık denetimi
+- [x] Manifest şeması ve analiz notu
+
+### NXB-IRL-002 — Deterministic experiment lifecycle
+
+- [x] Canonical lifecycle and atomic writes
+- [x] Evidence verification and recovery
+- [x] WPR failure-path matrix
+- [x] Reparse and sensitive-artifact adversarial tests
+- [x] PowerShell 5.1 and PowerShell 7 Windows CI
+- [x] PSScriptAnalyzer and repository smoke validation
+- [x] PR #3 merge and issue #1 closure
 
 ## Upcoming blocks
 
