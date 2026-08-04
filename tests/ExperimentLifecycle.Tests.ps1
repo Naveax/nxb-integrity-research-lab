@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.Lab.Common.psm1') -Force
