@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/observability-event.schema.json",
+  "title": "NXB Cross-Domain Observability Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "event_id",
+    "timestamp_utc",
+    "timestamp_monotonic_ns",
+    "domain",
+    "source",
+    "event_type",
+    "evidence_class",
+    "collector",
+    "overhead_profile",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "boot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "timestamp_monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "domain": {
+      "enum": [
+        "cpu",
+        "memory",
+        "gpu",
+        "storage",
+        "filesystem",
+        "network",
+        "bus",
+        "device",
+        "kernel",
+        "driver",
+        "power",
+        "thermal",
+        "firmware",
+        "security",
+        "process",
+        "thread",
+        "registry"
+      ]
+    },
+    "source": {
+      "enum": [
+        "etw",
+        "counter",
+        "cim",
+        "wmi",
+        "debugger",
+        "hardware-trace",
+        "pix",
+        "gpuview",
+        "presentmon",
+        "driver",
+        "synthetic",
+        "operator"
+      ]
+    },
+    "process_id": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "thread_id": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "device_id": {
+      "type": ["string", "null"]
+    },
+    "module_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "module_rva": {
+      "type": ["string", "null"],
+      "pattern": "^0x[0-9a-fA-F]+$"
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_class": {
+      "enum": [
+        "OBSERVED",
+        "INFERRED",
+        "HYPOTHESIS",
+        "VALIDATED",
+        "REJECTED"
+      ]
+    },
+    "collector": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "overhead_profile": {
+      "enum": ["inventory", "baseline", "minimal", "diagnostic", "focused-deep-trace"]
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
