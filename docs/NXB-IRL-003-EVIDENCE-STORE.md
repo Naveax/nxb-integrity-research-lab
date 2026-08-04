@@ -2,9 +2,11 @@
 
 ## Status
 
-`INITIAL CONTRACT`
+`ACTIVE IMPLEMENTATION`
 
 Tracking issue: `#4`.
+
+Draft PR: `#5`.
 
 ## Objective
 
@@ -43,7 +45,21 @@ Version 1 canonical JSON uses these rules:
 9. `record_sha256` is excluded from its own hash input.
 10. Optional signatures are excluded from the unsigned record and bundle identities.
 
-The canonicalization implementation must be shared by record creation, bundle creation, verification and comparison.
+The canonicalization implementation is shared by record creation, chain verification, bundle creation, bundle verification and comparison.
+
+## Implemented canonical identity
+
+Implemented in `scripts/Nxb.EvidenceStore.psm1`:
+
+- ordinal, case-sensitive object key sorting,
+- array-order preservation,
+- manual JSON string escaping,
+- unpaired-surrogate rejection,
+- integral-number-only enforcement,
+- UTF-8 without BOM hashing,
+- lowercase SHA-256 output,
+- root-only excluded properties,
+- atomic canonical JSON writes.
 
 ## Evidence record
 
@@ -72,9 +88,11 @@ Required payload fields:
 - `payload`,
 - `payload_sha256`.
 
-`record_sha256` is SHA-256 over the canonical record object after removing only the `record_sha256` property.
+`record_sha256` is SHA-256 over the canonical record object after removing only the root `record_sha256` property.
 
-The genesis record has sequence `0` and `previous_record_sha256: null`. Every later record must use sequence `previous.sequence + 1` and the exact SHA-256 of the previous record.
+The genesis record has sequence `0` and `previous_record_sha256: null`. Every later record uses sequence `previous.sequence + 1` and the exact SHA-256 of the previous record.
+
+Records are written under an exclusive append lock. A new record is first written to a pending file outside `records/`, schema-validated, then atomically moved to its fixed final filename. Invalid staged records are removed and never become part of the chain.
 
 ## Initial record types
 
@@ -87,34 +105,71 @@ The genesis record has sequence `0` and `previous_record_sha256: null`. Every la
 
 Unknown record types are rejected in schema version 1.
 
+## Implemented append-only chain
+
+Implemented commands:
+
+- `scripts/New-EvidenceStoreRecord.ps1`
+- `scripts/Update-EvidenceStoreChainHead.ps1`
+- `scripts/Test-EvidenceStoreChain.ps1`
+- `scripts/Test-EvidenceStoreSchema.ps1`
+
+Verification checks:
+
+- fixed-width filename and sequence agreement,
+- no sequence gaps,
+- genesis previous-hash rule,
+- exact previous-record linkage,
+- stable experiment/machine/boot/session identity,
+- payload SHA-256,
+- record SHA-256,
+- chain-head agreement,
+- raw 32-byte digest concatenation chain hash.
+
 ## Tool provenance
 
-Tool provenance records include only verifiable metadata:
+Implemented commands:
 
-- normalized executable path or stable tool identifier,
-- file SHA-256 when a local executable exists,
+- `scripts/New-ToolProvenanceRecord.ps1`
+- `scripts/Test-ToolProvenanceRecord.ps1`
+
+Tool provenance records contain only verifiable bounded metadata:
+
+- normalized executable path,
+- executable SHA-256 and byte length,
+- last-write UTC,
 - product/file version when available,
 - invocation name,
-- normalized argument digest,
-- collector/runtime identity,
-- exit code and bounded status metadata.
+- canonical digest of a redacted argument envelope,
+- argument and redaction counts,
+- collector identity,
+- status and optional exit code.
 
-Raw secrets, tokens, passwords, private keys and unredacted sensitive command arguments are forbidden.
+Raw command arguments are not stored. Sensitive argument indexes are replaced with `<redacted>` before the argument envelope is hashed. A verifier independently re-hashes the current or explicitly overridden executable path.
 
 ## Clock-offset evidence
 
-Clock-offset records bind controller and target observations using integers:
+Implemented commands:
+
+- `scripts/New-ClockOffsetRecord.ps1`
+- `scripts/Test-ClockOffsetRecord.ps1`
+
+Version 1 uses four timestamps:
 
 - controller send UTC nanoseconds,
 - target receive monotonic nanoseconds,
 - target send monotonic nanoseconds,
-- controller receive UTC nanoseconds,
-- estimated offset nanoseconds,
-- round-trip nanoseconds,
-- uncertainty nanoseconds,
-- measurement method.
+- controller receive UTC nanoseconds.
 
-A verifier checks internal arithmetic bounds but does not claim physical clock accuracy beyond the recorded uncertainty.
+The helper computes:
+
+- controller elapsed time,
+- target processing time,
+- adjusted round-trip time,
+- midpoint estimated UTC-minus-monotonic offset,
+- half-round-trip uncertainty rounded upward.
+
+Negative elapsed values and samples where target processing exceeds controller elapsed time fail closed. The verifier independently reproduces the arithmetic.
 
 ## Chain head
 
@@ -131,7 +186,7 @@ The chain digest is SHA-256 over the ordered concatenation of raw 32-byte record
 
 ## Offline evidence bundle
 
-The bundle manifest contains a deterministic sorted inventory of:
+The bundle manifest will contain a deterministic sorted inventory of:
 
 - evidence-store records,
 - chain head,
@@ -140,7 +195,9 @@ The bundle manifest contains a deterministic sorted inventory of:
 
 Bundle verification must require no network access. Absolute paths are forbidden. Path traversal, reparse-point traversal and case-collision ambiguity must fail closed.
 
-`bundle_sha256` excludes only the `bundle_sha256` property and optional signature material.
+`bundle_sha256` excludes only the root `bundle_sha256` property and optional signature material.
+
+Status: `NEXT IMPLEMENTATION BLOCK`.
 
 ## Optional local signatures
 
@@ -183,6 +240,8 @@ Verification fails when:
 - identity fields change within one chain,
 - a payload hash mismatches,
 - chain-head values disagree with records,
+- tool binary hash or length mismatches,
+- clock arithmetic cannot be reproduced,
 - a listed bundle file is missing or changed,
 - an unexpected case-colliding path exists,
 - a reparse point is encountered,
@@ -202,17 +261,34 @@ Never commit:
 
 Schemas, synthetic fixtures, verifiers and redacted metadata are allowed.
 
-## Initial implementation sequence
+## Validation coverage implemented
 
-1. Add Draft 2020-12 schemas.
-2. Implement canonical JSON serialization and hashing.
-3. Implement append-only record creation.
-4. Implement full chain verification.
-5. Add tool provenance and clock-offset record helpers.
-6. Implement deterministic offline bundle creation.
-7. Implement bundle verification and comparison.
-8. Add optional detached signing adapter.
-9. Add adversarial Pester tests on PowerShell 5.1 and PowerShell 7.
+- canonical insertion-order equivalence,
+- known SHA-256 vector,
+- array-order sensitivity,
+- floating-point rejection,
+- UTF-8 no-BOM output,
+- root-only hash-field exclusion,
+- schema self-validation,
+- valid and invalid schema fixtures,
+- deterministic two-store record hashes,
+- payload tamper detection,
+- record deletion/sequence-gap detection,
+- identity substitution detection,
+- tool secret non-persistence,
+- tool binary mutation detection,
+- clock arithmetic verification,
+- re-hashed clock arithmetic tamper detection,
+- invalid clock sample rejection.
+
+## Remaining implementation sequence
+
+1. Complete Windows CI repair for the current branch.
+2. Implement deterministic offline bundle creation.
+3. Implement bundle verification and comparison.
+4. Add optional detached signing adapter.
+5. Add bundle truncation, path collision and signature adversarial tests.
+6. Run final PowerShell 5.1, PowerShell 7, PSScriptAnalyzer and repository smoke validation.
 
 ## Completion gates
 
@@ -221,6 +297,7 @@ Schemas, synthetic fixtures, verifiers and redacted metadata are allowed.
 - deletion, reordering and substitution are detected,
 - identity mismatch fails closed,
 - tool provenance can be independently checked,
+- clock-offset arithmetic is independently reproducible,
 - offline verification requires no network,
 - unsigned and invalid-signature states are unambiguous,
 - all Windows CI jobs are green,
