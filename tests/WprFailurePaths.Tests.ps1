@@ -1,6 +1,5 @@
 BeforeAll {
-    $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
-    $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
+    $script:ScriptsRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts'
 }
 
 function New-NxbFakeWprCommand {
