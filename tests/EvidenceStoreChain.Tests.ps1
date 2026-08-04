@@ -3,7 +3,7 @@
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.EvidenceStore.psm1') -Force
 
-    function New-NxbSyntheticEvidenceExperiment {
+    function Initialize-NxbSyntheticEvidenceExperiment {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)]
@@ -71,10 +71,10 @@ Describe 'NXB append-only evidence chain' {
     }
 
     It 'creates deterministic linked records and a verified chain head' {
-        $firstExperiment = New-NxbSyntheticEvidenceExperiment `
+        $firstExperiment = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
             -Name 'first'
-        $secondExperiment = New-NxbSyntheticEvidenceExperiment `
+        $secondExperiment = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
             -Name 'second'
 
@@ -115,7 +115,7 @@ Describe 'NXB append-only evidence chain' {
     }
 
     It 'detects a payload modification without a matching payload hash' {
-        $experimentPath = New-NxbSyntheticEvidenceExperiment `
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
             -Name 'payload-tamper'
         $recordResult = Add-NxbSyntheticRecord `
@@ -138,7 +138,7 @@ Describe 'NXB append-only evidence chain' {
     }
 
     It 'detects record deletion through a sequence discontinuity' {
-        $experimentPath = New-NxbSyntheticEvidenceExperiment `
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
             -Name 'deletion'
         $first = Add-NxbSyntheticRecord `
@@ -161,7 +161,7 @@ Describe 'NXB append-only evidence chain' {
     }
 
     It 'detects identity substitution even when the modified record hash is recomputed' {
-        $experimentPath = New-NxbSyntheticEvidenceExperiment `
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
             -Name 'identity-substitution'
         [void](Add-NxbSyntheticRecord `
