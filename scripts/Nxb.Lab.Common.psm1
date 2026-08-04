@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-NxbFullPath {
@@ -39,20 +39,125 @@ function Get-NxbRelativePath {
     return $childFull.Substring($baseFull.Length)
 }
 
+function Resolve-NxbExecutablePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Name,
+
+        [Parameter()]
+        [string]$ExplicitPath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        $resolved = Get-NxbFullPath -Path $ExplicitPath
+        if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+            throw "Executable bulunamadı: $resolved"
+        }
+
+        return $resolved
+    }
+
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        throw "Executable bulunamadı: $Name"
+    }
+
+    return [string]$command.Source
+}
+
 function Test-NxbPathSafety {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [ValidateScript({ Test-Path -LiteralPath $_ })]
-        [string]$Path
+        [string]$Path,
+
+        [Parameter()]
+        [string]$RootPath
     )
 
-    $item = Get-Item -LiteralPath $Path -Force
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Reparse point kanıt yolu olarak kabul edilmez: $($item.FullName)"
+    $pathFull = Get-NxbFullPath -Path $Path
+    $rootFull = $null
+
+    if (-not [string]::IsNullOrWhiteSpace($RootPath)) {
+        $rootFull = Get-NxbFullPath -Path $RootPath
+        if (-not (Test-Path -LiteralPath $rootFull -PathType Container)) {
+            throw "Güvenlik kökü bulunamadı: $rootFull"
+        }
+
+        if (-not $pathFull.Equals($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+            [void](Get-NxbRelativePath -BasePath $rootFull -ChildPath $pathFull)
+        }
+    }
+
+    $current = $pathFull
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Reparse point kanıt yolu olarak kabul edilmez: $($item.FullName)"
+            }
+        }
+
+        if ($null -ne $rootFull -and $current.Equals($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent.Equals($current, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+
+        $current = $parent
     }
 
     return $true
+}
+
+function Get-NxbSafeChildItem {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$RootPath,
+
+        [Parameter()]
+        [string[]]$ExcludeDirectoryName = @()
+    )
+
+    $rootFull = Get-NxbFullPath -Path $RootPath
+    [void](Test-NxbPathSafety -Path $rootFull -RootPath $rootFull)
+
+    $excluded = @{}
+    foreach ($name in $ExcludeDirectoryName) {
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $excluded[$name.ToLowerInvariant()] = $true
+        }
+    }
+
+    $pending = [System.Collections.Generic.Stack[string]]::new()
+    $result = [System.Collections.Generic.List[object]]::new()
+    $pending.Push($rootFull)
+
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($child in @(Get-ChildItem -LiteralPath $directory -Force)) {
+            [void](Test-NxbPathSafety -Path $child.FullName -RootPath $rootFull)
+
+            if ($child.PSIsContainer -and $excluded.ContainsKey($child.Name.ToLowerInvariant())) {
+                continue
+            }
+
+            [void]$result.Add($child)
+            if ($child.PSIsContainer) {
+                $pending.Push($child.FullName)
+            }
+        }
+    }
+
+    return $result.ToArray()
 }
 
 function Read-NxbJson {
@@ -186,13 +291,13 @@ function Get-NxbEvidenceFile {
 
     $experimentFull = Get-NxbFullPath -Path $ExperimentPath
     $excludedNames = @('manifest.json', 'evidence.sha256')
+    $items = Get-NxbSafeChildItem -RootPath $experimentFull
 
-    $files = Get-ChildItem -LiteralPath $experimentFull -File -Recurse -Force |
-        Where-Object { $excludedNames -notcontains $_.Name } |
-        Sort-Object FullName
+    $files = @($items |
+        Where-Object { -not $_.PSIsContainer -and $excludedNames -notcontains $_.Name } |
+        Sort-Object FullName)
 
     foreach ($file in $files) {
-        [void](Test-NxbPathSafety -Path $file.FullName)
         [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName)
     }
 
@@ -202,7 +307,9 @@ function Get-NxbEvidenceFile {
 Export-ModuleMember -Function @(
     'Get-NxbFullPath',
     'Get-NxbRelativePath',
+    'Resolve-NxbExecutablePath',
     'Test-NxbPathSafety',
+    'Get-NxbSafeChildItem',
     'Read-NxbJson',
     'Write-NxbJsonAtomic',
     'Test-NxbStateTransition',

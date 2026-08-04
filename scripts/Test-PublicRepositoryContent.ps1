@@ -1,14 +1,19 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot),
+
+    [Parameter()]
+    [string[]]$AdditionalRelativePath = @()
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repositoryFull = [IO.Path]::GetFullPath($RepositoryRoot)
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+
+$repositoryFull = Get-NxbFullPath -Path $RepositoryRoot
 $policyPath = Join-Path $repositoryFull 'config\public-repository-policy.json'
 if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
     throw "Public repository policy bulunamadı: $policyPath"
@@ -17,7 +22,8 @@ if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 $allowed = @{}
 foreach ($path in $policy.allowed_paths) {
-    $allowed[[string]$path] = $true
+    $normalizedAllowedPath = ([string]$path).Replace('\', '/')
+    $allowed[$normalizedAllowedPath] = $true
 }
 
 $git = Get-Command git.exe -ErrorAction SilentlyContinue
@@ -30,47 +36,72 @@ if ($git) {
     if ($LASTEXITCODE -ne 0) {
         throw "git ls-files başarısız: $($tracked -join [Environment]::NewLine)"
     }
-    $relativePaths = @($tracked | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    $trackedPaths = @($tracked | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 else {
-    $relativePaths = Get-ChildItem -LiteralPath $repositoryFull -File -Recurse -Force |
-        Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+    $trackedPaths = @(Get-NxbSafeChildItem `
+        -RootPath $repositoryFull `
+        -ExcludeDirectoryName '.git' |
+        Where-Object { -not $_.PSIsContainer } |
         ForEach-Object {
-            $root = $repositoryFull.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-            $_.FullName.Substring($root.Length).Replace('\', '/')
-        }
+            Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $_.FullName
+        })
 }
+
+$combinedPaths = [System.Collections.Generic.List[string]]::new()
+foreach ($candidate in @($trackedPaths) + @($AdditionalRelativePath)) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$candidate)) {
+        [void]$combinedPaths.Add(([string]$candidate).Replace('\', '/'))
+    }
+}
+$relativePaths = @($combinedPaths | Sort-Object -Unique)
 
 $issues = [System.Collections.Generic.List[string]]::new()
 $privateKeyMarker = '-----BEGIN ' + 'PRIVATE KEY-----'
 $encryptedPrivateKeyMarker = '-----BEGIN ENCRYPTED ' + 'PRIVATE KEY-----'
 
-foreach ($relativePathRaw in $relativePaths) {
-    $relativePath = ([string]$relativePathRaw).Replace('\', '/')
+foreach ($relativePath in $relativePaths) {
     if ($allowed.ContainsKey($relativePath)) {
         continue
     }
 
-    $fullPath = Join-Path $repositoryFull $relativePath
+    $fullPath = Get-NxbFullPath -Path (Join-Path $repositoryFull $relativePath)
+    try {
+        [void](Get-NxbRelativePath -BasePath $repositoryFull -ChildPath $fullPath)
+    }
+    catch {
+        [void]$issues.Add("Repository kökü dışındaki aday yol: $relativePath")
+        continue
+    }
+
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-        $issues.Add("Tracked dosya bulunamadı: $relativePath")
+        [void]$issues.Add("Aday dosya bulunamadı: $relativePath")
+        continue
+    }
+
+    try {
+        [void](Test-NxbPathSafety -Path $fullPath -RootPath $repositoryFull)
+    }
+    catch {
+        [void]$issues.Add("Güvensiz repository yolu: $relativePath ($($_.Exception.Message))")
         continue
     }
 
     $item = Get-Item -LiteralPath $fullPath -Force
     if ($item.Length -gt [long]$policy.maximum_tracked_file_bytes) {
-        $issues.Add("Tracked dosya boyut sınırını aşıyor: $relativePath ($($item.Length) bytes)")
+        [void]$issues.Add("Tracked dosya boyut sınırını aşıyor: $relativePath ($($item.Length) bytes)")
     }
 
     $extension = [IO.Path]::GetExtension($relativePath).ToLowerInvariant()
     if (@($policy.blocked_extensions) -contains $extension) {
-        $issues.Add("Public repoda engellenmiş uzantı: $relativePath")
+        [void]$issues.Add("Public repoda engellenmiş uzantı: $relativePath")
     }
 
     $segments = $relativePath.Split('/')
     foreach ($segment in $segments) {
         if (@($policy.blocked_path_segments) -contains $segment.ToLowerInvariant()) {
-            $issues.Add("Public repoda engellenmiş yol segmenti: $relativePath")
+            [void]$issues.Add("Public repoda engellenmiş yol segmenti: $relativePath")
             break
         }
     }
@@ -79,7 +110,7 @@ foreach ($relativePathRaw in $relativePaths) {
         try {
             $text = Get-Content -LiteralPath $fullPath -Raw -ErrorAction Stop
             if ($text.Contains($privateKeyMarker) -or $text.Contains($encryptedPrivateKeyMarker)) {
-                $issues.Add("Private key içeriği tespit edildi: $relativePath")
+                [void]$issues.Add("Private key içeriği tespit edildi: $relativePath")
             }
         }
         catch {
@@ -92,4 +123,4 @@ if ($issues.Count -gt 0) {
     throw ("Public repository content guard başarısız:`n- " + ($issues -join "`n- "))
 }
 
-Write-Host "Public repository content guard başarılı: $($relativePaths.Count) tracked dosya denetlendi."
+Write-Host "Public repository content guard başarılı: $($relativePaths.Count) aday dosya denetlendi."

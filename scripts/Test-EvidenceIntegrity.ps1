@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
@@ -19,11 +19,11 @@ $evidencePath = Join-Path $experimentFull 'evidence.sha256'
 $issues = [System.Collections.Generic.List[string]]::new()
 
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-    $issues.Add("Manifest bulunamadı: $manifestPath")
+    [void]$issues.Add("Manifest bulunamadı: $manifestPath")
 }
 
 if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
-    $issues.Add("Evidence listesi bulunamadı: $evidencePath")
+    [void]$issues.Add("Evidence listesi bulunamadı: $evidencePath")
 }
 
 $manifest = $null
@@ -32,7 +32,7 @@ if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
         $manifest = Read-NxbJson -Path $manifestPath
     }
     catch {
-        $issues.Add("Manifest okunamadı: $($_.Exception.Message)")
+        [void]$issues.Add("Manifest okunamadı: $($_.Exception.Message)")
     }
 }
 
@@ -46,7 +46,7 @@ if (Test-Path -LiteralPath $evidencePath -PathType Leaf) {
         }
 
         if ($line -notmatch '^([0-9a-fA-F]{64})  (.+)$') {
-            $issues.Add("Geçersiz evidence satırı $lineNumber: $line")
+            [void]$issues.Add("Geçersiz evidence satırı ${lineNumber}: $line")
             continue
         }
 
@@ -58,12 +58,12 @@ if (Test-Path -LiteralPath $evidencePath -PathType Leaf) {
             [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $candidate)
         }
         catch {
-            $issues.Add("Evidence yolu deney kökü dışında: $relative")
+            [void]$issues.Add("Evidence yolu deney kökü dışında: $relative")
             continue
         }
 
         if ($expected.ContainsKey($relative)) {
-            $issues.Add("Tekrarlanan evidence yolu: $relative")
+            [void]$issues.Add("Tekrarlanan evidence yolu: $relative")
             continue
         }
 
@@ -74,19 +74,19 @@ if (Test-Path -LiteralPath $evidencePath -PathType Leaf) {
 foreach ($entry in $expected.GetEnumerator()) {
     $path = Join-Path $experimentFull $entry.Key
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        $issues.Add("Evidence dosyası eksik: $($entry.Key)")
+        [void]$issues.Add("Evidence dosyası eksik: $($entry.Key)")
         continue
     }
 
     try {
-        [void](Test-NxbPathSafety -Path $path)
+        [void](Test-NxbPathSafety -Path $path -RootPath $experimentFull)
         $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actualHash -ne $entry.Value) {
-            $issues.Add("Hash uyuşmazlığı: $($entry.Key)")
+            [void]$issues.Add("Hash uyuşmazlığı: $($entry.Key)")
         }
     }
     catch {
-        $issues.Add("Evidence doğrulanamadı '$($entry.Key)': $($_.Exception.Message)")
+        [void]$issues.Add("Evidence doğrulanamadı '$($entry.Key)': $($_.Exception.Message)")
     }
 }
 
@@ -95,26 +95,26 @@ try {
     foreach ($file in $actualFiles) {
         $relative = Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName
         if (-not $expected.ContainsKey($relative)) {
-            $issues.Add("Evidence listesinde bulunmayan dosya: $relative")
+            [void]$issues.Add("Evidence listesinde bulunmayan dosya: $relative")
         }
     }
 }
 catch {
-    $issues.Add("Evidence dosya envanteri oluşturulamadı: $($_.Exception.Message)")
+    [void]$issues.Add("Evidence dosya envanteri oluşturulamadı: $($_.Exception.Message)")
 }
 
 if ($null -ne $manifest) {
     if ([string]$manifest.status -ne 'finalized') {
-        $issues.Add("Manifest finalized değil: $($manifest.status)")
+        [void]$issues.Add("Manifest finalized değil: $($manifest.status)")
     }
 
     if ($manifest.PSObject.Properties.Name -notcontains 'evidence_sha256') {
-        $issues.Add('Manifest evidence_sha256 alanı içermiyor.')
+        [void]$issues.Add('Manifest evidence_sha256 alanı içermiyor.')
     }
     elseif (Test-Path -LiteralPath $evidencePath -PathType Leaf) {
         $actualEvidenceHash = (Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash
         if ([string]$manifest.evidence_sha256 -ne $actualEvidenceHash) {
-            $issues.Add('Manifest evidence_sha256 değeri evidence.sha256 ile uyuşmuyor.')
+            [void]$issues.Add('Manifest evidence_sha256 değeri evidence.sha256 ile uyuşmuyor.')
         }
     }
 }
@@ -124,7 +124,7 @@ $result = [pscustomobject]@{
     IsValid = ($issues.Count -eq 0)
     CheckedEntries = $expected.Count
     IssueCount = $issues.Count
-    Issues = @($issues)
+    Issues = @($issues.ToArray())
 }
 
 if ($PassThru) {
