@@ -39,7 +39,7 @@ function Get-NxbRelativePath {
     return $childFull.Substring($baseFull.Length)
 }
 
-function Assert-NxbNoReparsePoint {
+function Test-NxbPathSafety {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -51,6 +51,8 @@ function Assert-NxbNoReparsePoint {
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw "Reparse point kanıt yolu olarak kabul edilmez: $($item.FullName)"
     }
+
+    return $true
 }
 
 function Read-NxbJson {
@@ -122,7 +124,7 @@ function Test-NxbStateTransition {
 }
 
 function Set-NxbExperimentState {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)]
         [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
@@ -167,7 +169,10 @@ function Set-NxbExperimentState {
         }
     }
 
-    Write-NxbJsonAtomic -Path $manifestPath -InputObject $manifest -Depth 16
+    if ($PSCmdlet.ShouldProcess($manifestPath, "Deney durumunu '$State' olarak yaz")) {
+        Write-NxbJsonAtomic -Path $manifestPath -InputObject $manifest -Depth 16
+    }
+
     return $manifest
 }
 
@@ -187,7 +192,7 @@ function Get-NxbEvidenceFiles {
         Sort-Object FullName
 
     foreach ($file in $files) {
-        Assert-NxbNoReparsePoint -Path $file.FullName
+        [void](Test-NxbPathSafety -Path $file.FullName)
         [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $file.FullName)
     }
 
@@ -197,7 +202,7 @@ function Get-NxbEvidenceFiles {
 Export-ModuleMember -Function @(
     'Get-NxbFullPath',
     'Get-NxbRelativePath',
-    'Assert-NxbNoReparsePoint',
+    'Test-NxbPathSafety',
     'Read-NxbJson',
     'Write-NxbJsonAtomic',
     'Test-NxbStateTransition',
