@@ -136,7 +136,7 @@ Describe 'NXB WPR failure paths' {
             Should -BeFalse
     }
 
-    It 'rejects a successful stop code that did not create an ETL file' {
+    It 'fails closed when a successful stop code did not create an ETL file' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'missing-etl.cmd') `
             -Confirm:$false
@@ -153,7 +153,13 @@ Describe 'NXB WPR failure paths' {
 
         $manifest = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'manifest.json') -Raw |
             ConvertFrom-Json
-        $manifest.status | Should -Be 'recording'
+        $session = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') -Raw |
+            ConvertFrom-Json
+
+        $manifest.status | Should -Be 'failed'
+        $session.status | Should -Be 'failed'
+        $manifest.failure_reason | Should -Match 'ETL oluşturulmadı'
+        $session.failure_reason | Should -Match 'ETL oluşturulmadı'
     }
 
     It 'completes a synthetic start and stop lifecycle deterministically' {
