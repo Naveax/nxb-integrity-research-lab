@@ -11,6 +11,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+
+$experimentFull = Get-NxbFullPath -Path $ExperimentPath
+$manifestPath = Join-Path $experimentFull 'manifest.json'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "Manifest bulunamadı: $manifestPath"
+}
+
+$manifest = Read-NxbJson -Path $manifestPath
+if ([string]$manifest.status -ne 'prepared') {
+    throw "WPR yalnız prepared deneyde başlatılabilir. Mevcut durum: $($manifest.status)"
+}
+
 $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
 if (-not $wpr) {
     throw 'wpr.exe bulunamadı. Windows ADK içindeki Windows Performance Toolkit kurulmalı.'
@@ -20,7 +33,7 @@ if ($CancelExistingSession) {
     & $wpr.Source -cancel 2>$null | Out-Null
 }
 
-$sessionPath = Join-Path $ExperimentPath 'trace-session.json'
+$sessionPath = Join-Path $experimentFull 'trace-session.json'
 if (Test-Path -LiteralPath $sessionPath) {
     throw "Bu deneyde trace-session.json zaten var: $sessionPath"
 }
@@ -37,15 +50,18 @@ $session = [ordered]@{
     status      = 'recording'
 }
 
-$session | ConvertTo-Json |
-    Set-Content -LiteralPath $sessionPath -Encoding UTF8
-
-$manifestPath = Join-Path $ExperimentPath 'manifest.json'
-if (Test-Path -LiteralPath $manifestPath) {
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    $manifest.status = 'recording'
-    $manifest | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $manifestPath -Encoding UTF8
+try {
+    Write-NxbJsonAtomic -Path $sessionPath -InputObject $session -Depth 8
+    Set-NxbExperimentState `
+        -ExperimentPath $experimentFull `
+        -State recording | Out-Null
+}
+catch {
+    & $wpr.Source -cancel 2>$null | Out-Null
+    if (Test-Path -LiteralPath $sessionPath) {
+        Remove-Item -LiteralPath $sessionPath -Force
+    }
+    throw
 }
 
 Write-Host 'WPR kaydı başladı.'
