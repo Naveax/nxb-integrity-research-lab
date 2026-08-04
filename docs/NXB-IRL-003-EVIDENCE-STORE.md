@@ -2,7 +2,7 @@
 
 ## Status
 
-`ACTIVE IMPLEMENTATION`
+`ACTIVE — FINAL CI REPAIR`
 
 Tracking issue: `#4`.
 
@@ -26,6 +26,7 @@ evidence-store/
   chain-head.json
   bundle-manifest.json
   signatures/
+    bundle.sig
 ```
 
 Record filenames are fixed-width lowercase decimal sequence numbers. Directory enumeration order is never trusted.
@@ -38,18 +39,20 @@ Version 1 canonical JSON uses these rules:
 2. Object properties sorted by ordinal Unicode code-point order.
 3. Arrays preserve their declared order.
 4. No insignificant whitespace.
-5. JSON strings use required escaping only.
+5. JSON strings use the serializer's required escaping only.
 6. Timestamps use UTC RFC 3339 form with a trailing `Z`.
 7. Hashes are lowercase hexadecimal SHA-256 strings without a prefix.
-8. Hash-bearing numbers are integers; floating-point values are rejected.
-9. Self-hash properties are excluded only at the root object.
-10. Detached signature material must not change the unsigned bundle identity.
+8. Numbers used by the contract are integers; floating-point values are not allowed in hash-bearing records.
+9. `record_sha256` is excluded from its own hash input.
+10. `bundle_sha256`, `signature_state` and detached `signature` metadata are excluded from the unsigned bundle identity.
 
-The implementation is shared by record creation, chain verification, bundle creation, bundle verification and comparison through `scripts/Nxb.EvidenceStore.psm1`.
+The canonicalization implementation is shared by record creation, chain verification, bundle creation, bundle verification, signing and comparison.
 
-Implemented canonical primitives:
+## Implemented canonical identity
 
-- ordinal, case-sensitive object-key sorting,
+Implemented in `scripts/Nxb.EvidenceStore.psm1`:
+
+- ordinal, case-sensitive object key sorting,
 - array-order preservation,
 - manual JSON string escaping,
 - unpaired-surrogate rejection,
@@ -59,7 +62,14 @@ Implemented canonical primitives:
 - root-only excluded properties,
 - atomic canonical JSON writes.
 
-## Evidence records and append-only chain
+## Evidence record and append-only chain
+
+Implemented commands:
+
+- `scripts/New-EvidenceStoreRecord.ps1`
+- `scripts/Update-EvidenceStoreChainHead.ps1`
+- `scripts/Test-EvidenceStoreChain.ps1`
+- `scripts/Test-EvidenceStoreSchema.ps1`
 
 A record binds one payload to:
 
@@ -70,23 +80,11 @@ A record binds one payload to:
 - `sequence`,
 - `previous_record_sha256`,
 - `captured_utc`,
-- `monotonic_ns`,
-- `record_type`,
-- `payload_sha256`,
-- `record_sha256`.
+- `monotonic_ns`.
 
-The genesis record has sequence `0` and `previous_record_sha256: null`. Every later record uses the previous sequence plus one and the exact previous record hash.
+A new record is written to a pending file, schema-validated and atomically moved to its fixed final filename. Invalid staged records never enter the chain.
 
-Records are created under an exclusive append lock. A record is first written to a pending file outside `records/`, schema-validated and then atomically moved to its fixed final filename. Invalid staged records are removed and never become chain members.
-
-Implemented commands:
-
-- `scripts/New-EvidenceStoreRecord.ps1`
-- `scripts/Update-EvidenceStoreChainHead.ps1`
-- `scripts/Test-EvidenceStoreChain.ps1`
-- `scripts/Test-EvidenceStoreSchema.ps1`
-
-Chain verification checks:
+Verification checks:
 
 - fixed-width filename and sequence agreement,
 - no sequence gaps,
@@ -98,19 +96,6 @@ Chain verification checks:
 - chain-head agreement,
 - raw 32-byte digest concatenation chain hash.
 
-## Record types
-
-Version 1 permits:
-
-- `manifest_snapshot`
-- `evidence_index_snapshot`
-- `tool_provenance`
-- `clock_offset`
-- `observation_identity`
-- `bundle_seal`
-
-Unknown record types are rejected.
-
 ## Tool provenance
 
 Implemented commands:
@@ -118,19 +103,7 @@ Implemented commands:
 - `scripts/New-ToolProvenanceRecord.ps1`
 - `scripts/Test-ToolProvenanceRecord.ps1`
 
-Tool provenance records contain bounded verifiable metadata:
-
-- normalized executable path,
-- executable SHA-256 and byte length,
-- last-write UTC,
-- product/file version when available,
-- invocation name,
-- canonical digest of a redacted argument envelope,
-- argument and redaction counts,
-- collector identity,
-- status and optional exit code.
-
-Raw arguments are not persisted. Sensitive argument indexes are replaced with `<redacted>` before hashing. Verification independently re-hashes the current or explicitly overridden executable.
+Records include normalized executable path, executable SHA-256 and length, version metadata, invocation identity, redacted argument-envelope digest, collector identity, status and optional exit code. Raw arguments and secrets are not persisted.
 
 ## Clock-offset evidence
 
@@ -139,37 +112,9 @@ Implemented commands:
 - `scripts/New-ClockOffsetRecord.ps1`
 - `scripts/Test-ClockOffsetRecord.ps1`
 
-Version 1 uses four timestamps:
+Version 1 uses a bounded four-timestamp midpoint method and independently verifies controller elapsed time, target processing time, adjusted round-trip, midpoint offset and uncertainty.
 
-- controller send UTC nanoseconds,
-- target receive monotonic nanoseconds,
-- target send monotonic nanoseconds,
-- controller receive UTC nanoseconds.
-
-The helper and independent verifier reproduce:
-
-- controller elapsed time,
-- target processing time,
-- adjusted round-trip,
-- midpoint UTC-minus-monotonic offset,
-- half-round-trip uncertainty rounded upward.
-
-Negative elapsed values and target processing longer than controller elapsed time fail closed.
-
-## Chain head
-
-`chain-head.json` contains:
-
-- chain identity binding,
-- record count,
-- genesis record hash,
-- last sequence,
-- last record hash,
-- SHA-256 over the ordered concatenation of raw 32-byte record digests.
-
-The chain digest is independent of filesystem enumeration order.
-
-## Deterministic offline evidence bundle
+## Deterministic offline evidence bundles
 
 Implemented commands:
 
@@ -177,99 +122,97 @@ Implemented commands:
 - `scripts/Test-EvidenceBundle.ps1`
 - `scripts/Compare-EvidenceBundle.ps1`
 
-`bundle-manifest.json` contains:
+Bundle generation:
 
-- chain identity and `chain_sha256`,
-- every record in exact sequence order with relative path, byte length and file SHA-256,
-- selected experiment files sorted by ordinal canonical relative path,
-- explicit `signature_state`,
-- canonical `bundle_sha256`.
+- verifies the evidence chain first,
+- inventories every record in sequence order,
+- inventories selected files in ordinal path order,
+- binds relative path, byte length and SHA-256,
+- requires `chain-head.json`,
+- copies no raw evidence,
+- requires no network access.
 
-The generator does not copy raw evidence. It creates a deterministic manifest for files already inside the experiment boundary.
+Bundle verification rejects:
 
-Version 1 bundle paths:
+- absolute paths,
+- `.` or `..` segments,
+- duplicate or case-colliding paths,
+- bundle self-reference,
+- record inventory truncation,
+- missing or modified files,
+- identity or chain mismatches,
+- reparse-point traversal.
 
-- use forward slashes only,
-- are relative to the experiment root,
-- reject drive prefixes and leading slashes,
-- reject empty, `.` and `..` segments,
-- reject repeated separators,
-- reject exact duplicates,
-- reject case-colliding paths,
-- reject reparse-point traversal,
-- cannot include the bundle manifest itself,
-- cannot place the manifest inside `evidence-store/records/`.
+Comparison distinguishes identical bundle identity, same experiment identity with different content and different experiment identity. Signature-state changes are reported separately from unsigned bundle identity.
 
-The bundle must include `evidence-store/chain-head.json`.
+## Detached local signatures
 
-Offline verification requires no network and performs:
+Implemented commands:
 
-1. Draft 2020-12 schema validation.
-2. Canonical bundle self-hash reproduction.
-3. Complete append-only chain verification.
-4. Bundle identity and chain-digest comparison.
-5. Exact record count, sequence and path checks.
-6. Record and selected-file byte-length checks.
-7. Record and selected-file SHA-256 checks.
-8. Canonical path ordering, duplicate and case-collision checks.
-9. Explicit signature-state handling.
+- `scripts/Add-EvidenceBundleSignature.ps1`
+- `scripts/Test-EvidenceBundleSignature.ps1`
 
-Until the detached signing adapter is implemented, `Test-EvidenceBundle.ps1` accepts only explicitly `unsigned` bundles and rejects other signature states.
+Version 1 signature algorithm:
 
-## Bundle comparison
+```text
+rsa-sha256-pkcs1-v1_5
+```
 
-`Compare-EvidenceBundle.ps1` distinguishes:
+The signer:
 
-- `identical_bundle_identity`,
-- `same_experiment_identity_different_content`,
-- `different_experiment_identity`.
+- loads a local PFX with a SecureString password,
+- signs the raw 32-byte `bundle_sha256` digest,
+- writes only a detached signature under `evidence-store/signatures/`,
+- stores certificate SHA-256, signature SHA-256 and algorithm metadata,
+- never stores the PFX path, password or private key material,
+- preserves the unsigned `bundle_sha256` identity.
 
-It reports:
+Signature states:
 
-- identity-field changes,
-- chain digest changes,
-- signature-state changes,
-- record entries present only on either side,
-- changed record entries,
-- file entries present only on either side,
-- changed file entries.
+- `unsigned`: no signature metadata,
+- `present_unverified`: signature file and digest are present but no public certificate was supplied,
+- `valid`: the supplied public certificate verified the RSA signature.
 
-With experiment roots supplied, both bundles are fully verified before comparison. Without roots, each manifest is schema-validated and self-hash-validated before metadata comparison.
+A manifest that declares `valid` without public-certificate verification fails closed. Missing, modified or wrong-certificate signatures fail closed.
 
-Comparison is evidence metadata analysis; it is not proof that two target executions were behaviorally equivalent.
+## Repository smoke integration
 
-## Optional local signatures
+`scripts/Test-Repository.ps1` now runs a complete synthetic flow:
 
-Signing remains the next implementation block.
+```text
+experiment lifecycle
+→ observation identity
+→ final evidence index
+→ append-only evidence records
+→ chain-head verification
+→ unsigned deterministic bundle
+→ offline bundle verification
+```
 
-Required semantics:
+## Adversarial validation coverage
 
-- unsigned bundles remain verifiable and report `unsigned`,
-- detached signature material does not change the unsigned bundle identity,
-- a present valid signature reports `valid`,
-- a present signature without a verification certificate reports `present_unverified`,
-- an invalid signature is rejected,
-- public certificates may be distributed,
-- private keys may not be committed.
-
-## Fail-closed rules
-
-Verification fails when:
-
-- canonical serialization cannot be reproduced,
-- record or payload hashes mismatch,
-- sequence or previous-hash linkage is invalid,
-- identity changes inside a chain,
-- chain-head values disagree,
-- tool binary hash or length mismatches,
-- clock arithmetic cannot be reproduced,
-- bundle identity disagrees with the chain,
-- a listed record or file is missing, changed or reordered,
-- bundle record inventory is truncated,
-- a path is absolute, non-canonical, duplicated or case-colliding,
-- a reparse point is encountered,
-- the bundle references itself,
-- an unsupported or invalid signature state is encountered.
+- canonical insertion-order equivalence,
+- known SHA-256 vector,
+- array-order sensitivity,
+- floating-point rejection,
+- UTF-8 no-BOM output,
+- payload tamper,
+- record deletion and sequence gaps,
+- identity substitution with recomputed record hash,
+- sensitive argument non-persistence,
+- changed tool binary,
+- inconsistent re-hashed clock payload,
+- invalid clock sample,
+- repeated deterministic bundle generation,
+- selected-file mutation,
+- record-inventory truncation,
+- case-collision and traversal,
+- reparse-point path,
+- detached signature identity preservation,
+- one-byte signature modification,
+- wrong public certificate,
+- missing signature file,
+- unverified `valid` state rejection.
 
 ## Public repository boundary
 
@@ -278,58 +221,27 @@ Never commit:
 - raw ETL or packet captures,
 - memory or crash dumps,
 - target executables, DLLs, drivers or protected assets,
-- private signing keys,
+- private signing keys or PFX files,
 - debug secrets,
 - undisclosed vulnerability evidence,
 - credentials or tokens.
 
-Schemas, synthetic fixtures, verifiers and redacted metadata are allowed.
+Schemas, synthetic fixtures, verifiers, public certificates and redacted metadata are allowed.
 
-## Validation coverage implemented
+## Current validation state
 
-- canonical insertion-order equivalence,
-- known SHA-256 vector,
-- array-order sensitivity,
-- floating-point rejection,
-- UTF-8 no-BOM output,
-- root-only hash-field exclusion,
-- schema self-validation,
-- deterministic linked record hashes,
-- payload tamper,
-- record deletion and sequence gaps,
-- identity substitution with a recomputed record hash,
-- sensitive argument non-persistence,
-- tool binary mutation,
-- clock arithmetic reproduction,
-- re-hashed inconsistent clock payload,
-- invalid clock sample,
-- deterministic repeated bundle generation,
-- selected-file mutation,
-- bundle record-inventory truncation,
-- case-colliding inventory paths,
-- traversal paths,
-- identical and same-identity-different-content comparison.
+Validate run `#145` targets the current PR head. The previous run identified eight PSScriptAnalyzer findings: seven state-changing helper verb names and one plaintext SecureString fixture conversion. All eight were repaired without disabling analyzer rules.
 
-## Remaining implementation sequence
+Required final jobs:
 
-1. Implement the optional detached local signing adapter.
-2. Add valid, unverified and invalid-signature tests.
-3. Add an explicit bundle reparse-point adversarial test.
-4. Integrate an evidence-store and bundle flow into repository smoke validation.
-5. Inspect and repair Windows CI on the final candidate head.
-6. Complete PowerShell 5.1, PowerShell 7 and PSScriptAnalyzer closeout.
-7. Mark PR #5 ready and merge only after every gate is green.
+- Static analysis and repository smoke validation,
+- Lifecycle — PowerShell 7,
+- Lifecycle — Windows PowerShell 5.1.
 
-## Completion gates
+## Remaining sequence
 
-- identical inputs produce identical canonical hashes,
-- one-byte changes are detected,
-- deletion, reordering and substitution are detected,
-- identity mismatch fails closed,
-- tool provenance is independently verifiable,
-- clock-offset arithmetic is independently reproducible,
-- offline bundle verification requires no network,
-- bundle truncation and path ambiguity are rejected,
-- unsigned, unverified, valid and invalid-signature states are unambiguous,
-- all Windows CI jobs are green,
-- no private evidence or key enters the public repository.
+1. Inspect and repair Validate `#145`.
+2. Record the final all-green run and every job log.
+3. Update issue `#4`, PR `#5`, `HANDOFF.md` and the validation closeout record.
+4. Mark PR ready and merge only with exact validated head.
+5. Close issue `#4` and begin `NXB-IRL-004`.
