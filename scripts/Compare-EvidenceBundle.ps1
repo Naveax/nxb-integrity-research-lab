@@ -56,7 +56,7 @@ function Read-NxbComparisonBundle {
     }
 }
 
-function New-NxbInventoryMap {
+function Get-NxbInventoryMap {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object[]]$Entries,
@@ -144,11 +144,11 @@ foreach ($field in $identityFields) {
 }
 
 $recordComparison = Compare-NxbInventory `
-    -Left (New-NxbInventoryMap -Entries @($leftDocument.records) -Kind record) `
-    -Right (New-NxbInventoryMap -Entries @($rightDocument.records) -Kind record)
+    -Left (Get-NxbInventoryMap -Entries @($leftDocument.records) -Kind record) `
+    -Right (Get-NxbInventoryMap -Entries @($rightDocument.records) -Kind record)
 $fileComparison = Compare-NxbInventory `
-    -Left (New-NxbInventoryMap -Entries @($leftDocument.files) -Kind file) `
-    -Right (New-NxbInventoryMap -Entries @($rightDocument.files) -Kind file)
+    -Left (Get-NxbInventoryMap -Entries @($leftDocument.files) -Kind file) `
+    -Right (Get-NxbInventoryMap -Entries @($rightDocument.files) -Kind file)
 
 $relationship = if ($left.BundleSha256 -ceq $right.BundleSha256) {
     'identical_bundle_identity'
