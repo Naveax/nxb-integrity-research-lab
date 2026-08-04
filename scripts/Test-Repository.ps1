@@ -164,6 +164,57 @@ try {
     if ($status.EvidenceStatus -ne 'valid') {
         throw "Beklenmeyen evidence durumu: $($status.EvidenceStatus)"
     }
+
+    Write-Host 'Evidence-store chain ve offline bundle smoke testi çalıştırılıyor...'
+    [void](& (Join-Path $PSScriptRoot 'New-EvidenceStoreRecord.ps1') `
+        -ExperimentPath $experimentPath `
+        -RecordType manifest_snapshot `
+        -Payload ([ordered]@{
+            status = [string]$manifest.status
+            manifest_sha256 = $manifestHashBefore.ToLowerInvariant()
+        }) `
+        -SessionId 'repository-smoke-session' `
+        -CapturedUtc ([DateTime]'2026-08-04T22:00:00Z') `
+        -MonotonicNs 100)
+
+    [void](& (Join-Path $PSScriptRoot 'New-EvidenceStoreRecord.ps1') `
+        -ExperimentPath $experimentPath `
+        -RecordType evidence_index_snapshot `
+        -Payload ([ordered]@{
+            checked_entries = [int64]$integrity.CheckedEntries
+            evidence_index_sha256 = $evidenceHashBefore.ToLowerInvariant()
+        }) `
+        -SessionId 'repository-smoke-session' `
+        -CapturedUtc ([DateTime]'2026-08-04T22:00:01Z') `
+        -MonotonicNs 200)
+
+    $chain = & (Join-Path $PSScriptRoot 'Test-EvidenceStoreChain.ps1') `
+        -ExperimentPath $experimentPath `
+        -PassThru
+    if (-not $chain.IsValid -or $chain.RecordCount -ne 2) {
+        throw 'Evidence-store chain smoke doğrulaması başarısız.'
+    }
+
+    $bundle = & (Join-Path $PSScriptRoot 'New-EvidenceBundle.ps1') `
+        -ExperimentPath $experimentPath `
+        -IncludeRelativePath @(
+            'manifest.json',
+            'baseline/observation-identity.json',
+            'evidence-store/chain-head.json',
+            'evidence.sha256',
+            'logs/synthetic-evidence.txt'
+        ) `
+        -Confirm:$false
+
+    $bundleVerification = & (Join-Path $PSScriptRoot 'Test-EvidenceBundle.ps1') `
+        -ExperimentPath $experimentPath `
+        -BundlePath $bundle.BundlePath `
+        -PassThru
+    if (-not $bundleVerification.IsValid -or
+        $bundleVerification.SignatureState -cne 'unsigned' -or
+        $bundleVerification.RecordCount -ne 2) {
+        throw 'Unsigned offline evidence bundle smoke doğrulaması başarısız.'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) {
