@@ -6,6 +6,10 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 
+Write-Host 'Public repository content policy denetleniyor...'
+& (Join-Path $PSScriptRoot 'Test-PublicRepositoryContent.ps1') `
+    -RepositoryRoot $repositoryRoot
+
 Write-Host 'PowerShell syntax denetleniyor...'
 $scriptFiles = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'scripts') -File |
     Where-Object { $_.Extension -in @('.ps1', '.psm1') }
@@ -31,13 +35,14 @@ foreach ($file in $scriptFiles) {
 Write-Host 'JSON dosyaları denetleniyor...'
 $jsonFiles = @(
     (Join-Path $repositoryRoot 'config\lab.config.example.json'),
+    (Join-Path $repositoryRoot 'config\public-repository-policy.json'),
     (Join-Path $repositoryRoot 'schemas\experiment.schema.json')
 )
 foreach ($jsonFile in $jsonFiles) {
     Get-Content -LiteralPath $jsonFile -Raw | ConvertFrom-Json | Out-Null
 }
 
-Write-Host 'Workspace ve evidence smoke testi çalıştırılıyor...'
+Write-Host 'Workspace, schema ve evidence smoke testi çalıştırılıyor...'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("nxb-lab-test-{0}" -f [guid]::NewGuid())
 try {
     $initializedRoot = & (Join-Path $PSScriptRoot 'Initialize-Lab.ps1') `
@@ -53,10 +58,16 @@ try {
         -Name 'Repository-Smoke-Test' `
         -Hypothesis 'Manifest ve evidence finalization akışı çalışır'
 
+    & (Join-Path $PSScriptRoot 'Test-ExperimentManifest.ps1') `
+        -ExperimentPath $experimentPath
+
     $syntheticEvidence = Join-Path $experimentPath 'logs\synthetic-evidence.txt'
     'synthetic test evidence' | Set-Content -LiteralPath $syntheticEvidence -Encoding utf8
 
     & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
+        -ExperimentPath $experimentPath
+
+    & (Join-Path $PSScriptRoot 'Test-ExperimentManifest.ps1') `
         -ExperimentPath $experimentPath
 
     $manifestPath = Join-Path $experimentPath 'manifest.json'
