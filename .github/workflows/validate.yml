@@ -10,14 +10,60 @@ permissions:
   contents: read
 
 jobs:
-  powershell-validation:
+  static-analysis:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate repository
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path ./scripts, ./tests -Recurse -Severity Warning,Error
+          $results | Format-Table -AutoSize
+          if ($results) {
+            throw "PSScriptAnalyzer reported $($results.Count) issue(s)."
+          }
+
+      - name: Repository smoke validation
         shell: pwsh
         run: ./scripts/Test-Repository.ps1
+
+  lifecycle-tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: PowerShell 7
+            shell_name: pwsh
+          - runtime: Windows PowerShell 5.1
+            shell_name: powershell
+
+    name: Lifecycle — ${{ matrix.runtime }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pester 5
+        shell: ${{ matrix.shell_name }}
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -MinimumVersion 5.5.0 -Force
+
+      - name: Run lifecycle tests
+        shell: ${{ matrix.shell_name }}
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0 -Force
+          Invoke-Pester -Path ./tests -CI
