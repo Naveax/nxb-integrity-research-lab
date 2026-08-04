@@ -131,4 +131,7 @@ $hashRows |
 & (Join-Path $PSScriptRoot 'Get-SystemCapabilities.ps1') `
     -ExperimentPath $ExperimentPath | Out-Null
 
+& (Join-Path $PSScriptRoot 'Get-ObservationIdentity.ps1') `
+    -ExperimentPath $ExperimentPath | Out-Null
+
 Write-Host "Baseline tamamlandı: $baseline"
