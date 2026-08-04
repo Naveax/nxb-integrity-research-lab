@@ -45,14 +45,55 @@ jobs:
       - name: Analyze PowerShell
         shell: pwsh
         run: |
-          $results = foreach ($path in @('./scripts', './tests')) {
-            Invoke-ScriptAnalyzer `
-              -Path $path `
-              -Recurse `
-              -Settings ./.github/PSScriptAnalyzerSettings.psd1
+          $results = @(
+            foreach ($path in @('./scripts', './tests')) {
+              Invoke-ScriptAnalyzer `
+                -Path $path `
+                -Recurse `
+                -Settings ./.github/PSScriptAnalyzerSettings.psd1
+            }
+          ) | Sort-Object ScriptName, Line, Column, RuleName
+
+          $summary = [System.Collections.Generic.List[string]]::new()
+          $summary.Add('## PSScriptAnalyzer results') | Out-Null
+          $summary.Add('') | Out-Null
+
+          if ($results.Count -eq 0) {
+            $summary.Add('No Error or Warning findings.') | Out-Null
           }
-          $results | Format-Table -AutoSize
-          if ($results) {
+          else {
+            $summary.Add('| Severity | File | Line | Rule | Message |') | Out-Null
+            $summary.Add('|---|---|---:|---|---|') | Out-Null
+          }
+
+          foreach ($result in $results) {
+            $scriptName = if ([string]::IsNullOrWhiteSpace([string]$result.ScriptName)) {
+              '<unknown>'
+            }
+            else {
+              [string]$result.ScriptName
+            }
+
+            $line = [int]$result.Line
+            $column = [int]$result.Column
+            $severity = [string]$result.Severity
+            $rule = [string]$result.RuleName
+            $message = ([string]$result.Message).Replace("`r", ' ').Replace("`n", ' ')
+
+            Write-Host ("ANALYZER|{0}|{1}|{2}|{3}|{4}|{5}" -f `
+              $severity, $scriptName, $line, $column, $rule, $message)
+
+            $annotationMessage = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ("::warning file={0},line={1},col={2},title={3}::{4}" -f `
+              $scriptName, $line, $column, $rule, $annotationMessage)
+
+            $tableMessage = $message.Replace('|', '\|')
+            $summary.Add("| $severity | $scriptName | $line | $rule | $tableMessage |") | Out-Null
+          }
+
+          $summary | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($results.Count -gt 0) {
             throw "PSScriptAnalyzer reported $($results.Count) issue(s)."
           }
 
