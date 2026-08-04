@@ -189,7 +189,9 @@ $bundle = [ordered]@{
     files = $fileInventory.ToArray()
     signature_state = 'unsigned'
 }
-$bundleHash = Get-NxbCanonicalJsonHash -InputObject $bundle
+$bundleHash = Get-NxbCanonicalJsonHash `
+    -InputObject $bundle `
+    -ExcludeRootProperty @('bundle_sha256', 'signature_state', 'signature')
 $bundle['bundle_sha256'] = $bundleHash
 
 if ($PSCmdlet.ShouldProcess($outputFull, 'Deterministic offline evidence bundle manifest yaz')) {
