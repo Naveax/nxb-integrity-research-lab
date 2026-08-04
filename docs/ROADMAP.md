@@ -4,7 +4,9 @@ Kanonik uçtan uca plan: [`MASTER_PLAN.md`](MASTER_PLAN.md)
 
 Yeni sohbet/devralma durumu: [`HANDOFF.md`](HANDOFF.md)
 
-CPU/GPU gözlem hattı: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
+Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERVABILITY.md)
+
+Önceki CPU/GPU tasarım notları: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
 
 ## Current block
 
@@ -18,26 +20,59 @@ Tamamlananlar:
 
 - [x] Ortak path/lifecycle/atomic-write modülü
 - [x] Evidence integrity verifier
-- [x] Experiment status command
+- [x] Experiment status ve failed-state komutları
+- [x] Interrupted experiment recovery
 - [x] Atomik manifest oluşturma
 - [x] WPR start/stop durum geçişleri
 - [x] Atomik ve idempotent finalization
-- [x] İlk Pester lifecycle testleri
+- [x] Draft 2020-12 manifest schema validation
+- [x] Pester lifecycle/recovery testleri
 - [x] PowerShell 5.1 / PowerShell 7 CI matrisi
 - [x] PSScriptAnalyzer workflow tanımı
+- [x] Public repository sensitive-artifact guard
+- [x] Canonical evidence ordering ve tamper testleri
 
 Kalanlar:
 
 - [ ] GitHub Actions çalışmasını doğrulama ve gerekirse onarma
-- [ ] Gerçek JSON Schema validation
-- [ ] Interrupted experiment recovery
-- [ ] Failed-state writer
-- [ ] Path traversal/reparse-point adversarial tests
-- [ ] Sensitive artifact commit guard
-- [ ] WPR unavailable/failure-path tests
-- [ ] Canonical evidence ordering tests
-- [ ] Lifecycle schema update
-- [ ] Final validation report
+- [ ] WPR unavailable/start/stop failure-path testleri
+- [ ] Gerçek Windows reparse-point adversarial testi
+- [ ] Sentetik blocked-artifact guard testi
+- [ ] İlk CI loglarını inceleme ve tüm hataları düzeltme
+- [ ] Final validation report ve issue `#1` kapanışı
+
+## Full-system track preparation
+
+### NXB-IRL-004 — Full-system observability fabric
+
+Durum: `PLANNED / INITIAL IMPLEMENTATION STARTED`
+
+GitHub takip kaydı: issue `#2`
+
+İlk tamamlananlar:
+
+- [x] CPU/RAM/GPU/disk/ağ/PCIe/kernel/power/firmware mimari belgesi
+- [x] System capability JSON Schema
+- [x] Windows PowerShell capability inventory collector
+- [x] Baseline collector entegrasyonu
+- [x] Capability schema validator
+- [x] Repository smoke validation entegrasyonu
+- [x] Pester capability testleri
+
+Sıradaki alt görevler:
+
+- [ ] Canonical cross-domain event schema
+- [ ] Machine/boot/clock identity contract
+- [ ] Minimal CPU + scheduler profile
+- [ ] RAM/page-fault/working-set profile
+- [ ] Disk/file-system/storage queue profile
+- [ ] GPU/DXGKRNL/present profile
+- [ ] Network/NDIS/connection profile
+- [ ] Device/driver/PCIe provider inventory
+- [ ] Power/frequency/thermal snapshot
+- [ ] Trace-loss ve overhead accounting
+- [ ] Cross-domain correlation engine
+- [ ] Controlled CPU/RAM/disk/GPU/network fixtures
 
 ## Completed
 
@@ -53,7 +88,7 @@ Kalanlar:
 ## Upcoming blocks
 
 1. `NXB-IRL-003` — Evidence integrity store
-2. `NXB-IRL-004` — Custom CPU/GPU WPR/ETW profiles
+2. `NXB-IRL-004` — Full-system observability fabric
 3. `NXB-IRL-005` — Controlled kernel test driver
 4. `NXB-IRL-006` — Controller/target transport
 5. `NXB-IRL-007` — Debugger evidence pipeline
@@ -73,4 +108,4 @@ Kalanlar:
 19. `NXB-IRL-021` — Additional adapters
 20. `NXB-IRL-022` — Release/operator tooling
 
-Her blok için ayrıntılı görevler ve tamamlanma kapıları `MASTER_PLAN.md` içindedir.
+Her blok için ayrıntılı görevler ve tamamlanma kapıları `MASTER_PLAN.md` ve ilgili özel mimari belgesinde tutulur.
