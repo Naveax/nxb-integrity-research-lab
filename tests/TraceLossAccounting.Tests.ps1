@@ -68,21 +68,46 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
             Should -Throw '*native_loss_observed*'
     }
 
-    It 'does not allow no-native-loss classification with an unsupported counter' {
+    It 'does not allow no-native-loss classification with an unsupported applicable counter' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
-        $counter = $document.native_counters.realtime_buffers_lost
+        $counter = $document.native_counters.buffers_lost
         $counter.status = 'unsupported'
         $counter.value = $null
         $counter.source = $null
         $counter.reason = 'Counter is not exposed by this source.'
-        $document.trace_loss.measured_counter_count = 2
+        $document.trace_loss.measured_counter_count = 1
         $document.trace_loss.total_reported_loss = $null
-        $document.trace_loss.reason = 'One required counter is unsupported.'
+        $document.trace_loss.reason = 'One applicable counter is unsupported.'
         $document | ConvertTo-Json -Depth 20 |
             Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
 
         { & $script:Validator -Path $script:DocumentPath } |
             Should -Throw '*not_assessed*'
+    }
+
+    It 'rejects not-applicable status on Events Lost' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $counter = $document.native_counters.events_lost
+        $counter.status = 'not_applicable'
+        $counter.value = $null
+        $counter.source = $null
+        $counter.reason = 'Synthetic invalid status.'
+        $document.trace_loss.measured_counter_count = 1
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } |
+            Should -Throw '*cannot be not_applicable*'
+    }
+
+    It 'rejects a real-time counter marked not applicable outside File logging mode' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $document.capture.profile.logging_mode = 'Memory'
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } |
+            Should -Throw '*only for File logging mode*'
     }
 
     It 'rejects circular utilization math that does not match ETL provenance' {
