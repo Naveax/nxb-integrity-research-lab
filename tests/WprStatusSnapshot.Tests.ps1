@@ -2,6 +2,7 @@
     $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     $script:SnapshotScript = Join-Path $script:ScriptsRoot 'Get-NxbWprStatusSnapshot.ps1'
+    Import-Module (Join-Path $script:ScriptsRoot 'Nxb.Lab.Common.psm1') -Force
 }
 
 Describe 'NXB pre-stop WPR status snapshot' {
@@ -17,7 +18,7 @@ Describe 'NXB pre-stop WPR status snapshot' {
             -Name 'WPR-Status-Test' `
             -Hypothesis 'Pre-stop WPR status is captured conservatively'
 
-        & (Join-Path $script:ScriptsRoot 'Set-ExperimentState.ps1') `
+        Set-NxbExperimentState `
             -ExperimentPath $script:ExperimentPath `
             -State recording `
             -Confirm:$false | Out-Null
