@@ -24,10 +24,10 @@ Validated implementation head:
 76c2d9cbc6d52c7025664bc06a108fa44d3457f4
 ```
 
-Documentation-only closeout commit after validation:
+Documentation-only closeout head:
 
 ```text
-843190a915c2d1800b1fe9536adc3b4d98033fd8
+a4c58ab0cb80ea0e46b4f4ee7ea6ec6b96207433
 ```
 
 Validation record:
@@ -46,7 +46,7 @@ Required gate results:
 - Windows PowerShell 5.1 Pester: 98 passed, 0 failed,
 - native WPR calibration: 3/3 successful pairs and 1 warmup.
 
-The closeout commit changes documentation only. It does not change runtime, schema, validator, tests, workflows or calibration behavior.
+The commits after the validated implementation head change documentation only. They do not change runtime, schema, validator, tests, workflows or calibration behavior.
 
 ## Completed NXB-IRL-004 blocks
 
@@ -99,8 +99,8 @@ Completed properties:
 
 Before merging PR `#7`:
 
-1. confirm PR head is the documented closeout head or a later documentation-only equivalent,
-2. confirm comparison from validated implementation head contains no runtime or workflow changes,
+1. confirm PR head matches the documentation-only closeout head,
+2. confirm comparison from validated implementation head contains only documentation,
 3. confirm PR remains mergeable,
 4. mark ready,
 5. squash merge with expected-head locking.
