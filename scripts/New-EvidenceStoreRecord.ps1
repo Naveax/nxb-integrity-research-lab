@@ -58,12 +58,13 @@ $experimentId = [string]$manifest.experiment_id
 $machineId = [string]$identity.machine_id
 $bootId = [string]$identity.boot_id
 
-foreach ($requiredIdentity in [ordered]@{
+$requiredIdentities = [ordered]@{
     experiment_id = $experimentId
     machine_id = $machineId
     boot_id = $bootId
     session_id = $SessionId
-}.GetEnumerator()) {
+}
+foreach ($requiredIdentity in $requiredIdentities.GetEnumerator()) {
     if ([string]::IsNullOrWhiteSpace([string]$requiredIdentity.Value)) {
         throw "Evidence record identity alanı boş olamaz: $($requiredIdentity.Key)"
     }
@@ -97,12 +98,13 @@ try {
             -ExperimentPath $experimentFull `
             -PassThru
 
-        foreach ($comparison in [ordered]@{
+        $identityComparisons = [ordered]@{
             experiment_id = @($verified.ExperimentId, $experimentId)
             machine_id = @($verified.MachineId, $machineId)
             boot_id = @($verified.BootId, $bootId)
             session_id = @($verified.SessionId, $SessionId)
-        }.GetEnumerator()) {
+        }
+        foreach ($comparison in $identityComparisons.GetEnumerator()) {
             if ([string]$comparison.Value[0] -cne [string]$comparison.Value[1]) {
                 throw "Yeni record mevcut zincir kimliğiyle uyuşmuyor: $($comparison.Key)"
             }
