@@ -50,22 +50,29 @@ function ConvertTo-NxbWindowsCommandLineArgument {
         return $Value
     }
 
+    $quoteCharacter = [char]34
+    $backslashCharacter = [char]92
     $builder = [Text.StringBuilder]::new()
-    [void]$builder.Append('"')
+    [void]$builder.Append($quoteCharacter)
     $backslashCount = 0
+
     foreach ($character in $Value.ToCharArray()) {
-        if ($character -eq '\') {
+        if ($character -eq $backslashCharacter) {
             $backslashCount++
             continue
         }
 
-        if ($character -eq '"') {
-            [void]$builder.Append(('\' * (($backslashCount * 2) + 1)))
-            [void]$builder.Append('"')
+        if ($character -eq $quoteCharacter) {
+            [void]$builder.Append(
+                ([string]$backslashCharacter * (($backslashCount * 2) + 1))
+            )
+            [void]$builder.Append($quoteCharacter)
         }
         else {
             if ($backslashCount -gt 0) {
-                [void]$builder.Append(('\' * $backslashCount))
+                [void]$builder.Append(
+                    ([string]$backslashCharacter * $backslashCount)
+                )
             }
             [void]$builder.Append($character)
         }
@@ -73,9 +80,11 @@ function ConvertTo-NxbWindowsCommandLineArgument {
     }
 
     if ($backslashCount -gt 0) {
-        [void]$builder.Append(('\' * ($backslashCount * 2)))
+        [void]$builder.Append(
+            ([string]$backslashCharacter * ($backslashCount * 2))
+        )
     }
-    [void]$builder.Append('"')
+    [void]$builder.Append($quoteCharacter)
     return $builder.ToString()
 }
 
