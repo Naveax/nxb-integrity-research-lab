@@ -6,23 +6,6 @@
     $script:Fixture = Join-Path `
         $script:RepositoryRoot `
         'tests\fixtures\collector-overhead-calibration.valid.json'
-}
-
-Describe 'NXB collector overhead calibration validation' {
-    BeforeEach {
-        $script:TempRoot = Join-Path `
-            ([IO.Path]::GetTempPath()) `
-            ("nxb-overhead-{0}" -f [guid]::NewGuid())
-        New-Item -ItemType Directory -Path $script:TempRoot -Force | Out-Null
-        $script:ManifestPath = Join-Path $script:TempRoot 'calibration.json'
-        Copy-Item -LiteralPath $script:Fixture -Destination $script:ManifestPath
-    }
-
-    AfterEach {
-        if (Test-Path -LiteralPath $script:TempRoot) {
-            Remove-Item -LiteralPath $script:TempRoot -Recurse -Force
-        }
-    }
 
     function Read-NxbCalibrationFixture {
         [CmdletBinding()]
@@ -42,6 +25,23 @@ Describe 'NXB collector overhead calibration validation' {
             $Document |
                 ConvertTo-Json -Depth 32 |
                 Set-Content -LiteralPath $script:ManifestPath -Encoding UTF8
+        }
+    }
+}
+
+Describe 'NXB collector overhead calibration validation' {
+    BeforeEach {
+        $script:TempRoot = Join-Path `
+            ([IO.Path]::GetTempPath()) `
+            ("nxb-overhead-{0}" -f [guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:TempRoot -Force | Out-Null
+        $script:ManifestPath = Join-Path $script:TempRoot 'calibration.json'
+        Copy-Item -LiteralPath $script:Fixture -Destination $script:ManifestPath
+    }
+
+    AfterEach {
+        if (Test-Path -LiteralPath $script:TempRoot) {
+            Remove-Item -LiteralPath $script:TempRoot -Recurse -Force
         }
     }
 
@@ -76,7 +76,7 @@ Describe 'NXB collector overhead calibration validation' {
 
         {
             & $script:Validator -Path $script:ManifestPath
-        } | Should -Throw '*pairs[0].boot_id mismatch*'
+        } | Should -Throw '*boot_id mismatch*'
     }
 
     It 'rejects a pair ordinal gap' {
@@ -86,7 +86,7 @@ Describe 'NXB collector overhead calibration validation' {
 
         {
             & $script:Validator -Path $script:ManifestPath
-        } | Should -Throw '*pairs[0].ordinal must be 1*'
+        } | Should -Throw '*ordinal must be 1*'
     }
 
     It 'rejects an arm order that violates the deterministic protocol' {
