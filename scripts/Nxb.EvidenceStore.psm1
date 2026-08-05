@@ -91,6 +91,7 @@ function ConvertTo-NxbCanonicalJsonValue {
         [object]$Value,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.HashSet[string]]$ExcludedRootProperties,
 
         [Parameter(Mandatory)]
