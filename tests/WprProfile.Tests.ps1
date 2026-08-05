@@ -19,7 +19,11 @@ Describe 'NXB minimal CPU scheduler WPR profile' {
             Remove-Item -LiteralPath $script:TemporaryProfile -Force
         }
         if (Test-Path -LiteralPath $script:TemporaryLink) {
-            Remove-Item -LiteralPath $script:TemporaryLink -Force
+            $cmdPath = Join-Path $env:SystemRoot 'System32\cmd.exe'
+            & $cmdPath /d /c "rmdir `"$script:TemporaryLink`"" | Out-Null
+            if ($LASTEXITCODE -ne 0 -and (Test-Path -LiteralPath $script:TemporaryLink)) {
+                throw "Test junction temizlenemedi: $script:TemporaryLink"
+            }
         }
         if (Test-Path -LiteralPath $script:OutsideRoot) {
             Remove-Item -LiteralPath $script:OutsideRoot -Recurse -Force
