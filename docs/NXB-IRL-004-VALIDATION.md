@@ -87,4 +87,4 @@ peak private-bytes delta percent:
 
 ## Closeout boundary
 
-This file is a documentation-only closeout commit created after the exact implementation head was validated. The PR description must retain both the validated implementation head and the later documentation-only closeout head. No runtime or workflow change is included in this record.
+The exact implementation head above is the head that passed every required Windows gate. Later commits in this PR are limited to validation and handoff documentation. The authoritative closeout head is recorded in PR metadata and verified by comparing it with the validated implementation head before merge.
