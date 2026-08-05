@@ -48,6 +48,9 @@ param(
     [string]$PowerShellExecutablePath,
 
     [Parameter()]
+    [string]$PowerCfgExecutablePath,
+
+    [Parameter()]
     [switch]$PassThru
 )
 
@@ -93,55 +96,16 @@ function New-NxbOverheadMeasurement {
     }
 }
 
-function Get-NxbActivePowerPolicy {
+function Get-NxbCalibrationPowerPolicy {
     [CmdletBinding()]
-    param()
-
-    $powerCfg = Get-Command powercfg.exe -ErrorAction SilentlyContinue
-    if (-not $powerCfg) {
-        return [ordered]@{
-            status      = 'unavailable'
-            scheme_guid = $null
-            name         = $null
-            source       = 'powercfg.exe unavailable'
-        }
-    }
-
-    $output = & $powerCfg.Source /getactivescheme 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        return [ordered]@{
-            status      = 'unavailable'
-            scheme_guid = $null
-            name         = $null
-            source       = "powercfg.exe exit $LASTEXITCODE"
-        }
-    }
-
-    $text = $output -join ' '
-    $match = [regex]::Match(
-        $text,
-        '(?i)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s+\(([^)]*)\))?'
+    param(
+        [Parameter()]
+        [string]$ExplicitPath
     )
-    if (-not $match.Success) {
-        return [ordered]@{
-            status      = 'partial'
-            scheme_guid = $null
-            name         = $null
-            source       = $powerCfg.Source
-        }
-    }
 
-    return [ordered]@{
-        status      = 'available'
-        scheme_guid = $match.Groups[1].Value.ToLowerInvariant()
-        name         = if ($match.Groups[2].Success) {
-            $match.Groups[2].Value
-        }
-        else {
-            $null
-        }
-        source       = $powerCfg.Source
-    }
+    return & (Join-Path $PSScriptRoot 'Get-NxbActivePowerPolicy.ps1') `
+        -PowerCfgExecutablePath $ExplicitPath `
+        -PassThru
 }
 
 function Get-NxbCalibrationIdentity {
@@ -182,15 +146,27 @@ function Get-NxbFirstArm {
     )
 
     switch ($ProtocolOrdering) {
-        'control_then_capture' { return 'control' }
-        'capture_then_control' { return 'capture' }
+        'control_then_capture' {
+            return 'control'
+        }
+        'capture_then_control' {
+            return 'capture'
+        }
         'alternating_control_first' {
-            return if (($Ordinal % 2) -eq 1) { 'control' } else { 'capture' }
+            if (($Ordinal % 2) -eq 1) {
+                return 'control'
+            }
+            return 'capture'
         }
         'alternating_capture_first' {
-            return if (($Ordinal % 2) -eq 1) { 'capture' } else { 'control' }
+            if (($Ordinal % 2) -eq 1) {
+                return 'capture'
+            }
+            return 'control'
         }
-        default { throw "Desteklenmeyen trial ordering: $ProtocolOrdering" }
+        default {
+            throw "Desteklenmeyen trial ordering: $ProtocolOrdering"
+        }
     }
 }
 
@@ -219,7 +195,7 @@ function New-NxbChildExperimentContext {
         -Root $LabRoot `
         -Name ("Overhead-{0:D4}-{1}" -f $Ordinal, $Arm) `
         -Hypothesis 'Paired collector overhead arm preserves identity and workload equivalence'
-    $childManifest = Read-NxbJson -Path (Join-Path $childPath 'manifest.json')
+    $manifest = Read-NxbJson -Path (Join-Path $childPath 'manifest.json')
     $identity = Get-NxbCalibrationIdentity -Path $childPath
 
     if ([string]$identity.machine_id -cne $ParentMachineId) {
@@ -228,20 +204,19 @@ function New-NxbChildExperimentContext {
     if ([string]$identity.boot_id -cne $ParentBootId) {
         throw "Child experiment boot_id değişti: $childPath"
     }
-    if ([string]$identity.experiment_id -cne [string]$childManifest.experiment_id) {
+    if ([string]$identity.experiment_id -cne [string]$manifest.experiment_id) {
         throw "Child observation identity experiment_id uyuşmuyor: $childPath"
     }
 
     return [pscustomobject]@{
-        Path = $childPath
-        ExperimentId = [string]$childManifest.experiment_id
-        RelativePath = "experiments/$([string]$childManifest.experiment_id)"
-        Identity = $identity
+        Path         = $childPath
+        ExperimentId = [string]$manifest.experiment_id
+        RelativePath = "experiments/$([string]$manifest.experiment_id)"
     }
 }
 
-function Invoke-NxbChildFailureTransition {
-    [CmdletBinding()]
+function Set-NxbChildExperimentFailed {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)]
         [string]$ChildPath,
@@ -252,7 +227,11 @@ function Invoke-NxbChildFailureTransition {
     )
 
     $manifest = Read-NxbJson -Path (Join-Path $ChildPath 'manifest.json')
-    if ([string]$manifest.status -notin @('failed', 'finalized')) {
+    if ([string]$manifest.status -in @('failed', 'finalized')) {
+        return
+    }
+
+    if ($PSCmdlet.ShouldProcess($ChildPath, 'Mark child experiment failed')) {
         & (Join-Path $PSScriptRoot 'Set-ExperimentFailed.ps1') `
             -ExperimentPath $ChildPath `
             -Reason $Reason `
@@ -318,12 +297,18 @@ function New-NxbFailedArmEvidence {
             reason = $Reason
         }
         process_metrics          = [ordered]@{
-            cpu_time_ms = New-NxbOverheadMeasurement `
-                -Status failed -Unit 'ms' -Reason $Reason
-            peak_working_set_bytes = New-NxbOverheadMeasurement `
-                -Status failed -Unit 'bytes' -Reason $Reason
-            peak_private_bytes = New-NxbOverheadMeasurement `
-                -Status failed -Unit 'bytes' -Reason $Reason
+            cpu_time_ms = $(New-NxbOverheadMeasurement `
+                -Status failed `
+                -Unit 'ms' `
+                -Reason $Reason)
+            peak_working_set_bytes = $(New-NxbOverheadMeasurement `
+                -Status failed `
+                -Unit 'bytes' `
+                -Reason $Reason)
+            peak_private_bytes = $(New-NxbOverheadMeasurement `
+                -Status failed `
+                -Unit 'bytes' `
+                -Reason $Reason)
         }
         diagnostics              = @($Reason)
     }
@@ -351,27 +336,22 @@ function Invoke-NxbControlArm {
         [string]$PowerShellPath
     )
 
-    $measurement = & (Join-Path $PSScriptRoot 'Invoke-NxbMeasuredWorkload.ps1') `
-        -ExperimentPath $Context.Path `
-        -Iterations $WorkloadIterations `
-        -Seed $WorkloadSeed `
-        -TimeoutSeconds $WorkloadTimeoutSeconds `
-        -SampleIntervalMilliseconds $SamplingMilliseconds `
-        -PowerShellExecutablePath $PowerShellPath `
-        -PassThru
-    $arm = ConvertTo-NxbArmEvidence -Measurement $measurement -Context $Context
-
-    if ([string]$arm.status -eq 'measured') {
-        & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
-            -ExperimentPath $Context.Path
+    try {
+        $measurement = & (Join-Path $PSScriptRoot 'Invoke-NxbMeasuredWorkload.ps1') `
+            -ExperimentPath $Context.Path `
+            -Iterations $WorkloadIterations `
+            -Seed $WorkloadSeed `
+            -TimeoutSeconds $WorkloadTimeoutSeconds `
+            -SampleIntervalMilliseconds $SamplingMilliseconds `
+            -PowerShellExecutablePath $PowerShellPath `
+            -PassThru
+        return ConvertTo-NxbArmEvidence -Measurement $measurement -Context $Context
     }
-    else {
-        Invoke-NxbChildFailureTransition `
-            -ChildPath $Context.Path `
-            -Reason 'Control workload arm failed.'
+    catch {
+        return New-NxbFailedArmEvidence `
+            -Context $Context `
+            -Reason "Control workload runner başarısız: $($_.Exception.Message)"
     }
-
-    return $arm
 }
 
 function Invoke-NxbCaptureArm {
@@ -406,14 +386,14 @@ function Invoke-NxbCaptureArm {
     $captureStarted = $false
     $captureError = $null
 
-    $startStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $startWatch = [Diagnostics.Stopwatch]::StartNew()
     try {
         & (Join-Path $PSScriptRoot 'Start-PerformanceTrace.ps1') `
             -ExperimentPath $Context.Path `
             -WprExecutablePath $WprPath
         $captureStarted = $true
         $startLatency = New-NxbOverheadMeasurement `
-            -Value $startStopwatch.Elapsed.TotalMilliseconds `
+            -Value $startWatch.Elapsed.TotalMilliseconds `
             -Unit 'ms'
     }
     catch {
@@ -424,10 +404,26 @@ function Invoke-NxbCaptureArm {
             -Reason $captureError
     }
     finally {
-        $startStopwatch.Stop()
+        $startWatch.Stop()
     }
 
-    if ($captureStarted) {
+    if (-not $captureStarted) {
+        $baseArm = New-NxbFailedArmEvidence -Context $Context -Reason $captureError
+        $stopLatency = New-NxbOverheadMeasurement `
+            -Status unsupported `
+            -Unit 'ms' `
+            -Reason 'WPR başlamadığı için stop latency ölçülmedi.'
+        $etlEvidence = [ordered]@{
+            status = 'failed'
+            path = $null
+            sha256 = $null
+            length = $null
+            effective_bytes_per_second = $null
+            profile_provenance_sha256 = $null
+            reason = $captureError
+        }
+    }
+    else {
         try {
             $measurement = & (Join-Path $PSScriptRoot 'Invoke-NxbMeasuredWorkload.ps1') `
                 -ExperimentPath $Context.Path `
@@ -448,37 +444,37 @@ function Invoke-NxbCaptureArm {
                 -Reason $captureError
         }
 
-        $stopStopwatch = [Diagnostics.Stopwatch]::StartNew()
+        $stopWatch = [Diagnostics.Stopwatch]::StartNew()
         try {
             & (Join-Path $PSScriptRoot 'Stop-PerformanceTrace.ps1') `
                 -ExperimentPath $Context.Path `
                 -WprExecutablePath $WprPath
             $stopLatency = New-NxbOverheadMeasurement `
-                -Value $stopStopwatch.Elapsed.TotalMilliseconds `
+                -Value $stopWatch.Elapsed.TotalMilliseconds `
                 -Unit 'ms'
 
-            $etlMetadata = Read-NxbJson -Path (
-                Join-Path $Context.Path 'traces\performance.etl.json'
-            )
-            if ([string]$etlMetadata.profile_integrity.status -cne 'valid' -or
-                [string]$etlMetadata.profile_provenance_sha256 -notmatch '^[0-9a-f]{64}$') {
+            $metadataPath = Join-Path $Context.Path 'traces\performance.etl.json'
+            $metadata = Read-NxbJson -Path $metadataPath
+            if ([string]$metadata.profile_integrity.status -cne 'valid' -or
+                [string]$metadata.profile_provenance_sha256 -notmatch '^[0-9a-f]{64}$') {
                 throw 'ETL profile provenance integrity valid değil.'
             }
 
             $durationSeconds = [double]$baseArm.duration_ms / 1000.0
             if ($durationSeconds -le 0) {
-                throw 'ETL effective byte rate için capture duration sıfırdan büyük olmalıdır.'
+                throw 'ETL byte-rate hesabı için capture duration sıfırdan büyük olmalıdır.'
             }
+
             $etlEvidence = [ordered]@{
                 status = 'measured'
                 path = 'traces/performance.etl'
-                sha256 = [string]$etlMetadata.sha256
-                length = [int64]$etlMetadata.length
+                sha256 = [string]$metadata.sha256
+                length = [int64]$metadata.length
                 effective_bytes_per_second = [Math]::Round(
-                    ([double]$etlMetadata.length / $durationSeconds),
+                    ([double]$metadata.length / $durationSeconds),
                     6
                 )
-                profile_provenance_sha256 = [string]$etlMetadata.profile_provenance_sha256
+                profile_provenance_sha256 = [string]$metadata.profile_provenance_sha256
                 reason = $null
             }
         }
@@ -512,51 +508,51 @@ function Invoke-NxbCaptureArm {
             }
         }
         finally {
-            $stopStopwatch.Stop()
-        }
-    }
-    else {
-        $baseArm = New-NxbFailedArmEvidence -Context $Context -Reason $captureError
-        $stopLatency = New-NxbOverheadMeasurement `
-            -Status unsupported `
-            -Unit 'ms' `
-            -Reason 'WPR başlamadığı için stop latency ölçülmedi.'
-        $etlEvidence = [ordered]@{
-            status = 'failed'
-            path = $null
-            sha256 = $null
-            length = $null
-            effective_bytes_per_second = $null
-            profile_provenance_sha256 = $null
-            reason = $captureError
+            $stopWatch.Stop()
         }
     }
 
     if ([string]$baseArm.status -ne 'measured' -or
-        [string]$etlEvidence.status -ne 'measured' -or
         [string]$startLatency.status -ne 'measured' -or
-        [string]$stopLatency.status -ne 'measured') {
+        [string]$stopLatency.status -ne 'measured' -or
+        [string]$etlEvidence.status -ne 'measured') {
         $baseArm.status = 'failed'
         if (-not [string]::IsNullOrWhiteSpace($captureError)) {
             $baseArm.diagnostics = @($baseArm.diagnostics) + @($captureError)
         }
-        Invoke-NxbChildFailureTransition `
-            -ChildPath $Context.Path `
-            -Reason 'Capture overhead arm failed.'
-    }
-    else {
-        & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
-            -ExperimentPath $Context.Path
     }
 
     $captureArm = [ordered]@{}
-    foreach ($property in $baseArm.Keys) {
-        $captureArm[$property] = $baseArm[$property]
+    foreach ($key in $baseArm.Keys) {
+        $captureArm[$key] = $baseArm[$key]
     }
     $captureArm.wpr_start_latency_ms = $startLatency
     $captureArm.wpr_stop_latency_ms = $stopLatency
     $captureArm.etl = $etlEvidence
     return $captureArm
+}
+
+function Get-NxbArmMetricForDelta {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Arm,
+
+        [Parameter(Mandatory)]
+        [string]$MetricName,
+
+        [Parameter(Mandatory)]
+        [string]$Unit
+    )
+
+    if ([string]$Arm.status -ne 'measured') {
+        return New-NxbOverheadMeasurement `
+            -Status failed `
+            -Unit $Unit `
+            -Reason 'Arm measured değil.'
+    }
+
+    return $Arm.process_metrics.$MetricName
 }
 
 function New-NxbDeltaEvidence {
@@ -582,10 +578,14 @@ function New-NxbDeltaEvidence {
         [string]$Capture.status -ne 'measured') {
         $reason = "$Label source metric measured değil."
         return [pscustomobject]@{
-            Absolute = New-NxbOverheadMeasurement `
-                -Status failed -Unit $AbsoluteUnit -Reason $reason
-            Relative = New-NxbOverheadMeasurement `
-                -Status failed -Unit 'percent' -Reason $reason
+            Absolute = $(New-NxbOverheadMeasurement `
+                -Status failed `
+                -Unit $AbsoluteUnit `
+                -Reason $reason)
+            Relative = $(New-NxbOverheadMeasurement `
+                -Status failed `
+                -Unit 'percent' `
+                -Reason $reason)
             RelativeValue = $null
         }
     }
@@ -617,8 +617,8 @@ function New-NxbDeltaEvidence {
     }
 
     return [pscustomobject]@{
-        Absolute = $absolute
-        Relative = $relative
+        Absolute      = $absolute
+        Relative      = $relative
         RelativeValue = $relativeValue
     }
 }
@@ -633,42 +633,68 @@ function New-NxbPairDeltas {
         [object]$CaptureArm
     )
 
-    $durationControl = if ([string]$ControlArm.status -eq 'measured') {
-        New-NxbOverheadMeasurement -Value ([double]$ControlArm.duration_ms) -Unit 'ms'
+    $controlDuration = if ([string]$ControlArm.status -eq 'measured') {
+        New-NxbOverheadMeasurement `
+            -Value ([double]$ControlArm.duration_ms) `
+            -Unit 'ms'
     }
     else {
         New-NxbOverheadMeasurement `
-            -Status failed -Unit 'ms' -Reason 'Control arm failed.'
+            -Status failed `
+            -Unit 'ms' `
+            -Reason 'Control arm failed.'
     }
-    $durationCapture = if ([string]$CaptureArm.status -eq 'measured') {
-        New-NxbOverheadMeasurement -Value ([double]$CaptureArm.duration_ms) -Unit 'ms'
+    $captureDuration = if ([string]$CaptureArm.status -eq 'measured') {
+        New-NxbOverheadMeasurement `
+            -Value ([double]$CaptureArm.duration_ms) `
+            -Unit 'ms'
     }
     else {
         New-NxbOverheadMeasurement `
-            -Status failed -Unit 'ms' -Reason 'Capture arm failed.'
+            -Status failed `
+            -Unit 'ms' `
+            -Reason 'Capture arm failed.'
     }
 
     $duration = New-NxbDeltaEvidence `
-        -Control $durationControl `
-        -Capture $durationCapture `
+        -Control $controlDuration `
+        -Capture $captureDuration `
         -SourceUnit 'ms' `
         -AbsoluteUnit 'ms' `
         -Label 'duration'
     $cpu = New-NxbDeltaEvidence `
-        -Control $ControlArm.process_metrics.cpu_time_ms `
-        -Capture $CaptureArm.process_metrics.cpu_time_ms `
+        -Control (Get-NxbArmMetricForDelta `
+            -Arm $ControlArm `
+            -MetricName 'cpu_time_ms' `
+            -Unit 'ms') `
+        -Capture (Get-NxbArmMetricForDelta `
+            -Arm $CaptureArm `
+            -MetricName 'cpu_time_ms' `
+            -Unit 'ms') `
         -SourceUnit 'ms' `
         -AbsoluteUnit 'ms' `
         -Label 'cpu_time'
     $workingSet = New-NxbDeltaEvidence `
-        -Control $ControlArm.process_metrics.peak_working_set_bytes `
-        -Capture $CaptureArm.process_metrics.peak_working_set_bytes `
+        -Control (Get-NxbArmMetricForDelta `
+            -Arm $ControlArm `
+            -MetricName 'peak_working_set_bytes' `
+            -Unit 'bytes') `
+        -Capture (Get-NxbArmMetricForDelta `
+            -Arm $CaptureArm `
+            -MetricName 'peak_working_set_bytes' `
+            -Unit 'bytes') `
         -SourceUnit 'bytes' `
         -AbsoluteUnit 'bytes' `
         -Label 'peak_working_set'
     $privateBytes = New-NxbDeltaEvidence `
-        -Control $ControlArm.process_metrics.peak_private_bytes `
-        -Capture $CaptureArm.process_metrics.peak_private_bytes `
+        -Control (Get-NxbArmMetricForDelta `
+            -Arm $ControlArm `
+            -MetricName 'peak_private_bytes' `
+            -Unit 'bytes') `
+        -Capture (Get-NxbArmMetricForDelta `
+            -Arm $CaptureArm `
+            -MetricName 'peak_private_bytes' `
+            -Unit 'bytes') `
         -SourceUnit 'bytes' `
         -AbsoluteUnit 'bytes' `
         -Label 'peak_private_bytes'
@@ -685,9 +711,9 @@ function New-NxbPairDeltas {
             peak_private_bytes_relative_percent = $privateBytes.Relative
         }
         RelativeValues = [ordered]@{
-            duration = $duration.RelativeValue
-            cpu_time = $cpu.RelativeValue
-            peak_working_set = $workingSet.RelativeValue
+            duration           = $duration.RelativeValue
+            cpu_time           = $cpu.RelativeValue
+            peak_working_set   = $workingSet.RelativeValue
             peak_private_bytes = $privateBytes.RelativeValue
         }
     }
@@ -698,28 +724,28 @@ function New-NxbDistributionEvidence {
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
-        [object[]]$Values,
+        [double[]]$Values,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$Unit,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$UnavailableReason
     )
 
-    $numericValues = @($Values | Where-Object { $null -ne $_ } | ForEach-Object {
-        [double]$_
-    })
+    $numericValues = @($Values)
     if ($numericValues.Count -eq 0) {
         return [ordered]@{
-            status = 'failed'
-            count = 0
+            status  = 'failed'
+            count   = 0
             minimum = $null
-            median = $null
-            mean = $null
+            median  = $null
+            mean    = $null
             maximum = $null
-            unit = $Unit
-            reason = $UnavailableReason
+            unit    = $Unit
+            reason  = $UnavailableReason
         }
     }
 
@@ -733,18 +759,63 @@ function New-NxbDistributionEvidence {
     }
     $sum = [double]0
     foreach ($value in $numericValues) {
-        $sum += [double]$value
+        $sum += $value
     }
 
     return [ordered]@{
-        status = 'measured'
-        count = $numericValues.Count
+        status  = 'measured'
+        count   = $numericValues.Count
         minimum = [double]$sorted[0]
-        median = $median
-        mean = $sum / $numericValues.Count
+        median  = $median
+        mean    = $sum / $numericValues.Count
         maximum = [double]$sorted[-1]
-        unit = $Unit
-        reason = $null
+        unit    = $Unit
+        reason  = $null
+    }
+}
+
+function Complete-NxbChildArm {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Context,
+
+        [Parameter(Mandatory)]
+        [hashtable]$Arm,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('control', 'capture')]
+        [string]$ArmName
+    )
+
+    $valid = [string]$Arm.status -eq 'measured'
+    if ($ArmName -eq 'capture') {
+        $valid = $valid -and [string]$Arm.etl.status -eq 'measured'
+    }
+
+    if (-not $valid) {
+        Set-NxbChildExperimentFailed `
+            -ChildPath $Context.Path `
+            -Reason "$ArmName overhead arm failed." `
+            -Confirm:$false
+        return
+    }
+
+    try {
+        if ($PSCmdlet.ShouldProcess($Context.Path, 'Finalize successful child arm')) {
+            & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
+                -ExperimentPath $Context.Path
+        }
+    }
+    catch {
+        $Arm.status = 'failed'
+        $Arm.diagnostics = @($Arm.diagnostics) + @(
+            "Child finalization başarısız: $($_.Exception.Message)"
+        )
+        Set-NxbChildExperimentFailed `
+            -ChildPath $Context.Path `
+            -Reason "$ArmName child finalization failed." `
+            -Confirm:$false
     }
 }
 
@@ -788,10 +859,7 @@ if ([string]$parentIdentity.experiment_id -cne $parentExperimentId) {
     throw 'Parent observation identity experiment_id uyuşmuyor.'
 }
 
-$powerPolicy = Get-NxbActivePowerPolicy
-if ([string]$powerPolicy.status -ne 'available') {
-    throw "Active power policy güvenilir biçimde çözümlenemedi: $($powerPolicy.source)"
-}
+$powerPolicy = Get-NxbCalibrationPowerPolicy -ExplicitPath $PowerCfgExecutablePath
 $powerPolicyFingerprint = Get-NxbCanonicalJsonHash -InputObject $powerPolicy
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
@@ -820,6 +888,7 @@ $workload = [ordered]@{
     timeout_seconds = $TimeoutSeconds
 }
 $workloadFingerprint = Get-NxbCanonicalJsonHash -InputObject $workload
+$calibrationId = "overhead-$([guid]::NewGuid().ToString('N'))"
 
 $warmups = [Collections.Generic.List[object]]::new()
 try {
@@ -830,13 +899,13 @@ try {
             -Arm warmup `
             -ParentMachineId ([string]$parentIdentity.machine_id) `
             -ParentBootId ([string]$parentIdentity.boot_id)
-        $currentPower = Get-NxbActivePowerPolicy
-        $currentFingerprint = Get-NxbCanonicalJsonHash -InputObject $currentPower
-        if ($currentFingerprint -cne $powerPolicyFingerprint) {
+
+        $beforePolicy = Get-NxbCalibrationPowerPolicy -ExplicitPath $PowerCfgExecutablePath
+        if ((Get-NxbCanonicalJsonHash -InputObject $beforePolicy) -cne $powerPolicyFingerprint) {
             throw "Power policy warmup öncesinde değişti: $warmupOrdinal"
         }
 
-        $warmupMeasurement = & (Join-Path $PSScriptRoot 'Invoke-NxbMeasuredWorkload.ps1') `
+        $measurement = & (Join-Path $PSScriptRoot 'Invoke-NxbMeasuredWorkload.ps1') `
             -ExperimentPath $context.Path `
             -Iterations $Iterations `
             -Seed $Seed `
@@ -848,20 +917,26 @@ try {
             ordinal = $warmupOrdinal
             experiment_id = $context.ExperimentId
             experiment_relative_path = $context.RelativePath
-            status = [string]$warmupMeasurement.status
-            duration_ms = [double]$warmupMeasurement.duration_ms
-            result = $warmupMeasurement.result
+            status = [string]$measurement.status
+            duration_ms = [double]$measurement.duration_ms
+            result = $measurement.result
         })
 
-        if ([string]$warmupMeasurement.status -ne 'measured') {
-            Invoke-NxbChildFailureTransition `
+        $afterPolicy = Get-NxbCalibrationPowerPolicy -ExplicitPath $PowerCfgExecutablePath
+        $warmupValid = (
+            [string]$measurement.status -eq 'measured' -and
+            (Get-NxbCanonicalJsonHash -InputObject $afterPolicy) -ceq $powerPolicyFingerprint
+        )
+        if (-not $warmupValid) {
+            Set-NxbChildExperimentFailed `
                 -ChildPath $context.Path `
-                -Reason 'Calibration warmup failed.'
+                -Reason 'Calibration warmup failed or power policy changed.' `
+                -Confirm:$false
             throw "Calibration warmup başarısız: $warmupOrdinal"
         }
+
         & (Join-Path $PSScriptRoot 'Finalize-Experiment.ps1') `
             -ExperimentPath $context.Path
-
         if ($CooldownSeconds -gt 0) {
             Start-Sleep -Seconds $CooldownSeconds
         }
@@ -877,10 +952,10 @@ try {
         -Depth 16
 
     $pairs = [Collections.Generic.List[object]]::new()
-    $durationRelative = [Collections.Generic.List[object]]::new()
-    $cpuRelative = [Collections.Generic.List[object]]::new()
-    $workingSetRelative = [Collections.Generic.List[object]]::new()
-    $privateBytesRelative = [Collections.Generic.List[object]]::new()
+    $durationRelative = [Collections.Generic.List[double]]::new()
+    $cpuRelative = [Collections.Generic.List[double]]::new()
+    $workingSetRelative = [Collections.Generic.List[double]]::new()
+    $privateBytesRelative = [Collections.Generic.List[double]]::new()
     $successfulPairCount = 0
 
     for ($ordinal = 1; $ordinal -le $RepetitionCount; $ordinal++) {
@@ -908,9 +983,8 @@ try {
         }
 
         foreach ($armName in $executionOrder) {
-            $currentPower = Get-NxbActivePowerPolicy
-            $currentFingerprint = Get-NxbCanonicalJsonHash -InputObject $currentPower
-            if ($currentFingerprint -cne $powerPolicyFingerprint) {
+            $beforePolicy = Get-NxbCalibrationPowerPolicy -ExplicitPath $PowerCfgExecutablePath
+            if ((Get-NxbCanonicalJsonHash -InputObject $beforePolicy) -cne $powerPolicyFingerprint) {
                 throw "Power policy pair $ordinal $armName öncesinde değişti."
             }
 
@@ -934,17 +1008,19 @@ try {
                     -PowerShellPath $PowerShellExecutablePath
             }
 
-            $afterPower = Get-NxbActivePowerPolicy
-            $afterFingerprint = Get-NxbCanonicalJsonHash -InputObject $afterPower
-            if ($afterFingerprint -cne $powerPolicyFingerprint) {
+            $afterPolicy = Get-NxbCalibrationPowerPolicy -ExplicitPath $PowerCfgExecutablePath
+            if ((Get-NxbCanonicalJsonHash -InputObject $afterPolicy) -cne $powerPolicyFingerprint) {
                 $arms[$armName].status = 'failed'
                 $arms[$armName].diagnostics = @($arms[$armName].diagnostics) + @(
                     "Power policy $armName arm sırasında değişti."
                 )
-                Invoke-NxbChildFailureTransition `
-                    -ChildPath $contexts[$armName].Path `
-                    -Reason 'Power policy changed during overhead arm.'
             }
+
+            Complete-NxbChildArm `
+                -Context $contexts[$armName] `
+                -Arm $arms[$armName] `
+                -ArmName $armName `
+                -Confirm:$false
 
             if ($CooldownSeconds -gt 0) {
                 Start-Sleep -Seconds $CooldownSeconds
@@ -954,15 +1030,17 @@ try {
         $deltas = New-NxbPairDeltas `
             -ControlArm $arms.control `
             -CaptureArm $arms.capture
-        foreach ($entry in @(
-            @($durationRelative, $deltas.RelativeValues.duration),
-            @($cpuRelative, $deltas.RelativeValues.cpu_time),
-            @($workingSetRelative, $deltas.RelativeValues.peak_working_set),
-            @($privateBytesRelative, $deltas.RelativeValues.peak_private_bytes)
-        )) {
-            if ($null -ne $entry[1]) {
-                $entry[0].Add($entry[1])
-            }
+        if ($null -ne $deltas.RelativeValues.duration) {
+            $durationRelative.Add([double]$deltas.RelativeValues.duration)
+        }
+        if ($null -ne $deltas.RelativeValues.cpu_time) {
+            $cpuRelative.Add([double]$deltas.RelativeValues.cpu_time)
+        }
+        if ($null -ne $deltas.RelativeValues.peak_working_set) {
+            $workingSetRelative.Add([double]$deltas.RelativeValues.peak_working_set)
+        }
+        if ($null -ne $deltas.RelativeValues.peak_private_bytes) {
+            $privateBytesRelative.Add([double]$deltas.RelativeValues.peak_private_bytes)
         }
 
         $pairSuccessful = (
@@ -991,7 +1069,7 @@ try {
     $failedPairCount = $RepetitionCount - $successfulPairCount
     $calibration = [ordered]@{
         schema_version = 1
-        calibration_id = "overhead-$parentExperimentId"
+        calibration_id = $calibrationId
         experiment_id = $parentExperimentId
         experiment_relative_path = "experiments/$parentExperimentId"
         machine_id = [string]$parentIdentity.machine_id
@@ -1016,22 +1094,22 @@ try {
             pair_count = $RepetitionCount
             successful_pair_count = $successfulPairCount
             failed_pair_count = $failedPairCount
-            duration_delta_percent = New-NxbDistributionEvidence `
+            duration_delta_percent = $(New-NxbDistributionEvidence `
                 -Values @($durationRelative) `
                 -Unit 'percent' `
-                -UnavailableReason 'Measured duration deltas bulunamadı.'
-            cpu_time_delta_percent = New-NxbDistributionEvidence `
+                -UnavailableReason 'Measured duration deltas bulunamadı.')
+            cpu_time_delta_percent = $(New-NxbDistributionEvidence `
                 -Values @($cpuRelative) `
                 -Unit 'percent' `
-                -UnavailableReason 'Measured CPU-time deltas bulunamadı.'
-            peak_working_set_delta_percent = New-NxbDistributionEvidence `
+                -UnavailableReason 'Measured CPU-time deltas bulunamadı.')
+            peak_working_set_delta_percent = $(New-NxbDistributionEvidence `
                 -Values @($workingSetRelative) `
                 -Unit 'percent' `
-                -UnavailableReason 'Measured working-set deltas bulunamadı.'
-            peak_private_bytes_delta_percent = New-NxbDistributionEvidence `
+                -UnavailableReason 'Measured working-set deltas bulunamadı.')
+            peak_private_bytes_delta_percent = $(New-NxbDistributionEvidence `
                 -Values @($privateBytesRelative) `
                 -Unit 'percent' `
-                -UnavailableReason 'Measured private-bytes deltas bulunamadı.'
+                -UnavailableReason 'Measured private-bytes deltas bulunamadı.')
             threshold_policy = [ordered]@{
                 status = 'not_declared'
                 reason = 'Thresholds require measured representative evidence and are not declared by this runner.'
