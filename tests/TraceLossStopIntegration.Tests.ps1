@@ -70,6 +70,7 @@ Describe 'NXB accounting-aware WPR stop integration' {
             -Hypothesis 'WPR stop preserves explicit trace-loss accounting'
         Initialize-NxbRecordingFixture -ExperimentPath $script:ExperimentPath
         $script:FakeWpr = Join-Path $script:TempRoot 'fake-wpr.cmd'
+        $script:FakeXperf = Join-Path $script:TempRoot 'fake-xperf.cmd'
     }
 
     AfterEach {
@@ -78,7 +79,7 @@ Describe 'NXB accounting-aware WPR stop integration' {
         }
     }
 
-    It 'stops WPR and persists partial conservative accounting when only Events Lost is exposed' {
+    It 'stops WPR and persists partial conservative accounting from both native sources' {
         @'
 @echo off
 if /I "%~1"=="-status" (
@@ -93,17 +94,28 @@ if /I "%~1"=="-stop" (
 )
 exit /b 8
 '@ | Set-Content -LiteralPath $script:FakeWpr -Encoding ASCII
+        @'
+@echo off
+>"%~4" echo Trace Statistics
+>>"%~4" echo Events Lost      : 0
+>>"%~4" echo Buffers Lost     : 0
+>>"%~4" echo Buffers Written  : 1
+exit /b 0
+'@ | Set-Content -LiteralPath $script:FakeXperf -Encoding ASCII
 
         $result = & $script:StopWithAccounting `
             -ExperimentPath $script:ExperimentPath `
             -WprExecutablePath $script:FakeWpr `
+            -XperfExecutablePath $script:FakeXperf `
             -PassThru `
             -Confirm:$false
 
         Test-Path -LiteralPath $result.AccountingPath | Should -BeTrue
+        Test-Path -LiteralPath $result.PostStopStatisticsPath | Should -BeTrue
         $accounting = Get-Content -LiteralPath $result.AccountingPath -Raw |
             ConvertFrom-Json
         $accounting.trace_loss.classification | Should -Be 'not_assessed'
+        $accounting.trace_loss.measured_counter_count | Should -Be 2
         $accounting.circular_overwrite.classification | Should -Be 'no_risk_observed'
         $accounting.summary.evidence_completeness | Should -Be 'partial'
 
@@ -119,12 +131,12 @@ exit /b 8
         $session.trace_loss_accounting | Should -Be 'analysis/trace-loss-accounting.json'
     }
 
-    It 'preserves positive native loss while completing the stop lifecycle' {
+    It 'preserves positive post-stop native loss while completing the stop lifecycle' {
         @'
 @echo off
 if /I "%~1"=="-status" (
   echo Collector Name          : NT Kernel Logger
-  echo Events Lost             : 6
+  echo Events Lost             : 0
   exit /b 0
 )
 if /I "%~1"=="-stop" (
@@ -133,10 +145,19 @@ if /I "%~1"=="-stop" (
 )
 exit /b 8
 '@ | Set-Content -LiteralPath $script:FakeWpr -Encoding ASCII
+        @'
+@echo off
+>"%~4" echo Trace Statistics
+>>"%~4" echo Events Lost      : 6
+>>"%~4" echo Buffers Lost     : 0
+>>"%~4" echo Buffers Written  : 1
+exit /b 0
+'@ | Set-Content -LiteralPath $script:FakeXperf -Encoding ASCII
 
         $result = & $script:StopWithAccounting `
             -ExperimentPath $script:ExperimentPath `
             -WprExecutablePath $script:FakeWpr `
+            -XperfExecutablePath $script:FakeXperf `
             -PassThru `
             -Confirm:$false
 
@@ -147,7 +168,7 @@ exit /b 8
         $accounting.claims.trace_loss_absence | Should -BeFalse
     }
 
-    It 'fails the stopped experiment when the native status source fails' {
+    It 'fails the stopped experiment when both native accounting sources fail' {
         @'
 @echo off
 if /I "%~1"=="-status" (
@@ -160,11 +181,17 @@ if /I "%~1"=="-stop" (
 )
 exit /b 8
 '@ | Set-Content -LiteralPath $script:FakeWpr -Encoding ASCII
+        @'
+@echo off
+echo synthetic xperf failure 1>&2
+exit /b 9
+'@ | Set-Content -LiteralPath $script:FakeXperf -Encoding ASCII
 
         {
             & $script:StopWithAccounting `
                 -ExperimentPath $script:ExperimentPath `
                 -WprExecutablePath $script:FakeWpr `
+                -XperfExecutablePath $script:FakeXperf `
                 -Confirm:$false
         } | Should -Throw '*accounting finalization başarısız*'
 
