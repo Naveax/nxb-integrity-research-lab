@@ -239,26 +239,26 @@ function Test-NxbProfileVariant {
         [string]$CollectorId
     )
 
-    $profile = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
+    $profileElement = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
         -Context $Document `
         -XPath ("/WindowsPerformanceRecorder/Profiles/Profile[@Id='{0}']" -f $Id) `
         -Label "WPR profile variant $Id")
 
-    if ((Get-NxbRequiredXmlAttribute -Element $profile -Name Name -Label $Id) -cne
+    if ((Get-NxbRequiredXmlAttribute -Element $profileElement -Name Name -Label $Id) -cne
         'NxbMinimalCpuScheduler') {
         throw "$Id beklenen profile name değerini taşımıyor."
     }
-    if ((Get-NxbRequiredXmlAttribute -Element $profile -Name DetailLevel -Label $Id) -cne
+    if ((Get-NxbRequiredXmlAttribute -Element $profileElement -Name DetailLevel -Label $Id) -cne
         'Verbose') {
         throw "$Id yalnız Verbose detail level kullanmalıdır."
     }
-    if ((Get-NxbRequiredXmlAttribute -Element $profile -Name LoggingMode -Label $Id) -cne
+    if ((Get-NxbRequiredXmlAttribute -Element $profileElement -Name LoggingMode -Label $Id) -cne
         $LoggingMode) {
         throw "$Id logging mode uyuşmuyor. Beklenen: $LoggingMode"
     }
 
     $collectorReference = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
-        -Context $profile `
+        -Context $profileElement `
         -XPath './Collectors/SystemCollectorId' `
         -Label "$Id collector reference")
     if ((Get-NxbRequiredXmlAttribute `
