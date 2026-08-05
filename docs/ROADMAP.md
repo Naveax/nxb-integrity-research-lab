@@ -10,13 +10,49 @@ Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERV
 
 ## Current block
 
+### NXB-IRL-004 — Full-system observability fabric
+
+Durum: `NEXT — START AFTER NXB-IRL-003 MERGE`
+
+GitHub takip kaydı: issue `#2`.
+
+Hazır temel:
+
+- [x] CPU/RAM/GPU/disk/ağ/PCIe/kernel/power/firmware mimari belgesi
+- [x] System capability JSON Schema
+- [x] Windows PowerShell capability inventory collector
+- [x] Baseline collector entegrasyonu
+- [x] Capability schema validator
+- [x] Repository smoke validation entegrasyonu
+- [x] Pester capability testleri
+- [x] Canonical cross-domain event schema
+- [x] Machine/boot/clock identity contract
+- [x] Deterministic evidence integrity store
+
+Sıradaki alt görevler:
+
+- [ ] Minimal CPU + scheduler profile
+- [ ] RAM/page-fault/working-set profile
+- [ ] Disk/file-system/storage queue profile
+- [ ] GPU/DXGKRNL/present profile
+- [ ] Network/NDIS/connection profile
+- [ ] Device/driver/PCIe provider inventory
+- [ ] Power/frequency/thermal snapshot
+- [ ] Trace-loss ve overhead accounting
+- [ ] Cross-domain correlation engine
+- [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+
+## PR closeout
+
 ### NXB-IRL-003 — Evidence integrity store
 
-Durum: `ACTIVE IMPLEMENTATION`
+Durum: `IMPLEMENTATION COMPLETE — PR #5 CLOSEOUT`
 
 GitHub takip kaydı: issue `#4`
 
 Draft PR: `#5`
+
+Canonical validation: [`NXB-IRL-003-VALIDATION.md`](NXB-IRL-003-VALIDATION.md)
 
 Tamamlananlar:
 
@@ -35,53 +71,35 @@ Tamamlananlar:
 - [x] Hassas argümanları saklamayan redacted argument digest
 - [x] Four-timestamp clock-offset record helper
 - [x] Clock arithmetic verifier
-- [x] Canonicalization/schema/chain/provenance/clock adversarial tests
+- [x] Deterministic offline bundle oluşturma
+- [x] Offline bundle doğrulama
+- [x] Evidence-store/bundle karşılaştırma
+- [x] Optional detached local signing
+- [x] Bundle truncation ve case-collision testleri
+- [x] Reparse/path traversal bundle testleri
+- [x] Unsigned/invalid-signature durum testleri
+- [x] Exact one-byte record mutation test
+- [x] Record deletion ve reordering tests
+- [x] Previous-record mismatch test
+- [x] Cross-experiment record substitution test
+- [x] Machine/boot/session identity mismatch tests
+- [x] Tool binary ve clock-offset tamper tests
+- [x] Repository smoke bundle integration
 - [x] PR/ref concurrency ile superseded Actions run cancellation
+- [x] PowerShell 7 validation: 63 passed, 0 failed
+- [x] Windows PowerShell 5.1 validation: 63 passed, 0 failed
+- [x] PSScriptAnalyzer: zero Error/Warning findings
+- [x] Public repository guard and full smoke validation
+- [x] Final validation report
 
-Sıradaki işler:
+Kalan closeout işlemleri:
 
-- [ ] İlk tamamlanan Windows CI loglarını inceleme ve onarma
-- [ ] Deterministic offline bundle oluşturma
-- [ ] Offline bundle doğrulama
-- [ ] Evidence-store/bundle karşılaştırma
-- [ ] Optional detached local signing
-- [ ] Bundle truncation ve case-collision testleri
-- [ ] Reparse/path traversal bundle testleri
-- [ ] Unsigned/invalid-signature durum testleri
-- [ ] Final validation report ve issue `#4` kapanışı
-
-## Full-system track preparation
-
-### NXB-IRL-004 — Full-system observability fabric
-
-Durum: `PLANNED / INITIAL IMPLEMENTATION STARTED`
-
-GitHub takip kaydı: issue `#2`.
-
-İlk tamamlananlar:
-
-- [x] CPU/RAM/GPU/disk/ağ/PCIe/kernel/power/firmware mimari belgesi
-- [x] System capability JSON Schema
-- [x] Windows PowerShell capability inventory collector
-- [x] Baseline collector entegrasyonu
-- [x] Capability schema validator
-- [x] Repository smoke validation entegrasyonu
-- [x] Pester capability testleri
-- [x] Canonical cross-domain event schema
-- [x] Machine/boot/clock identity contract
-
-Sıradaki alt görevler:
-
-- [ ] Minimal CPU + scheduler profile
-- [ ] RAM/page-fault/working-set profile
-- [ ] Disk/file-system/storage queue profile
-- [ ] GPU/DXGKRNL/present profile
-- [ ] Network/NDIS/connection profile
-- [ ] Device/driver/PCIe provider inventory
-- [ ] Power/frequency/thermal snapshot
-- [ ] Trace-loss ve overhead accounting
-- [ ] Cross-domain correlation engine
-- [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+- [ ] Final documentation-only head CI
+- [ ] PR `#5` exact-head evidence update
+- [ ] Issue `#4` acceptance checklist and evidence update
+- [ ] Mark PR ready
+- [ ] Exact-head squash merge
+- [ ] Close issue `#4`
 
 ## Completed
 
