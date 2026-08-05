@@ -322,6 +322,10 @@ try {
             [string]$postStop.buffers_written.status -cne 'measured') {
             throw 'Post-stop xperf trace-header sayaçları tam ölçülemedi.'
         }
+        if ([string]$postStop.realtime_buffers_lost.status -cne 'not_applicable' -or
+            [string]$accounting.native_counters.realtime_buffers_lost.status -cne 'not_applicable') {
+            throw 'File-mode real-time loss counter not_applicable değil.'
+        }
         if ([string]$accounting.summary.evidence_completeness -in @('failed', 'unavailable')) {
             throw 'Native accounting evidence completeness kabul edilemez.'
         }
@@ -352,6 +356,7 @@ try {
             post_stop_events_lost_status = [string]$postStop.events_lost.status
             post_stop_buffers_lost_status = [string]$postStop.buffers_lost.status
             post_stop_buffers_written_status = [string]$postStop.buffers_written.status
+            post_stop_realtime_buffers_lost_status = [string]$postStop.realtime_buffers_lost.status
             etl_sha256 = [string]$accounting.capture.etl.sha256
             etl_length = [int64]$accounting.capture.etl.length
             profile_provenance_sha256 = [string]$accounting.capture.profile.provenance_sha256
