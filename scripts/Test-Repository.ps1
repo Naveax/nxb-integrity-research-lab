@@ -42,6 +42,12 @@ if ([string]$wprProfile.RelativePath -cne 'profiles/Nxb.MinimalCpuScheduler.wprp
 }
 
 Write-Host 'JSON dosyaları denetleniyor...'
+$overheadSchemaPath = Join-Path `
+    $repositoryRoot `
+    'schemas\collector-overhead-calibration.schema.json'
+$overheadFixturePath = Join-Path `
+    $repositoryRoot `
+    'tests\fixtures\collector-overhead-calibration.valid.json'
 $jsonFiles = @(
     (Join-Path $repositoryRoot 'config\lab.config.example.json'),
     (Join-Path $repositoryRoot 'config\public-repository-policy.json'),
@@ -51,11 +57,18 @@ $jsonFiles = @(
     (Join-Path $repositoryRoot 'schemas\observability-event.schema.json'),
     (Join-Path $repositoryRoot 'schemas\evidence-store-record.schema.json'),
     (Join-Path $repositoryRoot 'schemas\evidence-chain-head.schema.json'),
-    (Join-Path $repositoryRoot 'schemas\evidence-bundle-manifest.schema.json')
+    (Join-Path $repositoryRoot 'schemas\evidence-bundle-manifest.schema.json'),
+    $overheadSchemaPath,
+    $overheadFixturePath
 )
 foreach ($jsonFile in $jsonFiles) {
     Get-Content -LiteralPath $jsonFile -Raw | ConvertFrom-Json | Out-Null
 }
+
+Write-Host 'Collector overhead calibration schema ve semantic sözleşmesi denetleniyor...'
+& (Join-Path $PSScriptRoot 'Test-CollectorOverheadCalibration.ps1') `
+    -Path $overheadFixturePath `
+    -SchemaPath $overheadSchemaPath
 
 Write-Host 'Canonical evidence-store JSON ve SHA-256 sözleşmesi denetleniyor...'
 Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
