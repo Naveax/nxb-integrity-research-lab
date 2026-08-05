@@ -71,9 +71,40 @@ function Select-NxbCounterSource {
     }
 }
 
+function Test-NxbSourceDocument {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Document,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ExperimentId,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('pre_stop', 'post_stop')]
+        [string]$SourceType
+    )
+
+    if ([string]$Document.experiment_id -cne $ExperimentId) {
+        throw "$SourceType source experiment_id ile deney dizini uyuşmuyor."
+    }
+
+    $hashValue = if ($SourceType -eq 'pre_stop') {
+        [string]$Document.raw_output_sha256
+    }
+    else {
+        [string]$Document.statistics_sha256
+    }
+    if ($hashValue -notmatch '^[0-9a-f]{64}$') {
+        throw "$SourceType source SHA-256 alanı geçersiz."
+    }
+}
+
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
+[void](Test-NxbPathSafety -Path $experimentFull -RootPath $experimentFull)
+$experimentId = [string](Split-Path -Leaf $experimentFull)
 $analysisRoot = Join-Path $experimentFull 'analysis'
-New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($PreStopSnapshotPath)) {
     $PreStopSnapshotPath = Join-Path $analysisRoot 'wpr-status-pre-stop.json'
@@ -86,24 +117,50 @@ $postStopFull = Get-NxbFullPath -Path $PostStopStatisticsPath
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $preStopFull)
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $postStopFull)
 
-if (-not (Test-Path -LiteralPath $postStopFull -PathType Leaf)) {
-    if ($PSCmdlet.ShouldProcess($postStopFull, 'Collect post-stop ETL trace statistics')) {
-        $postStopFull = & (Join-Path $PSScriptRoot 'Get-NxbEtlTraceStatistics.ps1') `
-            -ExperimentPath $experimentFull `
-            -XperfExecutablePath $XperfExecutablePath `
-            -OutputPath $postStopFull `
-            -Confirm:$false
+foreach ($existingInput in @($preStopFull, $postStopFull)) {
+    if (Test-Path -LiteralPath $existingInput -PathType Leaf) {
+        [void](Test-NxbPathSafety -Path $existingInput -RootPath $experimentFull)
     }
 }
 
+if (-not $PSCmdlet.ShouldProcess(
+    $experimentFull,
+    'Collect, merge and validate trace-loss accounting sources'
+)) {
+    return
+}
+
+if (-not (Test-Path -LiteralPath $analysisRoot -PathType Container)) {
+    New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
+}
+[void](Test-NxbPathSafety -Path $analysisRoot -RootPath $experimentFull)
+
+if (-not (Test-Path -LiteralPath $postStopFull -PathType Leaf)) {
+    $postStopFull = & (Join-Path $PSScriptRoot 'Get-NxbEtlTraceStatistics.ps1') `
+        -ExperimentPath $experimentFull `
+        -XperfExecutablePath $XperfExecutablePath `
+        -OutputPath $postStopFull `
+        -Confirm:$false
+}
+
 $preStop = if (Test-Path -LiteralPath $preStopFull -PathType Leaf) {
-    Read-NxbJson -Path $preStopFull
+    $document = Read-NxbJson -Path $preStopFull
+    Test-NxbSourceDocument `
+        -Document $document `
+        -ExperimentId $experimentId `
+        -SourceType pre_stop
+    $document
 }
 else {
     $null
 }
 $postStop = if (Test-Path -LiteralPath $postStopFull -PathType Leaf) {
-    Read-NxbJson -Path $postStopFull
+    $document = Read-NxbJson -Path $postStopFull
+    Test-NxbSourceDocument `
+        -Document $document `
+        -ExperimentId $experimentId `
+        -SourceType post_stop
+    $document
 }
 else {
     $null
@@ -146,7 +203,7 @@ $mergeHash = Get-NxbCanonicalJsonHash -InputObject $mergeMaterial
 $mergedSnapshot = [ordered]@{
     schema_version = 1
     captured_utc = [DateTime]::UtcNow.ToString('o')
-    experiment_id = [string](Split-Path -Leaf $experimentFull)
+    experiment_id = $experimentId
     command = [ordered]@{
         executable = 'nxb-source-merge'
         arguments = @($preStopFull, $postStopFull)
@@ -167,9 +224,7 @@ $mergedPath = Join-Path $analysisRoot 'trace-loss-counter-sources.json'
 if (Test-Path -LiteralPath $mergedPath) {
     throw "Merged trace-loss counter snapshot zaten var: $mergedPath"
 }
-if ($PSCmdlet.ShouldProcess($mergedPath, 'Write merged trace-loss counter sources')) {
-    Write-NxbJsonAtomic -Path $mergedPath -InputObject $mergedSnapshot -Depth 24
-}
+Write-NxbJsonAtomic -Path $mergedPath -InputObject $mergedSnapshot -Depth 24
 
 $accountingArguments = @{
     ExperimentPath = $experimentFull
