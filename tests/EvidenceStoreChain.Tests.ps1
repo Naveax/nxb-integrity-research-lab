@@ -67,7 +67,7 @@
             -MonotonicNs $MonotonicNs
     }
 
-    function Set-NxbRecordIdentityField {
+    function Invoke-NxbRecordIdentityMutation {
         [CmdletBinding()]
         param(
             [Parameter(Mandatory)]
@@ -320,7 +320,7 @@ Describe 'NXB append-only evidence chain' {
             -Value beta `
             -MonotonicNs 200
 
-        Set-NxbRecordIdentityField `
+        Invoke-NxbRecordIdentityMutation `
             -RecordPath $second.RecordPath `
             -Field machine_id `
             -Value 'substituted-machine'
@@ -344,7 +344,7 @@ Describe 'NXB append-only evidence chain' {
             -Value beta `
             -MonotonicNs 200
 
-        Set-NxbRecordIdentityField `
+        Invoke-NxbRecordIdentityMutation `
             -RecordPath $second.RecordPath `
             -Field boot_id `
             -Value 'substituted-boot'
@@ -368,7 +368,7 @@ Describe 'NXB append-only evidence chain' {
             -Value beta `
             -MonotonicNs 200
 
-        Set-NxbRecordIdentityField `
+        Invoke-NxbRecordIdentityMutation `
             -RecordPath $second.RecordPath `
             -Field session_id `
             -Value 'substituted-session'
