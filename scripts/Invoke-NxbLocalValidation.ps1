@@ -1,4 +1,4 @@
-﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
@@ -155,6 +155,7 @@ function Add-NxbGate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.List[object]]$GateList,
 
         [Parameter(Mandatory)]
