@@ -18,7 +18,8 @@ $requiredFiles = @(
     (Join-Path $PSScriptRoot 'Get-NxbEtlTraceStatistics.ps1'),
     (Join-Path $PSScriptRoot 'New-NxbTraceLossAccounting.ps1'),
     (Join-Path $PSScriptRoot 'New-NxbTraceLossAccountingFromSources.ps1'),
-    (Join-Path $PSScriptRoot 'Stop-PerformanceTraceWithAccounting.ps1')
+    (Join-Path $PSScriptRoot 'Stop-PerformanceTraceWithAccounting.ps1'),
+    (Join-Path $PSScriptRoot 'Invoke-NxbTraceLossLocalValidation.ps1')
 )
 
 foreach ($requiredFile in $requiredFiles) {
