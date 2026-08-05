@@ -6,34 +6,100 @@ Yeni sohbet/devralma durumu: [`HANDOFF.md`](HANDOFF.md)
 
 Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERVABILITY.md)
 
+Önceki CPU/GPU tasarım notları: [`CPU_GPU_OBSERVABILITY.md`](CPU_GPU_OBSERVABILITY.md)
+
 ## Current block
+
+### NXB-IRL-004 — Full-system observability fabric
+
+Durum: `NEXT — START AFTER NXB-IRL-003 MERGE`
+
+GitHub takip kaydı: issue `#2`.
+
+Hazır temel:
+
+- [x] CPU/RAM/GPU/disk/ağ/PCIe/kernel/power/firmware mimari belgesi
+- [x] System capability JSON Schema
+- [x] Windows PowerShell capability inventory collector
+- [x] Baseline collector entegrasyonu
+- [x] Capability schema validator
+- [x] Repository smoke validation entegrasyonu
+- [x] Pester capability testleri
+- [x] Canonical cross-domain event schema
+- [x] Machine/boot/clock identity contract
+- [x] Deterministic evidence integrity store
+
+Sıradaki alt görevler:
+
+- [ ] Minimal CPU + scheduler profile
+- [ ] RAM/page-fault/working-set profile
+- [ ] Disk/file-system/storage queue profile
+- [ ] GPU/DXGKRNL/present profile
+- [ ] Network/NDIS/connection profile
+- [ ] Device/driver/PCIe provider inventory
+- [ ] Power/frequency/thermal snapshot
+- [ ] Trace-loss ve overhead accounting
+- [ ] Cross-domain correlation engine
+- [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+
+## PR closeout
 
 ### NXB-IRL-003 — Evidence integrity store
 
-Durum: `IN PROGRESS`
+Durum: `IMPLEMENTATION COMPLETE — PR #5 CLOSEOUT`
 
-Kapsam:
+GitHub takip kaydı: issue `#4`
 
-- [ ] Canonical manifest hash
-- [ ] Append-only experiment chain
-- [ ] Tool provenance
-- [ ] Controller/target clock offset evidence
-- [ ] Machine/boot/session identity binding
-- [ ] Deterministic offline evidence bundle
-- [ ] Independent integrity comparison
-- [ ] Optional local signature
-- [ ] Tamper, truncation, reordering and substitution tests
-- [ ] PowerShell 5.1 / PowerShell 7 validation
+Draft PR: `#5`
 
-Tamamlanma kapısı:
+Canonical validation: [`NXB-IRL-003-VALIDATION.md`](NXB-IRL-003-VALIDATION.md)
 
-- aynı girdiler aynı canonical hash ve bundle manifestini üretir,
-- tek byte değişikliği bulunur,
-- kayıt silme, yeniden sıralama veya substitution zincir doğrulamasında reddedilir,
-- machine/boot/experiment identity uyuşmazlığı fail-closed davranır,
-- verification ağ bağlantısı olmadan yapılır,
-- imza opsiyoneldir; imza yokluğu unsigned durumu olarak görünür, bozuk imza geçersiz sayılır,
-- private evidence ve signing key public repoya girmez.
+Tamamlananlar:
+
+- [x] Version-1 evidence-store contract
+- [x] Record, chain-head ve bundle-manifest Draft 2020-12 şemaları
+- [x] Canonical JSON serializer
+- [x] UTF-8 BOM'suz deterministic SHA-256
+- [x] Root-only self-hash exclusion
+- [x] Atomik canonical JSON writer
+- [x] Append-only record zinciri
+- [x] Staged schema validation before append
+- [x] Previous-record hash linkage
+- [x] Experiment/machine/boot/session identity binding
+- [x] Deterministic chain-head ve chain verifier
+- [x] Tool provenance record helper ve executable verifier
+- [x] Hassas argümanları saklamayan redacted argument digest
+- [x] Four-timestamp clock-offset record helper
+- [x] Clock arithmetic verifier
+- [x] Deterministic offline bundle oluşturma
+- [x] Offline bundle doğrulama
+- [x] Evidence-store/bundle karşılaştırma
+- [x] Optional detached local signing
+- [x] Bundle truncation ve case-collision testleri
+- [x] Reparse/path traversal bundle testleri
+- [x] Unsigned/invalid-signature durum testleri
+- [x] Exact one-byte record mutation test
+- [x] Record deletion ve reordering tests
+- [x] Previous-record mismatch test
+- [x] Cross-experiment record substitution test
+- [x] Machine/boot/session identity mismatch tests
+- [x] Tool binary ve clock-offset tamper tests
+- [x] Repository smoke bundle integration
+- [x] PR/ref concurrency ile superseded Actions run cancellation
+- [x] PowerShell 7 validation: 63 passed, 0 failed
+- [x] Windows PowerShell 5.1 validation: 63 passed, 0 failed
+- [x] PSScriptAnalyzer: zero Error/Warning findings
+- [x] Public repository guard and full smoke validation
+- [x] Final validation report
+
+Kalan closeout işlemleri:
+
+- [ ] Final documentation-only head CI
+- [ ] PR `#5` exact-head evidence update
+- [ ] Issue `#4` acceptance checklist and evidence update
+- [ ] Mark PR ready
+- [ ] Exact-head squash merge
+- [ ] Close issue `#4`
 
 ## Completed
 
@@ -48,68 +114,13 @@ Tamamlanma kapısı:
 
 ### NXB-IRL-002 — Deterministic experiment lifecycle
 
-Durum: `COMPLETE`
-
-GitHub takip kaydı: issue `#1`
-
-Merge kaydı:
-
-- PR `#3`
-- validated head `878710229ad11c5c1b95247e304986ca4e5eda47`
-- squash merge `e3b3ab79ab72cafa92f2afa97895258cec912d86`
-
-Tamamlananlar:
-
-- [x] Ortak path/lifecycle/atomic-write modülü
-- [x] Evidence integrity verifier
-- [x] Experiment status ve failed-state komutları
-- [x] Interrupted experiment recovery
-- [x] Atomik manifest oluşturma
-- [x] Guarded WPR start/stop ve failure paths
-- [x] Atomik ve idempotent finalization
-- [x] Draft 2020-12 manifest schema validation
-- [x] Public repository sensitive-artifact guard
-- [x] Reparse-point ve path traversal adversarial testleri
-- [x] Canonical evidence ordering ve tamper testleri
-- [x] PowerShell 5.1 / PowerShell 7 CI
-- [x] PSScriptAnalyzer Error/Warning gate
-- [x] UTF-8 BOM compatibility
-- [x] Final üç-job Actions doğrulaması
-
-Ayrıntılı kayıt: [`NXB-IRL-002-VALIDATION.md`](NXB-IRL-002-VALIDATION.md)
-
-## Full-system track preparation
-
-### NXB-IRL-004 — Full-system observability fabric
-
-Durum: `PLANNED / INITIAL IMPLEMENTATION STARTED`
-
-GitHub takip kaydı: issue `#2`
-
-İlk tamamlananlar:
-
-- [x] CPU/RAM/GPU/disk/ağ/PCIe/kernel/power/firmware mimari belgesi
-- [x] System capability JSON Schema
-- [x] Windows PowerShell capability inventory collector
-- [x] Baseline collector entegrasyonu
-- [x] Capability schema validator
-- [x] Repository smoke validation entegrasyonu
-- [x] Pester capability testleri
-- [x] Canonical cross-domain event schema
-- [x] Machine/boot/clock identity contract
-
-Sıradaki alt görevler:
-
-- [ ] Minimal CPU + scheduler profile
-- [ ] RAM/page-fault/working-set profile
-- [ ] Disk/file-system/storage queue profile
-- [ ] GPU/DXGKRNL/present profile
-- [ ] Network/NDIS/connection profile
-- [ ] Device/driver/PCIe provider inventory
-- [ ] Power/frequency/thermal snapshot
-- [ ] Trace-loss ve overhead accounting
-- [ ] Cross-domain correlation engine
-- [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+- [x] Canonical lifecycle and atomic writes
+- [x] Evidence verification and recovery
+- [x] WPR failure-path matrix
+- [x] Reparse and sensitive-artifact adversarial tests
+- [x] PowerShell 5.1 and PowerShell 7 Windows CI
+- [x] PSScriptAnalyzer and repository smoke validation
+- [x] PR #3 merge and issue #1 closure
 
 ## Upcoming blocks
 

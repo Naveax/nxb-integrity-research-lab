@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/evidence-chain-head.schema.json",
+  "title": "NXB Evidence Chain Head",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "session_id",
+    "record_count",
+    "genesis_record_sha256",
+    "last_sequence",
+    "last_record_sha256",
+    "chain_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "boot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "record_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "genesis_record_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "last_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_record_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "chain_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/evidence-store-record.schema.json",
+  "title": "NXB Evidence Store Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sequence",
+    "previous_record_sha256",
+    "record_type",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "session_id",
+    "captured_utc",
+    "monotonic_ns",
+    "payload",
+    "payload_sha256",
+    "record_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "previous_record_sha256": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/sha256" }
+      ]
+    },
+    "record_type": {
+      "type": "string",
+      "enum": [
+        "manifest_snapshot",
+        "evidence_index_snapshot",
+        "tool_provenance",
+        "clock_offset",
+        "observation_identity",
+        "bundle_seal"
+      ]
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "boot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "captured_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "payload": {
+      "type": "object"
+    },
+    "payload_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "record_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "sequence": { "const": 0 }
+        },
+        "required": ["sequence"]
+      },
+      "then": {
+        "properties": {
+          "previous_record_sha256": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "previous_record_sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "record_type": { "const": "tool_provenance" }
+        },
+        "required": ["record_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/tool_provenance_payload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "record_type": { "const": "clock_offset" }
+        },
+        "required": ["record_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/clock_offset_payload" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullable_version": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        { "type": "null" }
+      ]
+    },
+    "tool_provenance_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenance_version",
+        "tool_kind",
+        "tool_path",
+        "tool_sha256",
+        "tool_length",
+        "last_write_utc",
+        "file_version",
+        "product_version",
+        "invocation_name",
+        "argument_digest_sha256",
+        "argument_count",
+        "redacted_argument_count",
+        "collector_id",
+        "status",
+        "exit_code"
+      ],
+      "properties": {
+        "provenance_version": { "const": 1 },
+        "tool_kind": { "const": "local_file" },
+        "tool_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        },
+        "tool_sha256": { "$ref": "#/$defs/sha256" },
+        "tool_length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "last_write_utc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "file_version": { "$ref": "#/$defs/nullable_version" },
+        "product_version": { "$ref": "#/$defs/nullable_version" },
+        "invocation_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "argument_digest_sha256": { "$ref": "#/$defs/sha256" },
+        "argument_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redacted_argument_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "collector_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "status": {
+          "type": "string",
+          "enum": ["not_run", "succeeded", "failed"]
+        },
+        "exit_code": {
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "clock_offset_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clock_offset_version",
+        "measurement_method",
+        "controller_send_utc_ns",
+        "target_receive_monotonic_ns",
+        "target_send_monotonic_ns",
+        "controller_receive_utc_ns",
+        "controller_elapsed_ns",
+        "target_elapsed_ns",
+        "estimated_offset_ns",
+        "round_trip_ns",
+        "uncertainty_ns",
+        "offset_rounding"
+      ],
+      "properties": {
+        "clock_offset_version": { "const": 1 },
+        "measurement_method": { "const": "four_timestamp_midpoint_v1" },
+        "controller_send_utc_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_receive_monotonic_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_send_monotonic_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "controller_receive_utc_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "controller_elapsed_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_elapsed_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimated_offset_ns": {
+          "type": "integer"
+        },
+        "round_trip_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uncertainty_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset_rounding": { "const": "toward_zero" }
+      }
+    }
+  }
+}

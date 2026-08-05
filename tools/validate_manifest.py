@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate an NXB experiment manifest against the canonical JSON Schema."""
+"""Validate a JSON document against a Draft 2020-12 JSON Schema."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
+    from jsonschema.exceptions import SchemaError
 except ImportError as exc:  # pragma: no cover - exercised by wrapper failure path
     print(
         "The 'jsonschema' package is required. Install with: "
@@ -46,8 +47,18 @@ def main() -> int:
     parser.add_argument("--manifest", required=True, type=Path)
     args = parser.parse_args()
 
-    schema = load_json(args.schema)
-    manifest = load_json(args.manifest)
+    try:
+        schema = load_json(args.schema)
+        manifest = load_json(args.manifest)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
+
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        print(f"Invalid Draft 2020-12 schema '{args.schema}': {exc.message}", file=sys.stderr)
+        return 5
 
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     errors = sorted(
@@ -61,7 +72,7 @@ def main() -> int:
             print(f"{location}: {error.message}", file=sys.stderr)
         return 2
 
-    print(f"Manifest valid: {args.manifest}")
+    print(f"Document valid: {args.manifest}")
     return 0
 
 
