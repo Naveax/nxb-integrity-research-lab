@@ -31,7 +31,7 @@ function Get-NxbUnsignedValues {
         [string]$LabelPattern
     )
 
-    $pattern = '^(?i)\s*' + $LabelPattern + '\s*:\s*([0-9]+)\s*$'
+    $pattern = '(?i)^\s*' + $LabelPattern + '\s*:\s*([0-9]+)\s*$'
     $values = [Collections.Generic.List[uint64]]::new()
     foreach ($line in $Lines) {
         $match = [regex]::Match([string]$line, $pattern)
@@ -101,24 +101,28 @@ function Get-NxbSnapshotCounter {
 }
 
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
+[void](Test-NxbPathSafety -Path $experimentFull -RootPath $experimentFull)
 $manifestPath = Join-Path $experimentFull 'manifest.json'
 $sessionPath = Join-Path $experimentFull 'trace-session.json'
-if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-    throw "Manifest bulunamadı: $manifestPath"
-}
-if (-not (Test-Path -LiteralPath $sessionPath -PathType Leaf)) {
-    throw "Trace session bulunamadı: $sessionPath"
+foreach ($requiredPath in @($manifestPath, $sessionPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        throw "WPR status snapshot girdisi bulunamadı: $requiredPath"
+    }
+    [void](Test-NxbPathSafety -Path $requiredPath -RootPath $experimentFull)
 }
 
 $manifest = Read-NxbJson -Path $manifestPath
 $session = Read-NxbJson -Path $sessionPath
-if ([string]$manifest.status -ne 'recording' -or [string]$session.status -ne 'recording') {
+$experimentId = [string](Split-Path -Leaf $experimentFull)
+if ([string]$manifest.experiment_id -cne $experimentId) {
+    throw 'Manifest experiment_id ile deney dizini uyuşmuyor.'
+}
+if ([string]$manifest.status -cne 'recording' -or [string]$session.status -cne 'recording') {
     throw 'WPR status snapshot yalnız recording durumunda alınabilir.'
 }
 
 $wprPath = Resolve-NxbExecutablePath -Name 'wpr.exe' -ExplicitPath $WprExecutablePath
 $analysisRoot = Join-Path $experimentFull 'analysis'
-New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $analysisRoot 'wpr-status-pre-stop.json'
 }
@@ -126,6 +130,10 @@ $outputFull = Get-NxbFullPath -Path $OutputPath
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $outputFull)
 if (Test-Path -LiteralPath $outputFull) {
     throw "WPR status snapshot zaten var: $outputFull"
+}
+$outputParent = Split-Path -Parent $outputFull
+if (Test-Path -LiteralPath $outputParent -PathType Container) {
+    [void](Test-NxbPathSafety -Path $outputParent -RootPath $experimentFull)
 }
 
 $previousErrorActionPreference = $ErrorActionPreference
@@ -186,7 +194,7 @@ $eventsLost = Get-NxbSnapshotCounter `
 $snapshot = [ordered]@{
     schema_version = 1
     captured_utc = [DateTime]::UtcNow.ToString('o')
-    experiment_id = [string](Split-Path -Leaf $experimentFull)
+    experiment_id = $experimentId
     command = [ordered]@{
         executable = $wprPath
         arguments = @('-status', 'collectors', '-details')
@@ -210,11 +218,19 @@ $snapshot = [ordered]@{
     }
 }
 
+$written = $false
 if ($PSCmdlet.ShouldProcess($outputFull, 'Write WPR pre-stop status snapshot')) {
+    if (-not (Test-Path -LiteralPath $outputParent -PathType Container)) {
+        New-Item -ItemType Directory -Path $outputParent -Force | Out-Null
+    }
+    [void](Test-NxbPathSafety -Path $outputParent -RootPath $experimentFull)
     Write-NxbJsonAtomic -Path $outputFull -InputObject $snapshot -Depth 16
+    $written = $true
 }
 
 if ($PassThru) {
     return [pscustomobject]$snapshot
 }
-Write-Output $outputFull
+if ($written) {
+    Write-Output $outputFull
+}
