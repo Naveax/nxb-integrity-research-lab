@@ -142,10 +142,10 @@
                 reason = 'Not exposed by WPR status.'
             }
             realtime_buffers_lost = [ordered]@{
-                status = 'unsupported'
+                status = 'not_applicable'
                 value = $null
                 source = $null
-                reason = 'Not exposed for file mode.'
+                reason = 'File-mode capture has no real-time consumer.'
             }
         }
         Write-NxbJsonAtomic `
