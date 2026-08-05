@@ -24,12 +24,6 @@ Validated implementation head:
 76c2d9cbc6d52c7025664bc06a108fa44d3457f4
 ```
 
-Documentation-only closeout head:
-
-```text
-a4c58ab0cb80ea0e46b4f4ee7ea6ec6b96207433
-```
-
 Validation record:
 
 ```text
@@ -46,7 +40,7 @@ Required gate results:
 - Windows PowerShell 5.1 Pester: 98 passed, 0 failed,
 - native WPR calibration: 3/3 successful pairs and 1 warmup.
 
-The commits after the validated implementation head change documentation only. They do not change runtime, schema, validator, tests, workflows or calibration behavior.
+Commits after the validated implementation head are limited to validation and handoff documentation. They do not change runtime, schema, validator, tests, workflows or calibration behavior. The authoritative closeout head is stored in PR metadata and must be checked immediately before merge.
 
 ## Completed NXB-IRL-004 blocks
 
@@ -61,17 +55,6 @@ Squash merge:
 ```text
 04214ac4e27a1b35e4327392480c2f89e9caaddc
 ```
-
-Completed properties:
-
-- repository-owned WPRP,
-- native WPR parser compatibility,
-- bounded 512 MiB circular file collector,
-- matching memory-mode variant,
-- deterministic profile provenance,
-- teardown-first stop behavior,
-- ETL metadata and profile integrity binding,
-- adversarial path/XML/profile mutation coverage.
 
 ### Paired collector overhead calibration
 
@@ -99,11 +82,12 @@ Completed properties:
 
 Before merging PR `#7`:
 
-1. confirm PR head matches the documentation-only closeout head,
-2. confirm comparison from validated implementation head contains only documentation,
-3. confirm PR remains mergeable,
-4. mark ready,
-5. squash merge with expected-head locking.
+1. read the current PR head from GitHub,
+2. compare it with validated implementation head `76c2d9cbc6d52c7025664bc06a108fa44d3457f4`,
+3. confirm the later diff contains only documentation,
+4. confirm no workflow was restored,
+5. mark ready,
+6. squash merge with expected-head locking.
 
 Issue `#2` remains open after PR `#7`.
 
