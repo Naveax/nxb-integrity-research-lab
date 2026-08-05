@@ -8,6 +8,9 @@ param(
     [string]$WprExecutablePath,
 
     [Parameter()]
+    [string]$XperfExecutablePath,
+
+    [Parameter()]
     [switch]$PassThru
 )
 
@@ -52,9 +55,10 @@ catch {
     -WprExecutablePath $WprExecutablePath
 
 try {
-    $accountingPath = & (Join-Path $PSScriptRoot 'New-NxbTraceLossAccounting.ps1') `
+    $accountingPath = & (Join-Path $PSScriptRoot 'New-NxbTraceLossAccountingFromSources.ps1') `
         -ExperimentPath $experimentFull `
-        -StatusSnapshotPath $statusSnapshotPath `
+        -PreStopSnapshotPath $statusSnapshotPath `
+        -XperfExecutablePath $XperfExecutablePath `
         -Confirm:$false
 
     $accounting = Read-NxbJson -Path $accountingPath
@@ -110,6 +114,7 @@ if ($PassThru) {
     return [pscustomobject]@{
         ExperimentPath = $experimentFull
         StatusSnapshotPath = $statusSnapshotPath
+        PostStopStatisticsPath = (Join-Path $experimentFull 'analysis\etl-trace-statistics.json')
         AccountingPath = $accountingPath
     }
 }
