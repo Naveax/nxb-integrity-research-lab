@@ -8,15 +8,17 @@ Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için kanoni
 - Default branch: `main`
 - Visibility: public
 - Completed issue: `#1 — NXB-IRL-002`
-- Prepared observability issue: `#2 — NXB-IRL-004`
-- Active issue: `#4 — NXB-IRL-003 — Evidence integrity store`
+- Active closeout issue: `#4 — NXB-IRL-003 — Evidence integrity store`
+- Prepared next issue: `#2 — NXB-IRL-004 — Full-system observability fabric`
 - Merged PR: `#3 — NXB-IRL-002: close deterministic lifecycle validation gaps`
 - Active draft PR: `#5 — NXB-IRL-003: deterministic evidence integrity store`
 - Active branch: `nxb-irl-003-evidence-integrity-store`
 
 ## Current objective
 
-Close `NXB-IRL-003` after final Windows CI repair. The implementation scope is now complete; remaining work is validation, documentation closeout and exact-head merge.
+`NXB-IRL-003` implementation and adversarial test scope are complete. The implementation head passed all Windows, analyzer and repository-smoke gates. Remaining work is documentation-head validation, PR/issue evidence update, exact-head squash merge and issue closure.
+
+After merge, begin `NXB-IRL-004` from issue `#2`.
 
 ## Canonical project direction
 
@@ -29,9 +31,10 @@ Required references:
 3. `docs/ROADMAP.md`
 4. `docs/NXB-IRL-002-VALIDATION.md`
 5. `docs/NXB-IRL-003-EVIDENCE-STORE.md`
-6. issue `#4`
-7. draft PR `#5`
-8. issue `#2`
+6. `docs/NXB-IRL-003-VALIDATION.md`
+7. issue `#4`
+8. draft PR `#5`
+9. issue `#2`
 
 ## Completed phases
 
@@ -63,9 +66,11 @@ Validated head: `878710229ad11c5c1b95247e304986ca4e5eda47`.
 
 Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 
-## NXB-IRL-003 implementation on draft PR #5
+### NXB-IRL-003 — Evidence integrity store
 
-### Canonical identity and schemas
+Status: `IMPLEMENTATION COMPLETE — PR CLOSEOUT`
+
+#### Canonical identity and schemas
 
 - Draft 2020-12 record, chain-head and bundle-manifest schemas,
 - tool provenance and clock-offset payload schemas,
@@ -73,11 +78,12 @@ Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 - array-order preservation,
 - JSON escaping and invalid-surrogate rejection,
 - integer-only hash-bearing values,
+- normalized UTC timestamp handling,
 - UTF-8 without BOM SHA-256,
 - root-only self-hash exclusions,
 - atomic canonical JSON writes.
 
-### Append-only evidence chain
+#### Append-only evidence chain
 
 - exclusive append lock,
 - staged schema validation before final append,
@@ -88,15 +94,16 @@ Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 - raw digest-concatenation chain hash,
 - independent chain verification.
 
-### Tool provenance and clock evidence
+#### Tool provenance and clock evidence
 
 - executable path/hash/length/version provenance,
 - redacted argument-envelope digest without raw arguments,
+- explicit zero versus absent exit-code handling,
 - independent executable verification,
 - four-timestamp midpoint clock-offset calculation,
 - independent arithmetic verification.
 
-### Deterministic offline bundles
+#### Deterministic offline bundles
 
 - deterministic record and selected-file inventories,
 - canonical relative paths,
@@ -106,7 +113,7 @@ Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 - bundle comparison semantics,
 - traversal, duplicate, case-collision, truncation and reparse rejection.
 
-### Detached local signing
+#### Detached local signing
 
 - `scripts/Add-EvidenceBundleSignature.ps1`,
 - `scripts/Test-EvidenceBundleSignature.ps1`,
@@ -114,72 +121,54 @@ Squash merge: `e3b3ab79ab72cafa92f2afa97895258cec912d86`.
 - unsigned bundle identity preserved across signing,
 - PFX private key used locally only,
 - public CER/PFX verification,
+- safe prospective output-path validation,
+- rollback on failed signature/manifest commit,
 - `unsigned`, `present_unverified` and `valid` states,
 - missing, modified and wrong-certificate signatures rejected.
 
-### Repository smoke integration
+#### Adversarial coverage
 
-The repository smoke flow now executes:
-
-```text
-experiment lifecycle
-→ observation identity
-→ evidence finalization
-→ evidence-store records
-→ chain verification
-→ deterministic unsigned bundle
-→ offline verification
-```
-
-### Adversarial coverage
-
-- canonical property and array ordering,
-- one-byte payload and signature changes,
+- exact one-byte record modification,
 - record deletion and sequence gaps,
-- identity substitution,
+- record reordering,
+- previous-record mismatch,
+- cross-experiment record substitution,
+- machine, boot and session identity substitution,
 - tool binary mutation,
 - clock arithmetic tamper,
-- bundle truncation,
-- traversal and case-collision,
-- reparse-point path,
-- missing signature,
-- wrong certificate,
-- unverified `valid` state.
+- bundle truncation and selected-file mutation,
+- traversal, case-collision and reparse-point paths,
+- missing, modified and wrong-certificate signatures,
+- unverified `valid` signature state.
 
-## Current validation state
+## Validated implementation evidence
 
-Status: `FINAL WINDOWS CI REPAIR`
+Validated implementation head:
 
-The first complete static run after the four parallel implementation blocks reported eight analyzer findings:
+```text
+77c90ea00eb63a64791d0d418999dd5a8abb78a0
+```
 
-- seven helper functions used the `New-*` verb without `ShouldProcess`,
-- one synthetic PFX fixture used plaintext `ConvertTo-SecureString`.
+Validate run `#162`, run ID `30980814078`:
 
-All eight were repaired without disabling rules:
+- PowerShell 7 job `92224628625`: 63 passed, 0 failed,
+- Windows PowerShell 5.1 job `92224628713`: 63 passed, 0 failed,
+- static job `92224628723`: public guard, zero PSScriptAnalyzer findings and repository smoke success.
 
-- pure helpers use `Get-*`,
-- fixture helpers use `Initialize-*` or `Invoke-*`,
-- SecureString test fixture is built character-by-character.
+Canonical record: `docs/NXB-IRL-003-VALIDATION.md`.
 
-Resolve the current head and latest Validate run from PR #5; do not rely on a stale SHA stored here.
-
-Required final jobs:
-
-- Static analysis and repository smoke validation,
-- Lifecycle — PowerShell 7,
-- Lifecycle — Windows PowerShell 5.1.
-
-PR #5 remains draft until all three jobs and logs are inspected.
+The final documentation-only head must pass the same three jobs before merge. Record that exact final head/run/job evidence in PR `#5` and issue `#4`; do not modify validation documents afterward solely to embed the final metadata.
 
 ## Remaining NXB-IRL-003 sequence
 
-1. Inspect the latest Validate run.
-2. Repair remaining PSScriptAnalyzer, smoke or Pester failures.
-3. Add a final validation/closeout record.
-4. Update issue `#4` and PR `#5` with exact run/job evidence.
-5. Mark PR ready and squash merge using the exact validated head.
-6. Close issue `#4`.
-7. Start `NXB-IRL-004 — Full-system observability fabric` from issue `#2`.
+1. Resolve PR `#5` latest documentation head and Validate run.
+2. Confirm all three jobs are green and inspect every complete log.
+3. Update PR `#5` body with exact final head/run/job evidence and completed checklist.
+4. Update issue `#4` acceptance checklist and add closeout evidence.
+5. Mark PR `#5` ready.
+6. Squash merge using the exact validated head.
+7. Close issue `#4` as completed.
+8. Begin `NXB-IRL-004 — Full-system observability fabric` from issue `#2`.
 
 ## Public repository boundary
 
@@ -189,9 +178,8 @@ Never commit raw ETL, packet captures, dumps, protected binaries, drivers, priva
 
 ```text
 Inspect Naveax/nxb-integrity-research-lab.
-Read docs/HANDOFF.md, docs/MASTER_PLAN.md and docs/NXB-IRL-003-EVIDENCE-STORE.md.
+Read docs/HANDOFF.md, docs/MASTER_PLAN.md, docs/NXB-IRL-003-EVIDENCE-STORE.md and docs/NXB-IRL-003-VALIDATION.md.
 Resolve draft PR #5 current head and latest Validate run.
-Inspect every completed job log.
-Repair remaining static, smoke, PowerShell 7 and Windows PowerShell 5.1 failures without weakening quality rules.
-When all jobs are green, write the exact validation record, mark PR #5 ready, squash merge with exact-head locking, close issue #4 and begin NXB-IRL-004 from issue #2.
+Inspect all three final documentation-head job logs.
+If every gate is green, update PR #5 and issue #4 with exact final evidence, mark the PR ready, squash merge using expected-head locking, close issue #4 and begin NXB-IRL-004 from issue #2.
 ```
