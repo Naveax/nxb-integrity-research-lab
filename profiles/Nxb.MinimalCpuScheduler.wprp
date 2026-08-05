@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder
+  Version="1.0"
+  Author="NXB Integrity Research Lab"
+  Team="Observability"
+  Company="NXB Integrity Research Lab"
+  Comments="Bounded minimal CPU and scheduler capture profile for authorized research experiments."
+  Tag="NXB-IRL-004">
+  <Profiles>
+    <SystemCollector
+      Id="NxbMinimalCpuSchedulerSystemCollectorFile"
+      Name="NT Kernel Logger">
+      <BufferSize Value="1024" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="512" FileMode="Circular" />
+    </SystemCollector>
+
+    <SystemCollector
+      Id="NxbMinimalCpuSchedulerSystemCollectorMemory"
+      Name="NT Kernel Logger">
+      <BufferSize Value="1024" />
+      <Buffers Value="64" />
+    </SystemCollector>
+
+    <SystemProvider Id="NxbMinimalCpuSchedulerSystemProvider">
+      <Keywords>
+        <Keyword Value="CpuConfig" />
+        <Keyword Value="CSwitch" />
+        <Keyword Value="DPC" />
+        <Keyword Value="Interrupt" />
+        <Keyword Value="KernelQueue" />
+        <Keyword Value="Loader" />
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="ReadyThread" />
+        <Keyword Value="SampledProfile" />
+        <Keyword Value="ThreadPriority" />
+      </Keywords>
+      <Stacks>
+        <Stack Value="CSwitch" />
+        <Stack Value="DpcExecute" />
+        <Stack Value="ImageLoad" />
+        <Stack Value="ProcessCreate" />
+        <Stack Value="ReadyThread" />
+        <Stack Value="SampledProfile" />
+        <Stack Value="ThreadCreate" />
+        <Stack Value="ThreadSetBasePriority" />
+        <Stack Value="ThreadSetPriority" />
+      </Stacks>
+    </SystemProvider>
+
+    <Profile
+      Id="NxbMinimalCpuScheduler.Verbose.File"
+      Name="NxbMinimalCpuScheduler"
+      DetailLevel="Verbose"
+      LoggingMode="File"
+      Description="Bounded CPU sampling and scheduler analysis profile">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbMinimalCpuSchedulerSystemCollectorFile">
+          <SystemProviderId Value="NxbMinimalCpuSchedulerSystemProvider" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile
+      Id="NxbMinimalCpuScheduler.Verbose.Memory"
+      Name="NxbMinimalCpuScheduler"
+      DetailLevel="Verbose"
+      LoggingMode="Memory"
+      Description="CPU sampling and scheduler analysis profile for memory capture">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbMinimalCpuSchedulerSystemCollectorMemory">
+          <SystemProviderId Value="NxbMinimalCpuSchedulerSystemProvider" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
