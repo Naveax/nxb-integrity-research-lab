@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -118,8 +119,31 @@ def validate_capture(document: dict[str, Any]) -> None:
         )
 
 
+def validate_counter_sources(counters: dict[str, Any]) -> None:
+    allowed_fields = {
+        "events_lost": {"events_lost", "collector_events_lost", "dropped_event"},
+        "buffers_lost": {"buffers_lost"},
+        "realtime_buffers_lost": {"realtime_buffers_lost"},
+    }
+    source_pattern = re.compile(
+        r"^(wpr_status_snapshot|xperf_tracestats):[0-9a-f]{64};field=([a-z_]+)$"
+    )
+
+    for counter_name, counter in counters.items():
+        if counter["status"] != "measured":
+            continue
+        match = source_pattern.fullmatch(counter["source"])
+        require(match is not None, f"native_counters.{counter_name}.source is not hash-bound")
+        source_field = match.group(2)
+        require(
+            source_field in allowed_fields[counter_name],
+            f"native_counters.{counter_name}.source field '{source_field}' is inconsistent",
+        )
+
+
 def validate_trace_loss(document: dict[str, Any]) -> bool:
     counters = document["native_counters"]
+    validate_counter_sources(counters)
     trace_loss = document["trace_loss"]
     measured_values = [
         int(counter["value"])
@@ -222,12 +246,8 @@ def validate_circular_overwrite(document: dict[str, Any]) -> bool:
         expected_reasons.append("etl_length_exceeds_declared_capacity")
 
     provided_reasons = list(overwrite["risk_reasons"])
-    if "native_overwrite_reported" in provided_reasons:
-        expected_reasons.append("native_overwrite_reported")
-
-    expected_reasons = sorted(set(expected_reasons))
     require(
-        sorted(provided_reasons) == expected_reasons,
+        sorted(provided_reasons) == sorted(expected_reasons),
         "circular_overwrite.risk_reasons are inconsistent with capacity evidence",
     )
     expected_classification = "risk_observed" if expected_reasons else "no_risk_observed"
