@@ -54,7 +54,7 @@ exit /b 7
         $result.buffers_written.value | Should -Be 41
         $result.events_lost.source |
             Should -Match '^xperf_tracestats:[0-9a-f]{64};field=events_lost$'
-        $result.realtime_buffers_lost.status | Should -Be 'unsupported'
+        $result.realtime_buffers_lost.status | Should -Be 'not_applicable'
     }
 
     It 'marks absent header fields unavailable without inventing zeroes' {
@@ -75,6 +75,7 @@ exit /b 0
         $result.events_lost.status | Should -Be 'unavailable'
         $result.events_lost.value | Should -BeNullOrEmpty
         $result.buffers_lost.status | Should -Be 'unavailable'
+        $result.realtime_buffers_lost.status | Should -Be 'not_applicable'
     }
 
     It 'preserves a nonzero xperf exit as failed evidence' {
@@ -93,6 +94,7 @@ exit /b 9
         $result.status | Should -Be 'failed'
         $result.exit_code | Should -Be 9
         $result.events_lost.status | Should -Be 'failed'
+        $result.realtime_buffers_lost.status | Should -Be 'not_applicable'
         $result.statistics_sha256 | Should -Match '^[0-9a-f]{64}$'
     }
 
@@ -107,6 +109,7 @@ exit /b 9
 
         $result.status | Should -Be 'unsupported'
         $result.events_lost.status | Should -Be 'unsupported'
+        $result.realtime_buffers_lost.status | Should -Be 'not_applicable'
         $result.exit_code | Should -BeNullOrEmpty
     }
 }
