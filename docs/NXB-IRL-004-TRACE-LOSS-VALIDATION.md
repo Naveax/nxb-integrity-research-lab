@@ -49,12 +49,33 @@ No gate is considered passed until the generated summary, complete logs, both Pe
    - real pre-stop WPR status snapshot,
    - real WPR ETL stop/finalization,
    - post-stop xperf trace-header statistics,
+   - measured post-stop `Events Lost`,
+   - measured post-stop `Buffers Lost`,
+   - measured `Buffers Written` diagnostic counter,
+   - file-mode `realtime_buffers_lost: not_applicable`,
    - actual ETL SHA-256 and length reconciliation,
    - strict trace-loss accounting semantic validation,
    - stopped lifecycle verification,
    - final evidence integrity verification.
 
 A skipped native gate is not accepted.
+
+## Applicable counter model
+
+For the file-mode WPR profile, trace-loss assessment requires:
+
+```text
+Events Lost
+Buffers Lost
+```
+
+The real-time consumer counter must remain represented as:
+
+```text
+realtime_buffers_lost.status: not_applicable
+```
+
+When both applicable counters are measured, zero values may produce `no_native_loss_reported`; positive values produce `native_loss_observed`. Neither classification permits a general absence or completeness claim.
 
 ## Native validation boundary
 
@@ -115,7 +136,10 @@ Pre-stop Events Lost status:
 Post-stop Events Lost status:
 Post-stop Buffers Lost status:
 Post-stop Buffers Written status:
+Post-stop realtime Buffers Lost status:
 Trace-loss classification:
+Measured applicable counter count:
+Total reported loss:
 Circular-overwrite classification:
 Evidence completeness:
 ```
