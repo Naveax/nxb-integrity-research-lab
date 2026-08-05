@@ -42,16 +42,16 @@
       "reason": null
     },
     "realtime_buffers_lost": {
-      "status": "measured",
-      "value": 0,
+      "status": "not_applicable",
+      "value": null,
       "unit": "count",
-      "source": "xperf_tracestats:5555555555555555555555555555555555555555555555555555555555555555;field=realtime_buffers_lost",
-      "reason": null
+      "source": null,
+      "reason": "File-mode ETL gerçek zamanlı consumer teslimatı kullanmıyor."
     }
   },
   "trace_loss": {
     "classification": "no_native_loss_reported",
-    "measured_counter_count": 3,
+    "measured_counter_count": 2,
     "total_reported_loss": 0,
     "reason": null
   },
