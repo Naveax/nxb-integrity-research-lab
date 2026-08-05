@@ -3,6 +3,7 @@
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     $script:Collector = Join-Path $script:ScriptsRoot 'New-NxbTraceLossAccounting.ps1'
     Import-Module (Join-Path $script:ScriptsRoot 'Nxb.Lab.Common.psm1') -Force
+    Import-Module (Join-Path $script:ScriptsRoot 'Nxb.EvidenceStore.psm1') -Force
 
     function Initialize-NxbTraceLossFixture {
         [CmdletBinding()]
@@ -14,7 +15,12 @@
             [int64]$EventsLost = 0,
 
             [Parameter()]
-            [int64]$EtlLength = 104857600,
+            [ValidateRange(1, 10485760)]
+            [int64]$EtlLength = 100000,
+
+            [Parameter()]
+            [ValidateRange(1, 16)]
+            [int64]$MaximumFileSizeMiB = 1,
 
             [Parameter()]
             [ValidateSet('measured', 'failed')]
@@ -42,18 +48,20 @@
             bounded = $true
             buffer_size_kib = 1024
             buffers = 64
-            maximum_file_size_mib = 512
+            maximum_file_size_mib = $MaximumFileSizeMiB
             file_mode = 'Circular'
             keywords = @('SampledProfile')
             stacks = @('SampledProfile')
         }
+        $profileSeal = Get-NxbCanonicalJsonHash -InputObject $profile
         $session = [ordered]@{
             started_utc = $startedUtc
+            stopped_utc = $stoppedUtc
             profile = 'NxbMinimalCpuScheduler'
             mode = 'filemode'
             profile_provenance = $profile
-            profile_provenance_sha256 = ('3' * 64)
-            status = 'recording'
+            profile_provenance_sha256 = $profileSeal
+            status = 'stopped'
             wpr_executable = 'fake-wpr.exe'
         }
         Write-NxbJsonAtomic `
@@ -63,15 +71,29 @@
 
         $tracesRoot = Join-Path $ExperimentPath 'traces'
         New-Item -ItemType Directory -Path $tracesRoot -Force | Out-Null
+        $etlPath = Join-Path $tracesRoot 'performance.etl'
+        $stream = [IO.File]::Open(
+            $etlPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        try {
+            $stream.SetLength($EtlLength)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        $etlSha256 = (Get-FileHash -LiteralPath $etlPath -Algorithm SHA256).Hash
         $etlMetadata = [ordered]@{
-            path = (Join-Path $tracesRoot 'performance.etl')
-            sha256 = ('4' * 64)
+            path = $etlPath
+            sha256 = $etlSha256
             length = $EtlLength
             stopped_utc = $stoppedUtc
             wpr_executable = 'fake-wpr.exe'
             profile = 'NxbMinimalCpuScheduler'
             profile_provenance = $profile
-            profile_provenance_sha256 = ('3' * 64)
+            profile_provenance_sha256 = $profileSeal
             profile_integrity = [ordered]@{
                 status = 'valid'
                 reason = $null
@@ -130,6 +152,11 @@
             -Path (Join-Path $analysisRoot 'wpr-status-pre-stop.json') `
             -InputObject $snapshot `
             -Depth 16
+
+        Set-NxbExperimentState `
+            -ExperimentPath $ExperimentPath `
+            -State stopped `
+            -Confirm:$false | Out-Null
     }
 }
 
@@ -187,7 +214,7 @@ Describe 'NXB trace-loss accounting collector' {
     It 'classifies a near-capacity circular ETL as risk observed' {
         Initialize-NxbTraceLossFixture `
             -ExperimentPath $script:ExperimentPath `
-            -EtlLength 500000000
+            -EtlLength 950000
 
         $result = & $script:Collector `
             -ExperimentPath $script:ExperimentPath `
@@ -228,5 +255,35 @@ Describe 'NXB trace-loss accounting collector' {
         $result.trace_loss.classification | Should -Be 'failed'
         $result.summary.evidence_completeness | Should -Be 'failed'
         $result.claims.trace_loss_absence | Should -BeFalse
+    }
+
+    It 'rejects ETL metadata that does not match the actual ETL' {
+        Initialize-NxbTraceLossFixture -ExperimentPath $script:ExperimentPath
+        $metadataPath = Join-Path `
+            $script:ExperimentPath `
+            'traces\performance.etl.json'
+        $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+        $metadata.length = [int64]$metadata.length + 1
+        Write-NxbJsonAtomic -Path $metadataPath -InputObject $metadata -Depth 16
+
+        {
+            & $script:Collector `
+                -ExperimentPath $script:ExperimentPath `
+                -Confirm:$false
+        } | Should -Throw '*gerçek ETL ile uyuşmuyor*'
+    }
+
+    It 'rejects accounting before the experiment reaches stopped state' {
+        Initialize-NxbTraceLossFixture -ExperimentPath $script:ExperimentPath
+        $manifestPath = Join-Path $script:ExperimentPath 'manifest.json'
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $manifest.status = 'recording'
+        Write-NxbJsonAtomic -Path $manifestPath -InputObject $manifest -Depth 16
+
+        {
+            & $script:Collector `
+                -ExperimentPath $script:ExperimentPath `
+                -Confirm:$false
+        } | Should -Throw '*yalnız stopped deneyde*'
     }
 }
