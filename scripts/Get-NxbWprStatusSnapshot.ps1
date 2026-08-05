@@ -211,10 +211,10 @@ $snapshot = [ordered]@{
         reason = 'wpr -status çıktısı LogBuffersLost alanını güvenilir biçimde sağlamıyor.'
     }
     realtime_buffers_lost = [ordered]@{
-        status = 'unsupported'
+        status = 'not_applicable'
         value = $null
         source = $null
-        reason = 'File-mode WPR status çıktısı RealTimeBuffersLost alanını sağlamıyor.'
+        reason = 'File-mode WPR capture gerçek zamanlı consumer teslimatı kullanmıyor.'
     }
 }
 
