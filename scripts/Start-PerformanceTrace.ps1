@@ -22,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
 
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 $manifestPath = Join-Path $experimentFull 'manifest.json'
@@ -85,6 +86,8 @@ switch ($CaptureProfile) {
     }
 }
 
+$profileProvenanceSha256 = Get-NxbCanonicalJsonHash -InputObject $profileProvenance
+
 try {
     $wprPath = Resolve-NxbExecutablePath -Name 'wpr.exe' -ExplicitPath $WprExecutablePath
 }
@@ -113,12 +116,13 @@ if ($startExitCode -ne 0) {
 }
 
 $session = [ordered]@{
-    started_utc       = [DateTime]::UtcNow.ToString('o')
-    profile           = $CaptureProfile
-    mode              = 'filemode'
-    profile_provenance = $profileProvenance
-    status            = 'recording'
-    wpr_executable     = $wprPath
+    started_utc                = [DateTime]::UtcNow.ToString('o')
+    profile                    = $CaptureProfile
+    mode                       = 'filemode'
+    profile_provenance         = $profileProvenance
+    profile_provenance_sha256  = $profileProvenanceSha256
+    status                     = 'recording'
+    wpr_executable             = $wprPath
 }
 
 try {
