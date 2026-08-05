@@ -18,7 +18,10 @@
             [int]$CancelExitCode = 0,
 
             [Parameter()]
-            [switch]$CreateEtl
+            [switch]$CreateEtl,
+
+            [Parameter()]
+            [string]$ArgumentLogPath
         )
 
         $etlCommand = if ($CreateEtl) {
@@ -27,9 +30,16 @@
         else {
             'rem synthetic stop intentionally creates no ETL'
         }
+        $argumentLogCommand = if ([string]::IsNullOrWhiteSpace($ArgumentLogPath)) {
+            'rem argument logging disabled'
+        }
+        else {
+            "echo %*>>`"$ArgumentLogPath`""
+        }
 
         $content = @"
 @echo off
+$argumentLogCommand
 if /I "%~1"=="-start" (
   echo synthetic-start
   exit /b $StartExitCode
@@ -128,6 +138,25 @@ Describe 'NXB WPR failure paths' {
             Should -BeFalse
     }
 
+    It 'requires explicit opt-in for the unbounded built-in GeneralProfile' {
+        $fakeWpr = New-NxbFakeWprCommand `
+            -Path (Join-Path $script:TempRoot 'legacy-denied.cmd') `
+            -Confirm:$false
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
+                -ExperimentPath $script:ExperimentPath `
+                -CaptureProfile GeneralProfile `
+                -WprExecutablePath $fakeWpr
+        } | Should -Throw '*GeneralProfile*unbounded*AllowUnboundedBuiltInProfile*'
+
+        $manifest = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'manifest.json') -Raw |
+            ConvertFrom-Json
+        $manifest.status | Should -Be 'prepared'
+        Test-Path -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') |
+            Should -BeFalse
+    }
+
     It 'preserves recording state when WPR stop returns a failure code' {
         $fakeWpr = New-NxbFakeWprCommand `
             -Path (Join-Path $script:TempRoot 'stop-failure.cmd') `
@@ -181,10 +210,12 @@ Describe 'NXB WPR failure paths' {
         $session.failure_reason | Should -Match 'ETL oluşturulmadı'
     }
 
-    It 'completes a synthetic start and stop lifecycle deterministically' {
+    It 'starts the bounded repository profile with exact provenance' {
+        $argumentLog = Join-Path $script:TempRoot 'bounded-arguments.txt'
         $fakeWpr = New-NxbFakeWprCommand `
-            -Path (Join-Path $script:TempRoot 'success.cmd') `
+            -Path (Join-Path $script:TempRoot 'bounded-success.cmd') `
             -CreateEtl `
+            -ArgumentLogPath $argumentLog `
             -Confirm:$false
 
         & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
@@ -200,10 +231,60 @@ Describe 'NXB WPR failure paths' {
             ConvertFrom-Json
         $metadata = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'traces\performance.etl.json') -Raw |
             ConvertFrom-Json
+        $arguments = Get-Content -LiteralPath $argumentLog -Raw
 
         $manifest.status | Should -Be 'stopped'
         $session.status | Should -Be 'stopped'
+        $session.profile | Should -Be 'NxbMinimalCpuScheduler'
+        $session.mode | Should -Be 'filemode'
+        $session.profile_provenance.type | Should -Be 'repository_wprp'
+        $session.profile_provenance.relative_path |
+            Should -Be 'profiles/Nxb.MinimalCpuScheduler.wprp'
+        $session.profile_provenance.sha256 | Should -Match '^[0-9a-f]{64}$'
+        $session.profile_provenance.length | Should -BeGreaterThan 0
+        $session.profile_provenance.detail_level | Should -Be 'Verbose'
+        $session.profile_provenance.logging_mode | Should -Be 'File'
+        $session.profile_provenance.bounded | Should -BeTrue
+        $session.profile_provenance.buffer_size_kib | Should -Be 1024
+        $session.profile_provenance.buffers | Should -Be 64
+        $session.profile_provenance.maximum_file_size_mib | Should -Be 512
+        $session.profile_provenance.file_mode | Should -Be 'Circular'
+        $session.profile_provenance.keywords.Count | Should -Be 10
+        $session.profile_provenance.stacks.Count | Should -Be 9
         $metadata.length | Should -BeGreaterThan 0
         $metadata.sha256 | Should -Match '^[0-9A-F]{64}$'
+        $arguments | Should -Match '(?m)^-start '
+        $arguments | Should -Match 'Nxb\.MinimalCpuScheduler\.wprp!NxbMinimalCpuScheduler\.Verbose'
+        $arguments | Should -Match '(?m)-filemode$'
+    }
+
+    It 'supports the legacy GeneralProfile only with explicit unbounded provenance' {
+        $argumentLog = Join-Path $script:TempRoot 'legacy-arguments.txt'
+        $fakeWpr = New-NxbFakeWprCommand `
+            -Path (Join-Path $script:TempRoot 'legacy-success.cmd') `
+            -CreateEtl `
+            -ArgumentLogPath $argumentLog `
+            -Confirm:$false
+
+        & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
+            -ExperimentPath $script:ExperimentPath `
+            -CaptureProfile GeneralProfile `
+            -AllowUnboundedBuiltInProfile `
+            -WprExecutablePath $fakeWpr
+        & (Join-Path $script:ScriptsRoot 'Stop-PerformanceTrace.ps1') `
+            -ExperimentPath $script:ExperimentPath `
+            -WprExecutablePath $fakeWpr
+
+        $session = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') -Raw |
+            ConvertFrom-Json
+        $arguments = Get-Content -LiteralPath $argumentLog -Raw
+
+        $session.status | Should -Be 'stopped'
+        $session.profile | Should -Be 'GeneralProfile'
+        $session.profile_provenance.type | Should -Be 'builtin'
+        $session.profile_provenance.bounded | Should -BeFalse
+        $session.profile_provenance.file_mode | Should -Be 'Unbounded'
+        $session.profile_provenance.maximum_file_size_mib | Should -BeNullOrEmpty
+        $arguments | Should -Match '(?m)^-start GeneralProfile -filemode$'
     }
 }
