@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
 
-function Get-NxbUnsignedValues {
+function Get-NxbUnsignedValue {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -183,8 +183,8 @@ finally {
     $sha.Dispose()
 }
 
-$collectorValues = @(Get-NxbUnsignedValues -Lines $lines -LabelPattern 'Events\s+Lost')
-$droppedValues = @(Get-NxbUnsignedValues -Lines $lines -LabelPattern 'Dropped\s+event')
+$collectorValues = @(Get-NxbUnsignedValue -Lines $lines -LabelPattern 'Events\s+Lost')
+$droppedValues = @(Get-NxbUnsignedValue -Lines $lines -LabelPattern 'Dropped\s+event')
 $eventsLost = Get-NxbSnapshotCounter `
     -CollectorValues $collectorValues `
     -FallbackValues $droppedValues `
