@@ -119,7 +119,8 @@ def validate_capture(document: dict[str, Any]) -> None:
         )
 
 
-def validate_counter_sources(counters: dict[str, Any]) -> None:
+def validate_counter_sources(document: dict[str, Any]) -> None:
+    counters = document["native_counters"]
     allowed_fields = {
         "events_lost": {"events_lost", "collector_events_lost", "dropped_event"},
         "buffers_lost": {"buffers_lost"},
@@ -130,6 +131,21 @@ def validate_counter_sources(counters: dict[str, Any]) -> None:
     )
 
     for counter_name, counter in counters.items():
+        if counter["status"] == "not_applicable":
+            require(
+                counter_name == "realtime_buffers_lost",
+                f"native_counters.{counter_name} cannot be not_applicable",
+            )
+            require(
+                document["capture"]["profile"]["logging_mode"] == "File",
+                "realtime_buffers_lost can be not_applicable only for File logging mode",
+            )
+            require(
+                counter["source"] is None,
+                "not_applicable native counter source must be null",
+            )
+            continue
+
         if counter["status"] != "measured":
             continue
         match = source_pattern.fullmatch(counter["source"])
@@ -143,11 +159,14 @@ def validate_counter_sources(counters: dict[str, Any]) -> None:
 
 def validate_trace_loss(document: dict[str, Any]) -> bool:
     counters = document["native_counters"]
-    validate_counter_sources(counters)
+    validate_counter_sources(document)
     trace_loss = document["trace_loss"]
+    applicable_counters = [
+        counter for counter in counters.values() if counter["status"] != "not_applicable"
+    ]
     measured_values = [
         int(counter["value"])
-        for counter in counters.values()
+        for counter in applicable_counters
         if counter["status"] == "measured"
     ]
     measured_count = len(measured_values)
@@ -155,17 +174,19 @@ def validate_trace_loss(document: dict[str, Any]) -> bool:
 
     require(
         trace_loss["measured_counter_count"] == measured_count,
-        "trace_loss.measured_counter_count does not match native counters",
+        "trace_loss.measured_counter_count does not match applicable native counters",
     )
 
     classification = trace_loss["classification"]
-    failed_counter = any(counter["status"] == "failed" for counter in counters.values())
+    failed_counter = any(
+        counter["status"] == "failed" for counter in applicable_counters
+    )
 
     if total > 0:
         expected = "native_loss_observed"
         expected_total: int | None = total
         assessed = True
-    elif measured_count == len(counters):
+    elif applicable_counters and measured_count == len(applicable_counters):
         expected = "no_native_loss_reported"
         expected_total = 0
         assessed = True
@@ -184,7 +205,7 @@ def validate_trace_loss(document: dict[str, Any]) -> bool:
     )
     require(
         trace_loss["total_reported_loss"] == expected_total,
-        "trace_loss.total_reported_loss is inconsistent with native counters",
+        "trace_loss.total_reported_loss is inconsistent with applicable native counters",
     )
 
     if assessed:
