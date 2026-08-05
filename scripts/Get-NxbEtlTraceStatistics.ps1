@@ -35,11 +35,11 @@ function Get-NxbTraceStatisticValue {
     )
 
     foreach ($labelPattern in $LabelPatterns) {
-        $pattern = '(?i)^\s*' + $labelPattern + '\s*[:=]\s*([0-9]+)\s*$'
+        $pattern = '(?i)^\s*' + $labelPattern + '\s*[:=]\s*([0-9][0-9,]*)\s*$'
         foreach ($line in $Lines) {
             $match = [regex]::Match([string]$line, $pattern)
             if ($match.Success) {
-                return [uint64]$match.Groups[1].Value
+                return [uint64]$match.Groups[1].Value.Replace(',', '')
             }
         }
     }
@@ -84,13 +84,14 @@ function Get-NxbStatisticEvidence {
 }
 
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
+[void](Test-NxbPathSafety -Path $experimentFull -RootPath $experimentFull)
 $etlPath = Join-Path $experimentFull 'traces\performance.etl'
 if (-not (Test-Path -LiteralPath $etlPath -PathType Leaf)) {
     throw "ETL bulunamadı: $etlPath"
 }
+[void](Test-NxbPathSafety -Path $etlPath -RootPath $experimentFull)
 
 $analysisRoot = Join-Path $experimentFull 'analysis'
-New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $analysisRoot 'etl-trace-statistics.json'
 }
@@ -101,11 +102,30 @@ $outputFull = Get-NxbFullPath -Path $OutputPath
 $reportFull = Get-NxbFullPath -Path $ReportPath
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $outputFull)
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $reportFull)
+if ($outputFull.Equals($reportFull, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ETL statistics JSON ve xperf rapor yolları aynı olamaz.'
+}
 foreach ($path in @($outputFull, $reportFull)) {
     if (Test-Path -LiteralPath $path) {
         throw "ETL trace statistics çıktısı zaten var: $path"
     }
+    $parent = Split-Path -Parent $path
+    if (Test-Path -LiteralPath $parent -PathType Container) {
+        [void](Test-NxbPathSafety -Path $parent -RootPath $experimentFull)
+    }
 }
+
+if (-not $PSCmdlet.ShouldProcess(
+    $experimentFull,
+    'Collect and write post-stop ETL trace statistics'
+)) {
+    return
+}
+
+if (-not (Test-Path -LiteralPath $analysisRoot -PathType Container)) {
+    New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
+}
+[void](Test-NxbPathSafety -Path $analysisRoot -RootPath $experimentFull)
 
 $xperfPath = $null
 $resolveFailure = $null
@@ -255,9 +275,7 @@ $statistics = [ordered]@{
     }
 }
 
-if ($PSCmdlet.ShouldProcess($outputFull, 'Write post-stop ETL trace statistics')) {
-    Write-NxbJsonAtomic -Path $outputFull -InputObject $statistics -Depth 16
-}
+Write-NxbJsonAtomic -Path $outputFull -InputObject $statistics -Depth 16
 
 if ($PassThru) {
     return [pscustomobject]$statistics
