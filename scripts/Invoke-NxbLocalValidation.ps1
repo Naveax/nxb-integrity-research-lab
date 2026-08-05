@@ -1,6 +1,6 @@
 ﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [Parameter()]
+    [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
     [string]$ExpectedHead,
 
@@ -36,20 +36,16 @@ param(
     [switch]$BootstrapDependencies,
 
     [Parameter()]
-    [switch]$SkipNativeCalibration,
-
-    [Parameter()]
     [switch]$PassThru
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Out-NxbUtf8NoBom {
+function Write-NxbUtf8NoBom {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
         [string]$Path,
 
         [Parameter(Mandatory)]
@@ -61,10 +57,14 @@ function Out-NxbUtf8NoBom {
     if (-not [string]::IsNullOrWhiteSpace($parent)) {
         [IO.Directory]::CreateDirectory($parent) | Out-Null
     }
-    [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText(
+        $Path,
+        $Content,
+        [Text.UTF8Encoding]::new($false)
+    )
 }
 
-function ConvertTo-NxbPowerShellLiteral {
+function ConvertTo-NxbLiteral {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -73,6 +73,22 @@ function ConvertTo-NxbPowerShellLiteral {
     )
 
     return "'$($Value.Replace("'", "''"))'"
+}
+
+function Resolve-NxbExecutable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Candidate
+    )
+
+    foreach ($name in $Candidate) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command) {
+            return [string]$command.Source
+        }
+    }
+    return $null
 }
 
 function Test-NxbAdministrator {
@@ -86,174 +102,105 @@ function Test-NxbAdministrator {
     )
 }
 
-function Resolve-NxbExecutable {
+function Invoke-NxbChild {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$Candidate
-    )
-
-    foreach ($name in $Candidate) {
-        $command = Get-Command $name -ErrorAction SilentlyContinue
-        if ($command) {
-            return [string]$command.Source
-        }
-    }
-    return $null
-}
-
-function Invoke-NxbPowerShellGate {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Name,
-
-        [Parameter(Mandatory)]
-        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
         [string]$ExecutablePath,
 
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
         [string]$CommandText,
 
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
         [string]$LogPath
     )
 
-    $startedUtc = [DateTime]::UtcNow
-    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
     $encoded = [Convert]::ToBase64String(
         [Text.Encoding]::Unicode.GetBytes($CommandText)
     )
     $output = @()
     $exitCode = 1
     try {
-        $output = @(& $ExecutablePath `
-            -NoLogo `
-            -NoProfile `
-            -NonInteractive `
-            -ExecutionPolicy Bypass `
-            -EncodedCommand $encoded 2>&1)
-        $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+        $output = @(
+            & $ExecutablePath `
+                -NoLogo `
+                -NoProfile `
+                -NonInteractive `
+                -ExecutionPolicy Bypass `
+                -EncodedCommand $encoded 2>&1
+        )
+        $exitCode = if ($null -eq $LASTEXITCODE) {
+            1
+        }
+        else {
+            [int]$LASTEXITCODE
+        }
     }
     catch {
-        $output += $_ | Out-String
-        $exitCode = 1
-    }
-    finally {
-        $stopwatch.Stop()
+        $output += ($_ | Out-String)
     }
 
-    $rendered = @($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
-    Out-NxbUtf8NoBom -Path $LogPath -Content $rendered
+    $text = @(
+        $output | ForEach-Object { [string]$_ }
+    ) -join [Environment]::NewLine
+    Write-NxbUtf8NoBom -Path $LogPath -Content $text
 
-    return [pscustomobject][ordered]@{
-        name         = $Name
-        status       = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
-        exit_code    = $exitCode
-        started_utc  = $startedUtc.ToString('o')
-        stopped_utc  = [DateTime]::UtcNow.ToString('o')
-        duration_ms  = [Math]::Round($stopwatch.Elapsed.TotalMilliseconds, 3)
-        log_path     = $LogPath
-        reason       = if ($exitCode -eq 0) { $null } else { "Gate exit code: $exitCode" }
+    return [pscustomobject]@{
+        exit_code = $exitCode
+        text      = $text
     }
 }
 
-function Invoke-NxbNativeGate {
+function Add-NxbGate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
+        [Collections.Generic.List[object]]$GateList,
+
+        [Parameter(Mandatory)]
         [string]$Name,
 
         [Parameter(Mandatory)]
-        [scriptblock]$Action,
+        [ValidateSet('passed', 'failed', 'skipped')]
+        [string]$Status,
 
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$LogPath
+        [Parameter()]
+        [Nullable[int]]$ExitCode,
+
+        [Parameter()]
+        [string]$LogPath,
+
+        [Parameter()]
+        [string]$Reason
     )
 
-    $startedUtc = [DateTime]::UtcNow
-    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $output = @()
-    $exitCode = 0
-    $reason = $null
-    try {
-        $output = @(& $Action 2>&1)
-    }
-    catch {
-        $output += $_ | Out-String
-        $exitCode = 1
-        $reason = $_.Exception.Message
-    }
-    finally {
-        $stopwatch.Stop()
-    }
-
-    $rendered = @($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
-    Out-NxbUtf8NoBom -Path $LogPath -Content $rendered
-
-    return [pscustomobject][ordered]@{
-        name         = $Name
-        status       = if ($exitCode -eq 0) { 'passed' } else { 'failed' }
-        exit_code    = $exitCode
-        started_utc  = $startedUtc.ToString('o')
-        stopped_utc  = [DateTime]::UtcNow.ToString('o')
-        duration_ms  = [Math]::Round($stopwatch.Elapsed.TotalMilliseconds, 3)
-        log_path     = $LogPath
-        reason       = $reason
-    }
-}
-
-function Get-NxbModuleVersion {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ExecutablePath,
-
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ModuleName
-    )
-
-    $moduleLiteral = ConvertTo-NxbPowerShellLiteral -Value $ModuleName
-    $commandText = @"
-`$module = Get-Module -ListAvailable $moduleLiteral |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-if (`$null -eq `$module) { exit 1 }
-Write-Output `$module.Version.ToString()
-"@
-    $encoded = [Convert]::ToBase64String(
-        [Text.Encoding]::Unicode.GetBytes($commandText)
-    )
-    $output = @(& $ExecutablePath `
-        -NoLogo `
-        -NoProfile `
-        -NonInteractive `
-        -ExecutionPolicy Bypass `
-        -EncodedCommand $encoded 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        return $null
-    }
-    return (@($output | ForEach-Object { [string]$_ }) -join '').Trim()
+    $GateList.Add([pscustomobject][ordered]@{
+        name      = $Name
+        status    = $Status
+        exit_code = if ($PSBoundParameters.ContainsKey('ExitCode')) {
+            $ExitCode
+        }
+        else {
+            $null
+        }
+        log_path  = $LogPath
+        reason    = $Reason
+    })
 }
 
 if ($env:OS -cne 'Windows_NT') {
-    throw 'NXB local validation runner yalnız gerçek Windows ortamında çalışır.'
+    throw 'NXB local validation yalnız gerçek Windows ortamında çalışır.'
+}
+if ($PSVersionTable.PSEdition -cne 'Core') {
+    throw 'NXB local validation PowerShell 7 içinde çalıştırılmalıdır.'
+}
+if (-not (Test-NxbAdministrator)) {
+    throw 'Native WPR validation için yönetici PowerShell 7 gereklidir.'
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $gitPath = Resolve-NxbExecutable -Candidate @('git.exe', 'git')
 $pwshPath = Resolve-NxbExecutable -Candidate @('pwsh.exe', 'pwsh')
-$windowsPowerShellPath = Join-Path `
-    $env:SystemRoot `
-    'System32\WindowsPowerShell\v1.0\powershell.exe'
 $pythonPath = Resolve-NxbExecutable -Candidate @(
     'python.exe',
     'python',
@@ -261,54 +208,60 @@ $pythonPath = Resolve-NxbExecutable -Candidate @(
     'py'
 )
 $wprPath = Resolve-NxbExecutable -Candidate @('wpr.exe', 'wpr')
+$windowsPowerShellPath = Join-Path `
+    $env:SystemRoot `
+    'System32\WindowsPowerShell\v1.0\powershell.exe'
 
-if ([string]::IsNullOrWhiteSpace($gitPath)) {
-    throw 'git executable bulunamadı.'
+$requiredPaths = [ordered]@{
+    git                 = $gitPath
+    pwsh                = $pwshPath
+    python              = $pythonPath
+    wpr                 = $wprPath
+    windows_powershell  = $windowsPowerShellPath
 }
-if ([string]::IsNullOrWhiteSpace($pwshPath)) {
-    throw 'PowerShell 7 (pwsh.exe) bulunamadı.'
-}
-if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
-    throw 'Windows PowerShell 5.1 executable bulunamadı.'
-}
-if ([string]::IsNullOrWhiteSpace($pythonPath)) {
-    throw 'Python executable bulunamadı.'
-}
-if ([string]::IsNullOrWhiteSpace($wprPath)) {
-    throw 'wpr.exe bulunamadı.'
+foreach ($entry in $requiredPaths.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace([string]$entry.Value) -or
+        -not (Test-Path -LiteralPath $entry.Value -PathType Leaf)) {
+        throw "Gerekli executable bulunamadı: $($entry.Key)"
+    }
 }
 
-$currentHead = (& $gitPath -C $repositoryRoot rev-parse HEAD 2>&1 | Out-String).Trim()
+$currentHead = (
+    & $gitPath -C $repositoryRoot rev-parse HEAD 2>&1 |
+        Out-String
+).Trim().ToLowerInvariant()
 if ($LASTEXITCODE -ne 0 -or $currentHead -notmatch '^[0-9a-f]{40}$') {
     throw "Git HEAD çözümlenemedi: $currentHead"
 }
-if (-not [string]::IsNullOrWhiteSpace($ExpectedHead) -and
-    $currentHead -cne $ExpectedHead.ToLowerInvariant()) {
-    throw "Exact-head uyuşmazlığı. Beklenen: $ExpectedHead; mevcut: $currentHead"
-}
-
-$currentBranch = (& $gitPath -C $repositoryRoot branch --show-current 2>&1 | Out-String).Trim()
-$workingTreeState = @(& $gitPath `
-    -C $repositoryRoot `
-    status `
-    --porcelain=v1 `
-    --untracked-files=all 2>&1)
-if ($LASTEXITCODE -ne 0) {
-    throw 'Git çalışma ağacı durumu okunamadı.'
-}
-if ($workingTreeState.Count -gt 0) {
+if ($currentHead -cne $ExpectedHead.ToLowerInvariant()) {
     throw (
-        "Exact-head validation için çalışma ağacı temiz olmalıdır:`n" +
-        ($workingTreeState -join [Environment]::NewLine)
+        "Exact-head uyuşmazlığı. Beklenen: $ExpectedHead; " +
+        "mevcut: $currentHead"
     )
 }
 
-$shortHead = $currentHead.Substring(0, 12)
+$workingTree = @(
+    & $gitPath `
+        -C $repositoryRoot `
+        status `
+        --porcelain=v1 `
+        --untracked-files=all 2>&1
+)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Git çalışma ağacı durumu okunamadı.'
+}
+if ($workingTree.Count -gt 0) {
+    throw (
+        "Exact-head validation için çalışma ağacı temiz olmalıdır:`n" +
+        ($workingTree -join [Environment]::NewLine)
+    )
+}
+
 if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
     $ResultsRoot = Join-Path `
         ([IO.Path]::GetTempPath()) `
-        "nxb-validation-$shortHead-$stamp"
+        "nxb-validation-$($currentHead.Substring(0, 12))-$stamp"
 }
 $resultsFull = [IO.Path]::GetFullPath($ResultsRoot)
 if (Test-Path -LiteralPath $resultsFull) {
@@ -318,168 +271,253 @@ if (Test-Path -LiteralPath $resultsFull) {
 $logsRoot = Join-Path $resultsFull 'logs'
 [IO.Directory]::CreateDirectory($logsRoot) | Out-Null
 
-$gates = [Collections.Generic.List[object]]::new()
-$validationStartedUtc = [DateTime]::UtcNow
 $summaryPath = Join-Path $resultsFull 'validation-summary.json'
+$reviewZip = Join-Path $HOME (
+    'Downloads\' +
+    (Split-Path -Leaf $resultsFull) +
+    '-review.zip'
+)
+$gates = [Collections.Generic.List[object]]::new()
 $failureMessage = $null
+$validationStartedUtc = [DateTime]::UtcNow
+
+$repositoryLiteral = ConvertTo-NxbLiteral -Value $repositoryRoot
+$testsLiteral = ConvertTo-NxbLiteral -Value (
+    Join-Path $repositoryRoot 'tests'
+)
+$settingsLiteral = ConvertTo-NxbLiteral -Value (
+    Join-Path $repositoryRoot '.github\PSScriptAnalyzerSettings.psd1'
+)
+$ps7XmlPath = Join-Path $resultsFull 'pester-pwsh.xml'
+$ps51XmlPath = Join-Path $resultsFull 'pester-ps51.xml'
+$ps7XmlLiteral = ConvertTo-NxbLiteral -Value $ps7XmlPath
+$ps51XmlLiteral = ConvertTo-NxbLiteral -Value $ps51XmlPath
 
 try {
     if ($BootstrapDependencies) {
-        $bootstrapPwsh = @'
+        $bootstrapPwshLog = Join-Path $logsRoot 'bootstrap-pwsh.log'
+        $bootstrapPwsh = Invoke-NxbChild `
+            -ExecutablePath $pwshPath `
+            -CommandText @'
+$ErrorActionPreference = 'Stop'
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-if (-not (Get-Module -ListAvailable Pester | Where-Object Version -GE 5.0)) {
-    Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0 -Force -SkipPublisherCheck
+if ($null -eq (
+    Get-Module -ListAvailable Pester |
+        Where-Object Version -GE ([version]'5.0.0') |
+        Select-Object -First 1
+)) {
+    Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0 -Force -SkipPublisherCheck -AllowClobber
 }
-if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+if ($null -eq (Get-Module -ListAvailable PSScriptAnalyzer | Select-Object -First 1)) {
     Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
 }
-'@
-        $bootstrapPs51 = @'
-Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-if (-not (Get-Module -ListAvailable Pester | Where-Object Version -GE 5.0)) {
-    Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0 -Force -SkipPublisherCheck
-}
-'@
-        $gates.Add((Invoke-NxbPowerShellGate `
-            -Name 'bootstrap-pwsh-modules' `
-            -ExecutablePath $pwshPath `
-            -CommandText $bootstrapPwsh `
-            -LogPath (Join-Path $logsRoot 'bootstrap-pwsh-modules.log')))
-        $gates.Add((Invoke-NxbPowerShellGate `
-            -Name 'bootstrap-ps51-modules' `
+'@ `
+            -LogPath $bootstrapPwshLog
+        Add-NxbGate `
+            -GateList $gates `
+            -Name 'bootstrap-pwsh' `
+            -Status $(if ($bootstrapPwsh.exit_code -eq 0) {
+                'passed'
+            }
+            else {
+                'failed'
+            }) `
+            -ExitCode $bootstrapPwsh.exit_code `
+            -LogPath $bootstrapPwshLog `
+            -Reason $(if ($bootstrapPwsh.exit_code -eq 0) {
+                $null
+            }
+            else {
+                'PowerShell 7 dependency bootstrap başarısız.'
+            })
+
+        $bootstrapPs51Log = Join-Path $logsRoot 'bootstrap-ps51.log'
+        $bootstrapPs51 = Invoke-NxbChild `
             -ExecutablePath $windowsPowerShellPath `
-            -CommandText $bootstrapPs51 `
-            -LogPath (Join-Path $logsRoot 'bootstrap-ps51-modules.log')))
-
-        $pythonOutput = @(& $pythonPath -m pip install --user jsonschema 2>&1)
-        $pythonExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-        $pythonLog = Join-Path $logsRoot 'bootstrap-python-jsonschema.log'
-        Out-NxbUtf8NoBom `
-            -Path $pythonLog `
-            -Content (@($pythonOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
-        $gates.Add([pscustomobject][ordered]@{
-            name = 'bootstrap-python-jsonschema'
-            status = if ($pythonExit -eq 0) { 'passed' } else { 'failed' }
-            exit_code = $pythonExit
-            started_utc = $validationStartedUtc.ToString('o')
-            stopped_utc = [DateTime]::UtcNow.ToString('o')
-            duration_ms = $null
-            log_path = $pythonLog
-            reason = if ($pythonExit -eq 0) { $null } else { "pip exit code: $pythonExit" }
-        })
+            -CommandText @'
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+$required = [version]'5.7.1'
+$selected = Get-Module -ListAvailable Pester |
+    Where-Object Version -GE $required |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if ($null -eq $selected) {
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+    Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+}
+$selected = Get-Module -ListAvailable Pester |
+    Where-Object Version -GE $required |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if ($null -eq $selected) {
+    throw 'Pester 5.7.1 kurulamadı.'
+}
+Write-Output ('PesterPath=' + $selected.Path)
+Write-Output ('PesterVersion=' + $selected.Version)
+'@ `
+            -LogPath $bootstrapPs51Log
+        Add-NxbGate `
+            -GateList $gates `
+            -Name 'bootstrap-ps51' `
+            -Status $(if ($bootstrapPs51.exit_code -eq 0) {
+                'passed'
+            }
+            else {
+                'failed'
+            }) `
+            -ExitCode $bootstrapPs51.exit_code `
+            -LogPath $bootstrapPs51Log `
+            -Reason $(if ($bootstrapPs51.exit_code -eq 0) {
+                $null
+            }
+            else {
+                'Windows PowerShell 5.1 Pester bootstrap başarısız.'
+            })
     }
 
-    $pesterPwshVersion = Get-NxbModuleVersion `
+    $publicLog = Join-Path $logsRoot 'public-repository-content.log'
+    $public = Invoke-NxbChild `
         -ExecutablePath $pwshPath `
-        -ModuleName 'Pester'
-    $pesterPs51Version = Get-NxbModuleVersion `
-        -ExecutablePath $windowsPowerShellPath `
-        -ModuleName 'Pester'
-    $analyzerVersion = Get-NxbModuleVersion `
-        -ExecutablePath $pwshPath `
-        -ModuleName 'PSScriptAnalyzer'
-
-    if ([string]::IsNullOrWhiteSpace($pesterPwshVersion)) {
-        throw 'PowerShell 7 için Pester 5 bulunamadı. -BootstrapDependencies kullanın.'
-    }
-    if ([string]::IsNullOrWhiteSpace($pesterPs51Version)) {
-        throw 'Windows PowerShell 5.1 için Pester 5 bulunamadı. -BootstrapDependencies kullanın.'
-    }
-    if ([string]::IsNullOrWhiteSpace($analyzerVersion)) {
-        throw 'PSScriptAnalyzer bulunamadı. -BootstrapDependencies kullanın.'
-    }
-
-    $pythonVersionOutput = @(& $pythonPath -c `
-        'import importlib.metadata; print(importlib.metadata.version("jsonschema"))' 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Python jsonschema paketi bulunamadı. -BootstrapDependencies kullanın.'
-    }
-    $jsonSchemaVersion = (@($pythonVersionOutput | ForEach-Object { [string]$_ }) -join '').Trim()
-
-    $repositoryLiteral = ConvertTo-NxbPowerShellLiteral -Value $repositoryRoot
-    $testsLiteral = ConvertTo-NxbPowerShellLiteral -Value (Join-Path $repositoryRoot 'tests')
-    $settingsLiteral = ConvertTo-NxbPowerShellLiteral -Value (
-        Join-Path $repositoryRoot '.github\PSScriptAnalyzerSettings.psd1'
-    )
-    $ps7XmlLiteral = ConvertTo-NxbPowerShellLiteral -Value (
-        Join-Path $resultsFull 'pester-pwsh.xml'
-    )
-    $ps51XmlLiteral = ConvertTo-NxbPowerShellLiteral -Value (
-        Join-Path $resultsFull 'pester-ps51.xml'
-    )
-
-    $publicGuardCommand = @"
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $repositoryLiteral
 & ./scripts/Test-PublicRepositoryContent.ps1 -RepositoryRoot $repositoryLiteral
 if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+"@ `
+        -LogPath $publicLog
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'public-repository-content' `
-        -ExecutablePath $pwshPath `
-        -CommandText $publicGuardCommand `
-        -LogPath (Join-Path $logsRoot 'public-repository-content.log')))
+        -Status $(if ($public.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $public.exit_code `
+        -LogPath $publicLog `
+        -Reason $(if ($public.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'Public repository guard başarısız.'
+        })
 
-    $profileLiteral = ConvertTo-NxbPowerShellLiteral -Value (
-        Join-Path $repositoryRoot 'profiles\Nxb.MinimalCpuScheduler.wprp'
-    )
-    $wprLiteral = ConvertTo-NxbPowerShellLiteral -Value $wprPath
-    $nativeProfileCommand = @"
-`$output = @(& $wprLiteral -profiles $profileLiteral 2>&1)
-`$exitCode = `$LASTEXITCODE
-`$output | ForEach-Object { Write-Output `$_ }
-if (`$exitCode -ne 0) { exit `$exitCode }
-if ((`$output -join [Environment]::NewLine) -notmatch 'NxbMinimalCpuScheduler') {
-    Write-Error 'Native WPR parser profile kimliğini enumerate etmedi.'
-    exit 1
-}
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+    $profileLog = Join-Path $logsRoot 'native-wpr-profile-parser.log'
+    $profilePath = Join-Path `
+        $repositoryRoot `
+        'profiles\Nxb.MinimalCpuScheduler.wprp'
+    $profileOutput = @(& $wprPath -profiles $profilePath 2>&1)
+    $profileExit = if ($null -eq $LASTEXITCODE) {
+        1
+    }
+    else {
+        [int]$LASTEXITCODE
+    }
+    $profileText = @(
+        $profileOutput | ForEach-Object { [string]$_ }
+    ) -join [Environment]::NewLine
+    if ($profileExit -eq 0 -and
+        $profileText -notmatch 'NxbMinimalCpuScheduler') {
+        $profileExit = 1
+        $profileText += (
+            [Environment]::NewLine +
+            'Profile kimliği native WPR çıktısında bulunamadı.'
+        )
+    }
+    Write-NxbUtf8NoBom -Path $profileLog -Content $profileText
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'native-wpr-profile-parser' `
-        -ExecutablePath $pwshPath `
-        -CommandText $nativeProfileCommand `
-        -LogPath (Join-Path $logsRoot 'native-wpr-profile-parser.log')))
+        -Status $(if ($profileExit -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $profileExit `
+        -LogPath $profileLog `
+        -Reason $(if ($profileExit -eq 0) {
+            $null
+        }
+        else {
+            'Native WPR profile parser başarısız.'
+        })
 
-    $analyzerCommand = @"
+    $analyzerLog = Join-Path $logsRoot 'psscriptanalyzer.log'
+    $analyzer = Invoke-NxbChild `
+        -ExecutablePath $pwshPath `
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
 Import-Module PSScriptAnalyzer -Force
 Set-Location -LiteralPath $repositoryLiteral
-`$results = @(
-    foreach (`$path in @('./scripts', './tests')) {
-        Invoke-ScriptAnalyzer `
-            -Path `$path `
-            -Recurse `
-            -Settings $settingsLiteral
+`$findings = [Collections.Generic.List[object]]::new()
+foreach (`$scanPath in @('./scripts', './tests')) {
+    `$parameters = @{
+        Path = `$scanPath
+        Recurse = `$true
+        Settings = $settingsLiteral
     }
-) | Sort-Object ScriptName, Line, Column, RuleName
-foreach (`$result in `$results) {
-    Write-Output ('ANALYZER|{0}|{1}|{2}|{3}|{4}|{5}' -f `
-        `$result.Severity,
-        `$result.ScriptName,
-        `$result.Line,
-        `$result.Column,
-        `$result.RuleName,
-        (([string]`$result.Message).Replace("`r", ' ').Replace("`n", ' ')))
+    foreach (`$finding in @(Invoke-ScriptAnalyzer @parameters)) {
+        `$findings.Add(`$finding)
+    }
 }
-if (`$results.Count -gt 0) { exit 1 }
+`$ordered = @(`$findings | Sort-Object ScriptName, Line, Column, RuleName)
+foreach (`$finding in `$ordered) {
+    `$fields = @(
+        `$finding.Severity,
+        `$finding.ScriptName,
+        `$finding.Line,
+        `$finding.Column,
+        `$finding.RuleName,
+        (([string]`$finding.Message).Replace("`r", ' ').Replace("`n", ' '))
+    )
+    Write-Output ('ANALYZER|' + (`$fields -join '|'))
+}
+if (`$ordered.Count -gt 0) { exit 1 }
 Write-Output 'PSScriptAnalyzer: 0 Error/Warning findings.'
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+"@ `
+        -LogPath $analyzerLog
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'psscriptanalyzer' `
-        -ExecutablePath $pwshPath `
-        -CommandText $analyzerCommand `
-        -LogPath (Join-Path $logsRoot 'psscriptanalyzer.log')))
+        -Status $(if ($analyzer.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $analyzer.exit_code `
+        -LogPath $analyzerLog `
+        -Reason $(if ($analyzer.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'Analyzer bulgusu veya invocation hatası.'
+        })
 
-    $smokeCommand = @"
+    $smokeLog = Join-Path $logsRoot 'repository-smoke.log'
+    $smoke = Invoke-NxbChild `
+        -ExecutablePath $pwshPath `
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $repositoryLiteral
 & ./scripts/Test-Repository.ps1
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+"@ `
+        -LogPath $smokeLog
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'repository-smoke' `
-        -ExecutablePath $pwshPath `
-        -CommandText $smokeCommand `
-        -LogPath (Join-Path $logsRoot 'repository-smoke.log')))
+        -Status $(if ($smoke.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $smoke.exit_code `
+        -LogPath $smokeLog `
+        -Reason $(if ($smoke.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'Repository smoke başarısız.'
+        })
 
-    $pesterPwshCommand = @"
-Import-Module Pester -MinimumVersion 5.0 -Force
+    $pester7Log = Join-Path $logsRoot 'pester-pwsh.log'
+    $pester7 = Invoke-NxbChild `
+        -ExecutablePath $pwshPath `
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
+`$module = Get-Module -ListAvailable Pester |
+    Where-Object Version -GE ([version]'5.0.0') |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if (`$null -eq `$module) { throw 'Pester >= 5 bulunamadı.' }
+Import-Module `$module.Path -Force
+Write-Output ('PesterPath=' + `$module.Path)
+Write-Output ('PesterVersion=' + `$module.Version)
 `$configuration = New-PesterConfiguration
 `$configuration.Run.Path = @($testsLiteral)
 `$configuration.Run.Exit = `$true
@@ -488,15 +526,40 @@ Import-Module Pester -MinimumVersion 5.0 -Force
 `$configuration.TestResult.OutputFormat = 'NUnitXml'
 `$configuration.TestResult.OutputPath = $ps7XmlLiteral
 Invoke-Pester -Configuration `$configuration
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+"@ `
+        -LogPath $pester7Log
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'pester-pwsh' `
-        -ExecutablePath $pwshPath `
-        -CommandText $pesterPwshCommand `
-        -LogPath (Join-Path $logsRoot 'pester-pwsh.log')))
+        -Status $(if ($pester7.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $pester7.exit_code `
+        -LogPath $pester7Log `
+        -Reason $(if ($pester7.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'PowerShell 7 Pester matrisi başarısız.'
+        })
 
-    $pesterPs51Command = @"
-Import-Module Pester -MinimumVersion 5.0 -Force
+    $pester51Log = Join-Path $logsRoot 'pester-ps51.log'
+    $pester51 = Invoke-NxbChild `
+        -ExecutablePath $windowsPowerShellPath `
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
+`$module = Get-Module -ListAvailable Pester |
+    Where-Object Version -GE ([version]'5.0.0') |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if (`$null -eq `$module) {
+    throw 'Windows PowerShell 5.1 için Pester >= 5 bulunamadı.'
+}
+Import-Module `$module.Path -Force
+`$loaded = Get-Module Pester
+if (`$loaded.Version -lt ([version]'5.0.0')) {
+    throw ('Yanlış Pester sürümü yüklendi: ' + `$loaded.Version)
+}
+Write-Output ('PesterPath=' + `$loaded.Path)
+Write-Output ('PesterVersion=' + `$loaded.Version)
 `$configuration = New-PesterConfiguration
 `$configuration.Run.Path = @($testsLiteral)
 `$configuration.Run.Exit = `$true
@@ -505,104 +568,127 @@ Import-Module Pester -MinimumVersion 5.0 -Force
 `$configuration.TestResult.OutputFormat = 'NUnitXml'
 `$configuration.TestResult.OutputPath = $ps51XmlLiteral
 Invoke-Pester -Configuration `$configuration
-"@
-    $gates.Add((Invoke-NxbPowerShellGate `
+"@ `
+        -LogPath $pester51Log
+    Add-NxbGate `
+        -GateList $gates `
         -Name 'pester-ps51' `
-        -ExecutablePath $windowsPowerShellPath `
-        -CommandText $pesterPs51Command `
-        -LogPath (Join-Path $logsRoot 'pester-ps51.log')))
+        -Status $(if ($pester51.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $pester51.exit_code `
+        -LogPath $pester51Log `
+        -Reason $(if ($pester51.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'Windows PowerShell 5.1 Pester matrisi başarısız.'
+        })
 
-    $failedBeforeNative = @($gates | Where-Object status -eq 'failed').Count
-    if ($SkipNativeCalibration) {
-        $gates.Add([pscustomobject][ordered]@{
-            name = 'native-wpr-calibration'
-            status = 'skipped'
-            exit_code = $null
-            started_utc = $null
-            stopped_utc = $null
-            duration_ms = $null
-            log_path = $null
-            reason = 'SkipNativeCalibration was specified.'
-        })
-    }
-    elseif ($failedBeforeNative -gt 0) {
-        $gates.Add([pscustomobject][ordered]@{
-            name = 'native-wpr-calibration'
-            status = 'skipped'
-            exit_code = $null
-            started_utc = $null
-            stopped_utc = $null
-            duration_ms = $null
-            log_path = $null
-            reason = 'Earlier required gates failed.'
-        })
-    }
-    elseif (-not (Test-NxbAdministrator)) {
-        $gates.Add([pscustomobject][ordered]@{
-            name = 'native-wpr-calibration'
-            status = 'failed'
-            exit_code = 1
-            started_utc = $null
-            stopped_utc = $null
-            duration_ms = $null
-            log_path = $null
-            reason = 'Native WPR calibration requires an elevated administrator shell.'
-        })
+    $failedBeforeNative = @(
+        $gates | Where-Object status -eq 'failed'
+    ).Count
+    $nativeLog = Join-Path $logsRoot 'native-wpr-calibration.log'
+    if ($failedBeforeNative -gt 0) {
+        Add-NxbGate `
+            -GateList $gates `
+            -Name 'native-wpr-calibration' `
+            -Status 'skipped' `
+            -LogPath $nativeLog `
+            -Reason 'Earlier required gates failed.'
     }
     elseif ($PSCmdlet.ShouldProcess(
         $resultsFull,
         "Run $RepetitionCount native WPR control/capture pairs"
     )) {
         $labRoot = Join-Path $resultsFull 'native-calibration-lab'
-        $nativeCommand = @"
-Set-Location -LiteralPath $repositoryLiteral
-& ./scripts/Initialize-Lab.ps1 -Root $(ConvertTo-NxbPowerShellLiteral -Value $labRoot) -Role Target | Out-Null
-`$parent = & ./scripts/New-Experiment.ps1 `
-    -Root $(ConvertTo-NxbPowerShellLiteral -Value $labRoot) `
-    -Name 'NXB-IRL-004-Exact-Head-$shortHead' `
-    -Hypothesis 'Measure bounded CPU/scheduler WPR overhead on exact validated head'
-`$parent | Set-Content `
-    -LiteralPath $(ConvertTo-NxbPowerShellLiteral -Value (Join-Path $resultsFull 'native-parent-path.txt')) `
-    -Encoding UTF8
-& ./scripts/Invoke-CollectorOverheadCalibration.ps1 `
-    -ExperimentPath `$parent `
-    -RepetitionCount $RepetitionCount `
-    -WarmupCount $WarmupCount `
-    -Ordering $Ordering `
-    -Iterations $Iterations `
-    -Seed $Seed `
-    -WprExecutablePath $wprLiteral `
-    -Confirm:`$false
-"@
-        $gates.Add((Invoke-NxbPowerShellGate `
-            -Name 'native-wpr-calibration' `
+        $parentPathFile = Join-Path $resultsFull 'native-parent-path.txt'
+        $labLiteral = ConvertTo-NxbLiteral -Value $labRoot
+        $parentFileLiteral = ConvertTo-NxbLiteral -Value $parentPathFile
+        $wprLiteral = ConvertTo-NxbLiteral -Value $wprPath
+        $native = Invoke-NxbChild `
             -ExecutablePath $pwshPath `
-            -CommandText $nativeCommand `
-            -LogPath (Join-Path $logsRoot 'native-wpr-calibration.log')))
+            -CommandText @"
+`$ErrorActionPreference = 'Stop'
+Set-Location -LiteralPath $repositoryLiteral
+`$labParameters = @{
+    Root = $labLiteral
+    Role = 'Target'
+}
+& ./scripts/Initialize-Lab.ps1 @labParameters | Out-Null
+`$experimentParameters = @{
+    Root = $labLiteral
+    Name = 'NXB-IRL-004-Final-$($currentHead.Substring(0, 12))'
+    Hypothesis = 'Measure bounded CPU/scheduler WPR overhead on exact final head'
+}
+`$parent = & ./scripts/New-Experiment.ps1 @experimentParameters
+[IO.File]::WriteAllText(
+    $parentFileLiteral,
+    [string]`$parent,
+    [Text.UTF8Encoding]::new(`$false)
+)
+`$calibrationParameters = @{
+    ExperimentPath = `$parent
+    RepetitionCount = $RepetitionCount
+    WarmupCount = $WarmupCount
+    Ordering = '$Ordering'
+    Iterations = $Iterations
+    Seed = $Seed
+    WprExecutablePath = $wprLiteral
+    Confirm = `$false
+}
+& ./scripts/Invoke-CollectorOverheadCalibration.ps1 @calibrationParameters
+"@ `
+            -LogPath $nativeLog
+        Add-NxbGate `
+            -GateList $gates `
+            -Name 'native-wpr-calibration' `
+            -Status $(if ($native.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+            -ExitCode $native.exit_code `
+            -LogPath $nativeLog `
+            -Reason $(if ($native.exit_code -eq 0) {
+                $null
+            }
+            else {
+                'Native WPR calibration başarısız.'
+            })
+
+        if ($native.exit_code -eq 0 -and
+            (Test-Path -LiteralPath $parentPathFile -PathType Leaf)) {
+            $parentPath = (
+                Get-Content -LiteralPath $parentPathFile -Raw
+            ).Trim()
+            $nativeEvidence = Join-Path `
+                $parentPath `
+                'analysis\collector-overhead-calibration.json'
+            if (Test-Path -LiteralPath $nativeEvidence -PathType Leaf) {
+                Copy-Item `
+                    -LiteralPath $nativeEvidence `
+                    -Destination (
+                        Join-Path $resultsFull 'native-calibration.json'
+                    )
+            }
+        }
     }
     else {
-        $gates.Add([pscustomobject][ordered]@{
-            name = 'native-wpr-calibration'
-            status = 'skipped'
-            exit_code = $null
-            started_utc = $null
-            stopped_utc = $null
-            duration_ms = $null
-            log_path = $null
-            reason = 'ShouldProcess approval was not granted.'
-        })
+        Add-NxbGate `
+            -GateList $gates `
+            -Name 'native-wpr-calibration' `
+            -Status 'skipped' `
+            -LogPath $nativeLog `
+            -Reason 'ShouldProcess approval was not granted.'
     }
 
-    $failedCount = @($gates | Where-Object status -eq 'failed').Count
-    $skippedRequiredCount = @(
-        $gates | Where-Object {
-            $_.name -eq 'native-wpr-calibration' -and $_.status -eq 'skipped'
-        }
+    $failed = @($gates | Where-Object status -eq 'failed').Count
+    $skippedNative = @(
+        $gates |
+            Where-Object {
+                $_.name -eq 'native-wpr-calibration' -and
+                $_.status -eq 'skipped'
+            }
     ).Count
-    if ($failedCount -gt 0) {
-        $failureMessage = "$failedCount validation gate(s) failed."
+    if ($failed -gt 0) {
+        $failureMessage = "$failed validation gate(s) failed."
     }
-    elseif ($skippedRequiredCount -gt 0) {
+    elseif ($skippedNative -gt 0) {
         $failureMessage = 'Native WPR calibration gate was skipped.'
     }
 }
@@ -611,78 +697,66 @@ catch {
 }
 finally {
     $summary = [ordered]@{
-        schema_version = 1
-        status = if ([string]::IsNullOrWhiteSpace($failureMessage)) {
+        schema_version    = 2
+        status            = if (
+            [string]::IsNullOrWhiteSpace($failureMessage)
+        ) {
             'passed'
         }
         else {
             'failed'
         }
-        failure_reason = if ([string]::IsNullOrWhiteSpace($failureMessage)) {
+        failure_reason    = if (
+            [string]::IsNullOrWhiteSpace($failureMessage)
+        ) {
             $null
         }
         else {
             $failureMessage
         }
-        repository = 'Naveax/nxb-integrity-research-lab'
-        branch = $currentBranch
-        head_sha = $currentHead
-        expected_head_sha = if ([string]::IsNullOrWhiteSpace($ExpectedHead)) {
-            $null
-        }
-        else {
-            $ExpectedHead.ToLowerInvariant()
-        }
-        started_utc = $validationStartedUtc.ToString('o')
-        stopped_utc = [DateTime]::UtcNow.ToString('o')
-        results_root = $resultsFull
-        tooling = [ordered]@{
-            pwsh = $pwshPath
-            windows_powershell = $windowsPowerShellPath
-            python = $pythonPath
-            wpr = $wprPath
-            pester_pwsh_version = if (Get-Variable pesterPwshVersion -ErrorAction SilentlyContinue) {
-                $pesterPwshVersion
-            }
-            else {
-                $null
-            }
-            pester_ps51_version = if (Get-Variable pesterPs51Version -ErrorAction SilentlyContinue) {
-                $pesterPs51Version
-            }
-            else {
-                $null
-            }
-            psscriptanalyzer_version = if (Get-Variable analyzerVersion -ErrorAction SilentlyContinue) {
-                $analyzerVersion
-            }
-            else {
-                $null
-            }
-            jsonschema_version = if (Get-Variable jsonSchemaVersion -ErrorAction SilentlyContinue) {
-                $jsonSchemaVersion
-            }
-            else {
-                $null
-            }
-        }
-        protocol = [ordered]@{
+        repository        = 'Naveax/nxb-integrity-research-lab'
+        branch            = (
+            & $gitPath -C $repositoryRoot branch --show-current |
+                Out-String
+        ).Trim()
+        head_sha          = $currentHead
+        expected_head_sha = $ExpectedHead.ToLowerInvariant()
+        started_utc       = $validationStartedUtc.ToString('o')
+        stopped_utc       = [DateTime]::UtcNow.ToString('o')
+        results_root      = $resultsFull
+        protocol          = [ordered]@{
             repetition_count = $RepetitionCount
-            warmup_count = $WarmupCount
-            ordering = $Ordering
-            iterations = $Iterations
-            seed = $Seed
-            native_calibration_skipped = [bool]$SkipNativeCalibration
+            warmup_count     = $WarmupCount
+            ordering         = $Ordering
+            iterations       = $Iterations
+            seed             = $Seed
         }
-        gates = @($gates)
+        gates             = @($gates)
     }
-
-    Out-NxbUtf8NoBom `
+    Write-NxbUtf8NoBom `
         -Path $summaryPath `
         -Content ($summary | ConvertTo-Json -Depth 32)
+
+    $reviewItems = @(
+        $summaryPath,
+        $logsRoot,
+        $ps7XmlPath,
+        $ps51XmlPath,
+        (Join-Path $resultsFull 'native-calibration.json')
+    ) | Where-Object {
+        Test-Path -LiteralPath $_
+    }
+    if ($reviewItems.Count -gt 0) {
+        Compress-Archive `
+            -Path $reviewItems `
+            -DestinationPath $reviewZip `
+            -Force
+    }
 }
 
 Write-Host "Validation summary: $summaryPath"
+Write-Host "Review ZIP: $reviewZip"
+
 if (-not [string]::IsNullOrWhiteSpace($failureMessage)) {
     throw $failureMessage
 }
