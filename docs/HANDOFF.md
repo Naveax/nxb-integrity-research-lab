@@ -8,29 +8,27 @@ Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için kanoni
 - Default branch: `main`
 - Visibility: public
 - Active issue: `#2 — NXB-IRL-004 — Full-system observability fabric`
-- Merged PR: `#6 — NXB-IRL-004: minimal CPU and scheduler capture profile`
-- Closeout PR: `#7 — NXB-IRL-004: paired collector overhead calibration`
-- Branch: `nxb-irl-004-overhead-calibration`
+- Latest merged PR: `#7 — NXB-IRL-004: paired collector overhead calibration`
 
 GitHub Actions are intentionally disabled repository-wide and must remain disabled.
 
-## PR #7 validation
+## Completed NXB-IRL-004 blocks
 
-Status: `EXACT IMPLEMENTATION HEAD VALIDATED — CLOSEOUT READY`
+### Minimal CPU and scheduler profile
 
-Validated implementation head:
+- PR: `#6`
+- Squash merge: `04214ac4e27a1b35e4327392480c2f89e9caaddc`
+- Status: `MERGED`
 
-```text
-76c2d9cbc6d52c7025664bc06a108fa44d3457f4
-```
+### Paired collector overhead calibration
 
-Validation record:
+- PR: `#7`
+- Squash merge: `04ac296da24c9e6b755ef6868ba0b82a34bd0f4a`
+- Validated implementation head: `76c2d9cbc6d52c7025664bc06a108fa44d3457f4`
+- Status: `MERGED AND VALIDATED`
+- Validation record: `docs/NXB-IRL-004-VALIDATION.md`
 
-```text
-docs/NXB-IRL-004-VALIDATION.md
-```
-
-Required gate results:
+Required validation results:
 
 - public repository guard: passed,
 - native WPR profile parser: passed,
@@ -38,67 +36,60 @@ Required gate results:
 - repository smoke: passed,
 - PowerShell 7 Pester: 98 passed, 0 failed,
 - Windows PowerShell 5.1 Pester: 98 passed, 0 failed,
-- native WPR calibration: 3/3 successful pairs and 1 warmup.
-
-Commits after the validated implementation head are limited to validation and handoff documentation. They do not change runtime, schema, validator, tests, workflows or calibration behavior. The authoritative closeout head is stored in PR metadata and must be checked immediately before merge.
-
-## Completed NXB-IRL-004 blocks
-
-### Minimal CPU and scheduler profile
-
-Status: `MERGED`
-
-PR: `#6`
-
-Squash merge:
-
-```text
-04214ac4e27a1b35e4327392480c2f89e9caaddc
-```
-
-### Paired collector overhead calibration
-
-Status: `IMPLEMENTED AND VALIDATED`
+- native WPR calibration: 3/3 successful pairs and 1 warmup,
+- threshold policy: `not_declared`.
 
 Completed properties:
 
-- strict JSON Schema 2020-12 evidence contract,
-- semantic identity, ordering, delta and distribution verification,
+- strict calibration evidence schema and semantic validation,
 - parent and separate child experiment lifecycle binding,
-- same-machine and same-boot enforcement,
-- active power-policy verification before and after every arm,
-- deterministic workload identity and checksum equivalence,
-- independent process CPU, working-set and private-byte observations,
-- WPR start and stop latency,
-- ETL SHA-256, length, effective byte rate and provenance binding,
-- bounded warmups, repetitions, cooldown and ordering,
+- same-machine, same-boot, same-power-policy and same-workload enforcement,
+- deterministic control/capture ordering,
+- process CPU, working-set and private-byte measurements,
+- WPR start and stop/finalization latency,
+- ETL SHA-256, length, effective byte rate and profile provenance,
+- pair deltas and distribution summaries,
 - explicit measured, unsupported and failed states,
-- teardown-first stop and explicit cancellation on failure,
+- teardown-first stop and explicit WPR cancellation,
 - schema-valid failed-pair preservation,
-- mandatory `threshold_policy.status: not_declared`,
 - PowerShell 7 and Windows PowerShell 5.1 compatibility.
 
-## Merge boundary
+## Next required block
 
-Before merging PR `#7`:
+Start with:
 
-1. read the current PR head from GitHub,
-2. compare it with validated implementation head `76c2d9cbc6d52c7025664bc06a108fa44d3457f4`,
-3. confirm the later diff contains only documentation,
-4. confirm no workflow was restored,
-5. mark ready,
-6. squash merge with expected-head locking.
+```text
+trace-loss and circular-overwrite accounting
+```
 
-Issue `#2` remains open after PR `#7`.
+Required scope:
 
-## Still outside PR #7
+- define explicit trace-loss evidence states,
+- collect native loss/drop counters where available,
+- distinguish unsupported, unavailable, failed and measured states,
+- bind loss evidence to experiment, machine, boot, profile and ETL provenance,
+- quantify circular-buffer overwrite risk without claiming absence when unmeasured,
+- add schema, semantic validation, adversarial tests and Windows validation,
+- preserve the public repository boundary.
 
-- trace-loss accounting,
-- circular-overwrite quantification,
+After trace-loss accounting, continue with RAM/page-fault/working-set capture.
+
+Issue `#2` remains open.
+
+## Remaining NXB-IRL-004 work
+
+- trace-loss and circular-overwrite accounting,
 - capture-completeness classification,
-- representative production overhead thresholds,
-- RAM, storage, GPU and network capture profiles,
-- cross-domain correlation engine.
+- RAM/page-fault/working-set profile,
+- disk/file-system/storage queue profile,
+- GPU/DXGKRNL/present profile,
+- network/NDIS/connection profile,
+- device/driver/PCIe inventory and event sources,
+- power/frequency/thermal snapshot,
+- firmware/VBS/HVCI/Secure Boot experiment binding,
+- cross-domain correlation engine,
+- controlled memory, storage, GPU and network fixtures,
+- representative production overhead thresholds.
 
 ## Public repository boundary
 
@@ -107,9 +98,8 @@ Never commit raw ETL, packet captures, dumps, protected binaries, drivers, priva
 ## Continuation prompt
 
 ```text
-Inspect Naveax/nxb-integrity-research-lab PR #7 and docs/NXB-IRL-004-VALIDATION.md.
-Confirm validated implementation head 76c2d9cbc6d52c7025664bc06a108fa44d3457f4.
-Confirm all later commits are documentation-only and no workflow was restored.
-Mark PR #7 ready and squash merge with expected-head locking.
-Keep issue #2 open and continue with the next NXB-IRL-004 observability block.
+Continue Naveax/nxb-integrity-research-lab from main after PR #7 merge 04ac296da24c9e6b755ef6868ba0b82a34bd0f4a.
+Read issue #2, docs/HANDOFF.md and docs/NXB-IRL-004-VALIDATION.md.
+Start the trace-loss and circular-overwrite accounting block on a new branch and draft PR.
+Keep GitHub Actions disabled and preserve the public repository boundary.
 ```
