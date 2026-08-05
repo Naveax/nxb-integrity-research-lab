@@ -70,6 +70,35 @@ function ConvertTo-NxbSignatureRelativePath {
     return $normalized
 }
 
+function Test-NxbSignatureOutputPathSafety {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$ExperimentRoot
+    )
+
+    $pathFull = Get-NxbFullPath -Path $Path
+    [void](Get-NxbRelativePath -BasePath $ExperimentRoot -ChildPath $pathFull)
+
+    $existingAncestor = $pathFull
+    while (-not (Test-Path -LiteralPath $existingAncestor)) {
+        $parent = Split-Path -Parent $existingAncestor
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            $parent.Equals($existingAncestor, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Signature output yolu için mevcut güvenli ancestor bulunamadı: $pathFull"
+        }
+        $existingAncestor = $parent
+    }
+
+    [void](Test-NxbPathSafety -Path $existingAncestor -RootPath $ExperimentRoot)
+    return $true
+}
+
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 if ([string]::IsNullOrWhiteSpace($BundlePath)) {
     $BundlePath = Join-Path $experimentFull 'evidence-store\bundle-manifest.json'
@@ -83,6 +112,7 @@ $signatureRelative = ConvertTo-NxbSignatureRelativePath -Path $SignatureRelative
 $signatureNative = $signatureRelative.Replace([char]'/', [IO.Path]::DirectorySeparatorChar)
 $signatureFull = [IO.Path]::GetFullPath((Join-Path $experimentFull $signatureNative))
 [void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $signatureFull)
+[void](Test-NxbSignatureOutputPathSafety -Path $signatureFull -ExperimentRoot $experimentFull)
 
 if ($signatureFull -ceq $bundleFull) {
     throw 'Signature dosyası bundle manifest ile aynı olamaz.'
@@ -179,7 +209,6 @@ try {
     $signatureDirectory = Split-Path -Parent $signatureFull
     New-Item -ItemType Directory -Path $signatureDirectory -Force | Out-Null
     [void](Test-NxbPathSafety -Path $signatureDirectory -RootPath $experimentFull)
-    [void](Test-NxbPathSafety -Path $signatureFull -RootPath $experimentFull)
 
     $pendingManifest = Join-Path $storePath (
         '.bundle-signature-pending-{0}.json' -f [guid]::NewGuid().ToString('N')
