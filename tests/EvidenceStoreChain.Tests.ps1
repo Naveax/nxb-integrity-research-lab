@@ -10,7 +10,16 @@
             [string]$Root,
 
             [Parameter(Mandatory)]
-            [string]$Name
+            [string]$Name,
+
+            [Parameter()]
+            [string]$ExperimentId = 'experiment-1',
+
+            [Parameter()]
+            [string]$MachineId = 'machine-1',
+
+            [Parameter()]
+            [string]$BootId = 'boot-1'
         )
 
         $experimentPath = Join-Path $Root $Name
@@ -18,14 +27,14 @@
         New-Item -ItemType Directory -Path $baselinePath -Force | Out-Null
 
         [ordered]@{
-            experiment_id = 'experiment-1'
+            experiment_id = $ExperimentId
         } | ConvertTo-Json | Set-Content `
             -LiteralPath (Join-Path $experimentPath 'manifest.json') `
             -Encoding UTF8
 
         [ordered]@{
-            machine_id = 'machine-1'
-            boot_id = 'boot-1'
+            machine_id = $MachineId
+            boot_id = $BootId
         } | ConvertTo-Json | Set-Content `
             -LiteralPath (Join-Path $baselinePath 'observation-identity.json') `
             -Encoding UTF8
@@ -43,16 +52,45 @@
             [string]$Value,
 
             [Parameter(Mandatory)]
-            [int64]$MonotonicNs
+            [int64]$MonotonicNs,
+
+            [Parameter()]
+            [string]$SessionId = 'session-1'
         )
 
         return & (Join-Path $script:ScriptsRoot 'New-EvidenceStoreRecord.ps1') `
             -ExperimentPath $ExperimentPath `
             -RecordType manifest_snapshot `
             -Payload ([ordered]@{ value = $Value }) `
-            -SessionId 'session-1' `
+            -SessionId $SessionId `
             -CapturedUtc ([DateTime]'2026-08-04T20:00:00Z') `
             -MonotonicNs $MonotonicNs
+    }
+
+    function Set-NxbRecordIdentityField {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)]
+            [string]$RecordPath,
+
+            [Parameter(Mandatory)]
+            [ValidateSet('experiment_id', 'machine_id', 'boot_id', 'session_id')]
+            [string]$Field,
+
+            [Parameter(Mandatory)]
+            [string]$Value
+        )
+
+        $record = Get-Content -LiteralPath $RecordPath -Raw |
+            ConvertFrom-Json
+        $record.$Field = $Value
+        $record.record_sha256 = Get-NxbCanonicalJsonHash `
+            -InputObject $record `
+            -ExcludeRootProperty 'record_sha256'
+        Write-NxbCanonicalJsonAtomic `
+            -Path $RecordPath `
+            -InputObject $record `
+            -Confirm:$false
     }
 }
 
@@ -114,22 +152,30 @@ Describe 'NXB append-only evidence chain' {
         $verified.RecordCount | Should -Be 2
     }
 
-    It 'detects a payload modification without a matching payload hash' {
+    It 'detects an exact one-byte record modification' {
         $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
-            -Name 'payload-tamper'
+            -Name 'one-byte-tamper'
         $recordResult = Add-NxbSyntheticRecord `
             -ExperimentPath $experimentPath `
             -Value alpha `
             -MonotonicNs 100
 
-        $record = Get-Content -LiteralPath $recordResult.RecordPath -Raw |
-            ConvertFrom-Json
-        $record.payload.value = 'changed'
-        Write-NxbCanonicalJsonAtomic `
-            -Path $recordResult.RecordPath `
-            -InputObject $record `
-            -Confirm:$false
+        $encoding = [Text.UTF8Encoding]::new($false)
+        $originalBytes = [IO.File]::ReadAllBytes($recordResult.RecordPath)
+        $originalText = $encoding.GetString($originalBytes)
+        $tamperedText = $originalText.Replace('"alpha"', '"alpga"')
+        $tamperedBytes = $encoding.GetBytes($tamperedText)
+
+        $tamperedBytes.Length | Should -Be $originalBytes.Length
+        $differenceCount = 0
+        for ($index = 0; $index -lt $originalBytes.Length; $index++) {
+            if ($originalBytes[$index] -ne $tamperedBytes[$index]) {
+                $differenceCount++
+            }
+        }
+        $differenceCount | Should -Be 1
+        [IO.File]::WriteAllBytes($recordResult.RecordPath, $tamperedBytes)
 
         {
             & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
@@ -160,10 +206,34 @@ Describe 'NXB append-only evidence chain' {
         Test-Path -LiteralPath $second.RecordPath | Should -BeTrue
     }
 
-    It 'detects identity substitution even when the modified record hash is recomputed' {
+    It 'detects record reordering by filename and embedded sequence' {
         $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
             -Root $script:TemporaryRoot `
-            -Name 'identity-substitution'
+            -Name 'reordering'
+        $first = Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value alpha `
+            -MonotonicNs 100
+        $second = Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value beta `
+            -MonotonicNs 200
+
+        $firstBytes = [IO.File]::ReadAllBytes($first.RecordPath)
+        $secondBytes = [IO.File]::ReadAllBytes($second.RecordPath)
+        [IO.File]::WriteAllBytes($first.RecordPath, $secondBytes)
+        [IO.File]::WriteAllBytes($second.RecordPath, $firstBytes)
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
+                -ExperimentPath $experimentPath
+        } | Should -Throw '*Record içi sequence dosya adıyla uyuşmuyor*'
+    }
+
+    It 'detects a previous-record link mismatch after record rehashing' {
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'previous-link'
         [void](Add-NxbSyntheticRecord `
             -ExperimentPath $experimentPath `
             -Value alpha `
@@ -175,7 +245,7 @@ Describe 'NXB append-only evidence chain' {
 
         $record = Get-Content -LiteralPath $second.RecordPath -Raw |
             ConvertFrom-Json
-        $record.machine_id = 'substituted-machine'
+        $record.previous_record_sha256 = ('0' * 64)
         $record.record_sha256 = Get-NxbCanonicalJsonHash `
             -InputObject $record `
             -ExcludeRootProperty 'record_sha256'
@@ -187,6 +257,125 @@ Describe 'NXB append-only evidence chain' {
         {
             & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
                 -ExperimentPath $experimentPath
+        } | Should -Throw '*Previous-record hash uyuşmazlığı*'
+    }
+
+    It 'detects a record substituted from another experiment' {
+        $targetExperiment = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'substitution-target'
+        $donorExperiment = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'substitution-donor' `
+            -ExperimentId 'experiment-2' `
+            -MachineId 'machine-2' `
+            -BootId 'boot-2'
+
+        $targetFirst = Add-NxbSyntheticRecord `
+            -ExperimentPath $targetExperiment `
+            -Value alpha `
+            -MonotonicNs 100
+        $targetSecond = Add-NxbSyntheticRecord `
+            -ExperimentPath $targetExperiment `
+            -Value beta `
+            -MonotonicNs 200
+        [void](Add-NxbSyntheticRecord `
+            -ExperimentPath $donorExperiment `
+            -Value alpha `
+            -MonotonicNs 100 `
+            -SessionId 'session-2')
+        $donorSecond = Add-NxbSyntheticRecord `
+            -ExperimentPath $donorExperiment `
+            -Value beta `
+            -MonotonicNs 200 `
+            -SessionId 'session-2'
+
+        $record = Get-Content -LiteralPath $donorSecond.RecordPath -Raw |
+            ConvertFrom-Json
+        $record.previous_record_sha256 = $targetFirst.RecordSha256
+        $record.record_sha256 = Get-NxbCanonicalJsonHash `
+            -InputObject $record `
+            -ExcludeRootProperty 'record_sha256'
+        Write-NxbCanonicalJsonAtomic `
+            -Path $targetSecond.RecordPath `
+            -InputObject $record `
+            -Confirm:$false
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
+                -ExperimentPath $targetExperiment
+        } | Should -Throw '*identity değişti: experiment_id*'
+    }
+
+    It 'detects machine identity substitution after record rehashing' {
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'machine-substitution'
+        [void](Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value alpha `
+            -MonotonicNs 100)
+        $second = Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value beta `
+            -MonotonicNs 200
+
+        Set-NxbRecordIdentityField `
+            -RecordPath $second.RecordPath `
+            -Field machine_id `
+            -Value 'substituted-machine'
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
+                -ExperimentPath $experimentPath
         } | Should -Throw '*identity değişti: machine_id*'
+    }
+
+    It 'detects boot identity substitution after record rehashing' {
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'boot-substitution'
+        [void](Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value alpha `
+            -MonotonicNs 100)
+        $second = Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value beta `
+            -MonotonicNs 200
+
+        Set-NxbRecordIdentityField `
+            -RecordPath $second.RecordPath `
+            -Field boot_id `
+            -Value 'substituted-boot'
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
+                -ExperimentPath $experimentPath
+        } | Should -Throw '*identity değişti: boot_id*'
+    }
+
+    It 'detects session identity substitution after record rehashing' {
+        $experimentPath = Initialize-NxbSyntheticEvidenceExperiment `
+            -Root $script:TemporaryRoot `
+            -Name 'session-substitution'
+        [void](Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value alpha `
+            -MonotonicNs 100)
+        $second = Add-NxbSyntheticRecord `
+            -ExperimentPath $experimentPath `
+            -Value beta `
+            -MonotonicNs 200
+
+        Set-NxbRecordIdentityField `
+            -RecordPath $second.RecordPath `
+            -Field session_id `
+            -Value 'substituted-session'
+
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-EvidenceStoreChain.ps1') `
+                -ExperimentPath $experimentPath
+        } | Should -Throw '*identity değişti: session_id*'
     }
 }
