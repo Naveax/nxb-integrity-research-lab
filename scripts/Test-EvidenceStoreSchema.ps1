@@ -49,16 +49,58 @@ if (-not (Test-Path -LiteralPath $validator -PathType Leaf)) {
     throw "JSON validator bulunamadı: $validator"
 }
 
-$output = & $python.Source @(
-    $validator,
-    '--schema',
-    $SchemaPath,
-    '--manifest',
-    $Path
-) 2>&1
+$previousErrorActionPreference = $ErrorActionPreference
+$nativePreference = Get-Variable `
+    -Name PSNativeCommandUseErrorActionPreference `
+    -ErrorAction SilentlyContinue
+$previousNativePreference = $null
+$output = @()
+$exitCode = -1
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Evidence-store schema doğrulaması başarısız ($DocumentType):`n$($output -join [Environment]::NewLine)"
+try {
+    $ErrorActionPreference = 'Continue'
+    if ($null -ne $nativePreference) {
+        $previousNativePreference = [bool]$nativePreference.Value
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $false `
+            -Scope Local
+    }
+
+    $output = @(& $python.Source @(
+        $validator,
+        '--schema',
+        $SchemaPath,
+        '--manifest',
+        $Path
+    ) 2>&1)
+    $exitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($null -ne $nativePreference) {
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $previousNativePreference `
+            -Scope Local
+    }
 }
 
-$output | ForEach-Object { Write-Host $_ }
+if ($exitCode -ne 0) {
+    $detailLines = @($output | ForEach-Object {
+        if ($_ -is [Management.Automation.ErrorRecord]) {
+            [string]$_.Exception.Message
+        }
+        else {
+            [string]$_
+        }
+    })
+    $detail = ($detailLines -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        $detail = "Validator exit code: $exitCode"
+    }
+
+    throw "Evidence-store schema doğrulaması başarısız ($DocumentType):`n$detail"
+}
+
+$output | ForEach-Object { Write-Host ([string]$_) }
