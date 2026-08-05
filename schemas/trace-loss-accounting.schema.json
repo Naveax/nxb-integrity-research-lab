@@ -73,7 +73,13 @@
           "additionalProperties": false,
           "properties": {
             "status": {
-              "enum": ["unsupported", "unavailable", "failed", "not_assessed"]
+              "enum": [
+                "unsupported",
+                "unavailable",
+                "failed",
+                "not_assessed",
+                "not_applicable"
+              ]
             },
             "value": { "type": "null" },
             "unit": { "const": "count" },
