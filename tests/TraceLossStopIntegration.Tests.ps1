@@ -79,7 +79,7 @@ Describe 'NXB accounting-aware WPR stop integration' {
         }
     }
 
-    It 'stops WPR and persists partial conservative accounting from both native sources' {
+    It 'stops WPR and completes file-mode accounting from both native sources' {
         @'
 @echo off
 if /I "%~1"=="-status" (
@@ -114,10 +114,14 @@ exit /b 0
         Test-Path -LiteralPath $result.PostStopStatisticsPath | Should -BeTrue
         $accounting = Get-Content -LiteralPath $result.AccountingPath -Raw |
             ConvertFrom-Json
-        $accounting.trace_loss.classification | Should -Be 'not_assessed'
+        $accounting.trace_loss.classification |
+            Should -Be 'no_native_loss_reported'
         $accounting.trace_loss.measured_counter_count | Should -Be 2
-        $accounting.circular_overwrite.classification | Should -Be 'no_risk_observed'
-        $accounting.summary.evidence_completeness | Should -Be 'partial'
+        $accounting.native_counters.realtime_buffers_lost.status |
+            Should -Be 'not_applicable'
+        $accounting.circular_overwrite.classification |
+            Should -Be 'no_risk_observed'
+        $accounting.summary.evidence_completeness | Should -Be 'complete'
 
         $manifest = Get-Content `
             -LiteralPath (Join-Path $script:ExperimentPath 'manifest.json') `
