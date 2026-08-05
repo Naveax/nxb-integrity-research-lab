@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
@@ -334,19 +334,21 @@ if ($null -eq (Get-Module -ListAvailable PSScriptAnalyzer | Select-Object -First
 
         $bootstrapPs51Log = Join-Path $logsRoot 'bootstrap-ps51.log'
         $bootstrapPs51 = Invoke-NxbChild `
-            -ExecutablePath $windowsPowerShellPath `
+            -ExecutablePath $pwshPath `
             -CommandText @'
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+$targetRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+[IO.Directory]::CreateDirectory($targetRoot) | Out-Null
+$env:PSModulePath = $targetRoot + [IO.Path]::PathSeparator + $env:PSModulePath
 $required = [version]'5.7.1'
 $selected = Get-Module -ListAvailable Pester |
     Where-Object Version -GE $required |
     Sort-Object Version -Descending |
     Select-Object -First 1
 if ($null -eq $selected) {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
-    Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+    Save-Module Pester -RequiredVersion 5.7.1 -Path $targetRoot -Force -Repository PSGallery
 }
 $selected = Get-Module -ListAvailable Pester |
     Where-Object Version -GE $required |

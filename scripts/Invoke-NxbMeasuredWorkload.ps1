@@ -88,7 +88,7 @@ function ConvertTo-NxbWindowsCommandLineArgument {
     return $builder.ToString()
 }
 
-function New-NxbMetricMeasurement {
+function Get-NxbMetricMeasurement {
     [CmdletBinding(DefaultParameterSetName = 'Measured')]
     param(
         [Parameter(Mandatory, ParameterSetName = 'Measured')]
@@ -378,28 +378,28 @@ if ($null -eq $resultEvidence) {
 }
 
 $cpuMeasurement = if ($null -ne $cpuTimeMs) {
-    New-NxbMetricMeasurement -Value $cpuTimeMs -Unit 'ms'
+    Get-NxbMetricMeasurement -Value $cpuTimeMs -Unit 'ms'
 }
 else {
-    New-NxbMetricMeasurement `
+    Get-NxbMetricMeasurement `
         -Status failed `
         -Unit 'ms' `
         -Reason 'Process CPU time ölçülemedi.'
 }
 $workingSetMeasurement = if ($peakWorkingSetBytes -gt 0) {
-    New-NxbMetricMeasurement -Value ([double]$peakWorkingSetBytes) -Unit 'bytes'
+    Get-NxbMetricMeasurement -Value ([double]$peakWorkingSetBytes) -Unit 'bytes'
 }
 else {
-    New-NxbMetricMeasurement `
+    Get-NxbMetricMeasurement `
         -Status unsupported `
         -Unit 'bytes' `
         -Reason 'Peak working set örneklenemedi.'
 }
 $privateBytesMeasurement = if ($peakPrivateBytes -gt 0) {
-    New-NxbMetricMeasurement -Value ([double]$peakPrivateBytes) -Unit 'bytes'
+    Get-NxbMetricMeasurement -Value ([double]$peakPrivateBytes) -Unit 'bytes'
 }
 else {
-    New-NxbMetricMeasurement `
+    Get-NxbMetricMeasurement `
         -Status unsupported `
         -Unit 'bytes' `
         -Reason 'Peak private bytes örneklenemedi.'
