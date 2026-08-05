@@ -1,72 +1,45 @@
 # Project Handoff
 
-Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlı ve kanonik biçimde bulmak için kullanılır.
+Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için kanonik devralma kaydıdır.
 
 ## Repository
 
 - Repository: `Naveax/nxb-integrity-research-lab`
 - Default branch: `main`
 - Visibility: public
-- Active umbrella issue: `#2 — NXB-IRL-004 — Full-system observability fabric`
+- Active issue: `#2 — NXB-IRL-004 — Full-system observability fabric`
+- Merged PR: `#6 — NXB-IRL-004: minimal CPU and scheduler capture profile`
 - Active draft PR: `#7 — NXB-IRL-004: paired collector overhead calibration`
 - Active branch: `nxb-irl-004-overhead-calibration`
-- GitHub Actions: intentionally disabled repository-wide
 
 ## Current objective
 
-Complete PR #7 validation and closeout for deterministic paired control/capture overhead calibration of the bounded CPU/scheduler WPR profile.
+The paired collector-overhead implementation is complete. The remaining work is exact-head Windows validation, evidence inspection, PR closeout and merge.
 
-The implementation is present. No acceptable overhead threshold and no native-WPR performance result are claimed yet.
-
-## Completed milestones
-
-### NXB-IRL-001 — Repository bootstrap
-
-Status: `COMPLETE`
-
-- workspace and experiment creation,
-- baseline collection,
-- WPR lifecycle,
-- KDNET preparation checks,
-- evidence hashing and finalization,
-- public/private evidence boundary.
-
-### NXB-IRL-002 — Deterministic experiment lifecycle
-
-Status: `COMPLETE`
-
-Squash merge:
+Current validation candidate before this handoff update:
 
 ```text
-e3b3ab79ab72cafa92f2afa97895258cec912d86
+f785cc38a53f7ffaf234d3a9b431a9903e8619d4
 ```
 
-### NXB-IRL-003 — Evidence integrity store
+Because this handoff update creates a new commit, resolve the current PR head again before running validation.
 
-Status: `COMPLETE`
+## Completed NXB-IRL-004 blocks
 
-Merged PR: `#5`
+### Minimal CPU and scheduler profile
 
-Squash merge:
+Status: `MERGED`
 
-```text
-d913c037aabb39aa13cd41e59716a17c8a04bc68
-```
+- repository-owned WPRP,
+- native WPR parser compatibility,
+- bounded 512 MiB circular file collector,
+- matching memory-mode variant,
+- deterministic profile provenance,
+- teardown-first stop behavior,
+- ETL metadata and profile integrity binding,
+- adversarial path/XML/profile mutation coverage.
 
-Completed scope includes canonical JSON, append-only evidence records, chain verification, deterministic offline bundles, provenance and clock evidence, detached RSA signing and adversarial substitution/tamper coverage.
-
-Canonical references:
-
-```text
-docs/NXB-IRL-003-EVIDENCE-STORE.md
-docs/NXB-IRL-003-VALIDATION.md
-```
-
-### NXB-IRL-004 block 1 — Minimal CPU/scheduler WPR profile
-
-Status: `COMPLETE`
-
-Merged PR: `#6`
+PR: `#6`
 
 Squash merge:
 
@@ -74,198 +47,155 @@ Squash merge:
 04214ac4e27a1b35e4327392480c2f89e9caaddc
 ```
 
-Implemented:
+### Paired collector overhead calibration
 
-- repository-owned native-parser-valid WPRP,
-- separate File and Memory collectors,
-- 512 MiB circular file bound,
-- exact CPU/scheduler keywords and stack walks,
-- explicit legacy `GeneralProfile` opt-in,
-- profile SHA-256/length/bounds provenance,
-- canonical provenance seal,
-- teardown-first stop,
-- ETL metadata binding,
-- fail-closed profile/session mutation handling.
+Status: `IMPLEMENTATION COMPLETE — EXACT-HEAD WINDOWS VALIDATION PENDING`
 
-Canonical reference:
+Implemented artifacts:
 
-```text
-docs/NXB-IRL-004-CPU-SCHEDULER-PROFILE.md
-```
+- `schemas/collector-overhead-calibration.schema.json`
+- `scripts/Get-NxbActivePowerPolicy.ps1`
+- `scripts/Invoke-NxbMeasuredWorkload.ps1`
+- `scripts/Invoke-CollectorOverheadCalibration.ps1`
+- `scripts/Test-CollectorOverheadCalibration.ps1`
+- `scripts/Invoke-NxbLocalValidation.ps1`
+- `tools/Invoke-NxbCpuWorkload.ps1`
+- `tools/validate_overhead_calibration.py`
+- `tests/CollectorOverheadCalibration.Tests.ps1`
+- `tests/CollectorOverheadRunner.Tests.ps1`
+- `tests/CpuWorkload.Tests.ps1`
+- `tests/MeasuredWorkload.Tests.ps1`
+- `docs/NXB-IRL-004-OVERHEAD-CALIBRATION.md`
+- `docs/NXB-IRL-004-VALIDATION.md`
 
-## Active PR #7 implementation
+Implemented properties:
 
-### Evidence contract
+- strict JSON Schema 2020-12 evidence contract,
+- semantic identity, ordering, delta and distribution verification,
+- parent and separate child experiment lifecycle binding,
+- same-machine and same-boot enforcement,
+- active power-policy verification before and after every arm,
+- deterministic workload identity and checksum equivalence,
+- independent process CPU, working-set and private-byte observations,
+- WPR start and stop latency,
+- ETL SHA-256, length, effective byte rate and provenance binding,
+- bounded warmups, repetitions, cooldown and ordering,
+- explicit measured, unsupported and failed states,
+- teardown-first stop and explicit cancellation on failure,
+- schema-valid failed-pair preservation,
+- mandatory `threshold_policy.status: not_declared`.
 
-```text
-schemas/collector-overhead-calibration.schema.json
-scripts/Test-CollectorOverheadCalibration.ps1
-tools/validate_overhead_calibration.py
-tests/fixtures/collector-overhead-calibration.valid.json
-```
+## Exact-head local validation
 
-The contract enforces:
+GitHub Actions are intentionally disabled repository-wide. Do not add a workflow to validate PR `#7`.
 
-- explicit `measured`, `unsupported`, `failed` states,
-- parent and child lifecycle experiment paths,
-- unique arm experiment IDs,
-- machine and boot identity binding,
-- canonical power-policy and workload fingerprints,
-- deterministic arm ordering,
-- exact delta and distribution math,
-- ETL effective byte-rate math,
-- mandatory `not_declared` threshold policy.
-
-### Controlled workload and sampler
-
-```text
-tools/Invoke-NxbCpuWorkload.ps1
-scripts/Invoke-NxbMeasuredWorkload.ps1
-```
-
-Implemented:
-
-- deterministic SHA-256 CPU workload,
-- bounded iteration, seed and timeout values,
-- atomic result file,
-- overwrite refusal,
-- child PowerShell process execution,
-- wall-clock duration,
-- exit code and timeout evidence,
-- CPU-time sampling,
-- peak working-set and private-bytes sampling,
-- bounded process teardown,
-- stdout/stderr and runner provenance.
-
-### Paired runner
+Canonical runner:
 
 ```text
-scripts/Get-NxbActivePowerPolicy.ps1
-scripts/Invoke-CollectorOverheadCalibration.ps1
+scripts/Invoke-NxbLocalValidation.ps1
 ```
 
-Implemented:
-
-- prepared parent experiment,
-- separate warmup/control/capture child experiments,
-- same-machine and same-boot checks,
-- power-policy verification before and after every arm,
-- deterministic arm ordering,
-- bounded warmups, pairs and cooldown,
-- WPR start/stop latency,
-- workload measurement under capture,
-- ETL hash/length/rate/provenance evidence,
-- explicit WPR cancel after stop failure,
-- failed child transition,
-- preserved schema-valid failed-pair evidence,
-- parent finalization followed by nonzero command outcome for partial calibration.
-
-### Tests
+Canonical pending record:
 
 ```text
-tests/CollectorOverheadCalibration.Tests.ps1
-tests/CpuWorkload.Tests.ps1
-tests/MeasuredWorkload.Tests.ps1
-tests/CollectorOverheadRunner.Tests.ps1
+docs/NXB-IRL-004-VALIDATION.md
 ```
 
-The matrix covers schema mutation, identity/path substitution, ordering, delta/statistics tamper, threshold injection, workload failure/timeout/path safety, successful fake-WPR lifecycle and WPR stop failure with explicit cancel.
+The runner requires:
 
-### Documentation
+- real Windows,
+- elevated PowerShell 7,
+- clean working tree,
+- exact expected Git head,
+- PowerShell 7 and Windows PowerShell 5.1,
+- Pester 5 in both hosts,
+- PSScriptAnalyzer,
+- Python `jsonschema`,
+- `wpr.exe`.
 
-```text
-docs/NXB-IRL-004-OVERHEAD-CALIBRATION.md
-docs/NXB-IRL-004-CPU-SCHEDULER-PROFILE.md
-```
-
-## Validation boundary
-
-GitHub Actions are intentionally disabled. Do not add workflow files to PR #7 and do not claim hosted CI validation.
-
-Required manual validation from repository root on Windows:
-
-### PowerShell 7
+Run from the PR branch after resolving the latest head:
 
 ```powershell
-python -m pip install --disable-pip-version-check jsonschema
-Import-Module Pester -MinimumVersion 5.5.0 -Force
-Invoke-Pester -Path ./tests -CI
+git fetch origin
+git switch nxb-irl-004-overhead-calibration
+git pull --ff-only origin nxb-irl-004-overhead-calibration
+
+git status --short
+$head = (git rev-parse HEAD).Trim()
+
+./scripts/Invoke-NxbLocalValidation.ps1 `
+    -ExpectedHead $head `
+    -BootstrapDependencies `
+    -RepetitionCount 3 `
+    -WarmupCount 1 `
+    -Ordering alternating_control_first `
+    -Iterations 1000 `
+    -Seed 73 `
+    -Confirm:$false
 ```
 
-### Windows PowerShell 5.1
+The required terminal summary is:
 
-```powershell
-python -m pip install --disable-pip-version-check jsonschema
-Import-Module Pester -MinimumVersion 5.5.0 -Force
-Invoke-Pester -Path ./tests -CI
+```json
+{
+  "status": "passed"
+}
 ```
 
-### Static analysis and smoke
+Required gates:
 
-```powershell
-Import-Module PSScriptAnalyzer -Force
-$results = @(
-  Get-ChildItem ./scripts, ./tests, ./tools -Recurse -File |
-    Where-Object Extension -In '.ps1', '.psm1' |
-    ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName }
-)
-$results | Format-Table -AutoSize
-if ($results.Count -gt 0) { throw "PSScriptAnalyzer reported $($results.Count) issue(s)." }
+1. public repository content guard,
+2. native WPR profile parsing,
+3. zero PSScriptAnalyzer Error/Warning findings,
+4. repository smoke validation,
+5. complete PowerShell 7 Pester matrix,
+6. complete Windows PowerShell 5.1 Pester matrix,
+7. native paired WPR calibration.
 
-./scripts/Test-Repository.ps1
-```
+A skipped native calibration is not accepted.
 
-### Controlled native-WPR calibration
+## Validation handling
 
-1. Create one prepared parent experiment.
-2. Run one warmup and at least three alternating pairs with the repository WPR profile.
-3. Preserve console output and generated calibration JSON outside the public repository when it contains machine-specific evidence.
-4. Run `Test-CollectorOverheadCalibration.ps1` against the generated JSON.
-5. Record exact PowerShell, Python, Pester, PSScriptAnalyzer, WPR and OS versions.
+When the local runner finishes:
 
-Example:
+1. preserve the complete `%TEMP%\nxb-validation-*` directory,
+2. inspect `validation-summary.json`,
+3. inspect every gate log,
+4. inspect both Pester XML files,
+5. inspect native parent/child experiment evidence,
+6. fix any verified failures,
+7. rerun all gates against the new exact head,
+8. only after full success update PR `#7` and issue `#2`,
+9. mark PR ready,
+10. squash merge using expected-head locking.
 
-```powershell
-$parent = ./scripts/New-Experiment.ps1 `
-  -Root <lab-root> `
-  -Name 'Overhead-Calibration' `
-  -Hypothesis 'Bounded WPR overhead is measured with paired trials'
+Do not edit the validation record to claim success before the evidence is available.
 
-./scripts/Invoke-CollectorOverheadCalibration.ps1 `
-  -ExperimentPath $parent `
-  -WarmupCount 1 `
-  -RepetitionCount 3 `
-  -Ordering alternating_control_first `
-  -Iterations 1000 `
-  -Confirm:$false
-```
+## Still outside this PR
 
-## PR #7 closeout sequence
+- trace-loss accounting,
+- circular-overwrite quantification,
+- capture-completeness classification,
+- representative production overhead thresholds,
+- RAM, storage, GPU and network capture profiles,
+- cross-domain correlation engine.
 
-1. Resolve exact current PR head.
-2. Run full Pester under PowerShell 7.
-3. Run full Pester under Windows PowerShell 5.1.
-4. Run PSScriptAnalyzer and require zero findings.
-5. Run repository smoke and inspect all output.
-6. Perform one controlled native-WPR calibration.
-7. Add a validation document with exact commands, versions, results and evidence boundary.
-8. Update PR #7 and issue #2 with exact validation evidence.
-9. Mark PR #7 ready.
-10. Squash merge using expected-head locking.
-11. Continue issue #2 with trace-loss accounting.
+Issue `#2` remains open after PR `#7` because these broader NXB-IRL-004 blocks remain incomplete.
 
 ## Public repository boundary
 
-Never commit raw ETL, packet captures, dumps, protected binaries, drivers, private keys, PFX files, credentials, tokens, undisclosed findings or machine-specific sensitive evidence.
+Never commit raw ETL, packet captures, dumps, protected binaries, drivers, private keys, PFX files, credentials, tokens or undisclosed findings.
+
+Local validation evidence remains outside the repository until it has been reduced to safe metadata. Do not commit the native calibration lab directory or raw ETL files.
 
 ## Continuation prompt
 
 ```text
-Inspect Naveax/nxb-integrity-research-lab.
-Read docs/HANDOFF.md, docs/NXB-IRL-004-OVERHEAD-CALIBRATION.md and draft PR #7.
-Resolve the exact PR head and changed-file set.
-Do not enable GitHub Actions.
-Run or inspect manual PowerShell 7, Windows PowerShell 5.1, PSScriptAnalyzer and repository-smoke validation.
-Fix every exact failure without weakening the schema, lifecycle, path-safety, identity or fail-closed contracts.
-Then perform one controlled native-WPR calibration, write exact validation evidence, update PR #7 and issue #2, mark ready and squash merge with expected-head locking.
+Inspect Naveax/nxb-integrity-research-lab PR #7.
+Read docs/HANDOFF.md, docs/NXB-IRL-004-OVERHEAD-CALIBRATION.md and docs/NXB-IRL-004-VALIDATION.md.
+Resolve the current exact PR head.
+Run scripts/Invoke-NxbLocalValidation.ps1 from an elevated PowerShell 7 shell on real Windows with all required gates enabled.
+Inspect validation-summary.json, all gate logs, both Pester XML files and the native parent/child calibration evidence.
+Fix only verified failures, rerun every gate on the new exact head, then update PR #7 and issue #2 with safe exact-head evidence.
+Do not enable GitHub Actions and do not merge until all required gates pass.
 ```
