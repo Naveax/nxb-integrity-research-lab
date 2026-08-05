@@ -2,11 +2,13 @@
 
 ## Status
 
-`ACTIVE — FINAL CI REPAIR`
+`COMPLETE — VALIDATION RECORDED`
 
 Tracking issue: `#4`.
 
-Draft PR: `#5`.
+Pull request: `#5`.
+
+Canonical validation record: [`NXB-IRL-003-VALIDATION.md`](NXB-IRL-003-VALIDATION.md).
 
 ## Objective
 
@@ -48,15 +50,14 @@ Version 1 canonical JSON uses these rules:
 
 The canonicalization implementation is shared by record creation, chain verification, bundle creation, bundle verification, signing and comparison.
 
-## Implemented canonical identity
-
 Implemented in `scripts/Nxb.EvidenceStore.psm1`:
 
-- ordinal, case-sensitive object key sorting,
+- ordinal, case-sensitive object-key sorting,
 - array-order preservation,
 - manual JSON string escaping,
 - unpaired-surrogate rejection,
 - integral-number-only enforcement,
+- normalized UTC `DateTime` and `DateTimeOffset` handling,
 - UTF-8 without BOM hashing,
 - lowercase SHA-256 output,
 - root-only excluded properties,
@@ -94,7 +95,7 @@ Verification checks:
 - payload SHA-256,
 - record SHA-256,
 - chain-head agreement,
-- raw 32-byte digest concatenation chain hash.
+- raw 32-byte digest-concatenation chain hash.
 
 ## Tool provenance
 
@@ -103,7 +104,7 @@ Implemented commands:
 - `scripts/New-ToolProvenanceRecord.ps1`
 - `scripts/Test-ToolProvenanceRecord.ps1`
 
-Records include normalized executable path, executable SHA-256 and length, version metadata, invocation identity, redacted argument-envelope digest, collector identity, status and optional exit code. Raw arguments and secrets are not persisted.
+Records include normalized executable path, executable SHA-256 and length, version metadata, invocation identity, redacted argument-envelope digest, collector identity, status and optional exit code. Raw arguments and secrets are not persisted. Explicit exit code `0` is distinguished from an omitted exit code.
 
 ## Clock-offset evidence
 
@@ -138,7 +139,7 @@ Bundle verification rejects:
 - `.` or `..` segments,
 - duplicate or case-colliding paths,
 - bundle self-reference,
-- record inventory truncation,
+- record-inventory truncation,
 - missing or modified files,
 - identity or chain mismatches,
 - reparse-point traversal.
@@ -162,10 +163,12 @@ The signer:
 
 - loads a local PFX with a SecureString password,
 - signs the raw 32-byte `bundle_sha256` digest,
+- validates prospective output paths through the nearest existing safe ancestor,
 - writes only a detached signature under `evidence-store/signatures/`,
 - stores certificate SHA-256, signature SHA-256 and algorithm metadata,
-- never stores the PFX path, password or private key material,
-- preserves the unsigned `bundle_sha256` identity.
+- never stores the PFX path, password or private-key material,
+- preserves the unsigned `bundle_sha256` identity,
+- rolls the manifest and signature back on a failed commit path.
 
 Signature states:
 
@@ -177,7 +180,7 @@ A manifest that declares `valid` without public-certificate verification fails c
 
 ## Repository smoke integration
 
-`scripts/Test-Repository.ps1` now runs a complete synthetic flow:
+`scripts/Test-Repository.ps1` runs a complete synthetic flow:
 
 ```text
 experiment lifecycle
@@ -191,28 +194,69 @@ experiment lifecycle
 
 ## Adversarial validation coverage
 
+Canonicalization and schemas:
+
 - canonical insertion-order equivalence,
 - known SHA-256 vector,
 - array-order sensitivity,
 - floating-point rejection,
 - UTF-8 no-BOM output,
-- payload tamper,
+- `DateTime`/`DateTimeOffset` UTC equivalence.
+
+Chain and identity:
+
+- exact one-byte record modification,
 - record deletion and sequence gaps,
-- identity substitution with recomputed record hash,
+- record reordering,
+- previous-record mismatch after record rehashing,
+- record substitution from another experiment,
+- machine identity substitution,
+- boot identity substitution,
+- session identity substitution.
+
+Provenance and clock:
+
 - sensitive argument non-persistence,
+- explicit zero versus absent exit code,
 - changed tool binary,
 - inconsistent re-hashed clock payload,
-- invalid clock sample,
+- invalid clock sample.
+
+Bundle and paths:
+
 - repeated deterministic bundle generation,
-- selected-file mutation,
+- selected-file mutation detected by length or SHA-256,
 - record-inventory truncation,
 - case-collision and traversal,
 - reparse-point path,
-- detached signature identity preservation,
+- deterministic comparison semantics.
+
+Detached signatures:
+
+- unsigned identity preservation,
+- valid public-certificate verification,
 - one-byte signature modification,
 - wrong public certificate,
 - missing signature file,
 - unverified `valid` state rejection.
+
+## Validation evidence
+
+Implementation and tests were validated at head:
+
+```text
+77c90ea00eb63a64791d0d418999dd5a8abb78a0
+```
+
+Validate run `#162`, run ID `30980814078`:
+
+- PowerShell 7 job `92224628625`: 63 passed, 0 failed,
+- Windows PowerShell 5.1 job `92224628713`: 63 passed, 0 failed,
+- static job `92224628723`: public guard, zero analyzer findings and complete repository smoke success.
+
+The exact acceptance matrix and warning classification are recorded in `docs/NXB-IRL-003-VALIDATION.md`.
+
+Documentation-only closeout commits must pass the same three jobs before PR `#5` is marked ready or merged. Their final exact head/run evidence is stored in PR and issue metadata to avoid changing the validated documentation head again.
 
 ## Public repository boundary
 
@@ -228,20 +272,12 @@ Never commit:
 
 Schemas, synthetic fixtures, verifiers, public certificates and redacted metadata are allowed.
 
-## Current validation state
+## Closeout sequence
 
-Validate run `#145` targets the current PR head. The previous run identified eight PSScriptAnalyzer findings: seven state-changing helper verb names and one plaintext SecureString fixture conversion. All eight were repaired without disabling analyzer rules.
-
-Required final jobs:
-
-- Static analysis and repository smoke validation,
-- Lifecycle — PowerShell 7,
-- Lifecycle — Windows PowerShell 5.1.
-
-## Remaining sequence
-
-1. Inspect and repair Validate `#145`.
-2. Record the final all-green run and every job log.
-3. Update issue `#4`, PR `#5`, `HANDOFF.md` and the validation closeout record.
-4. Mark PR ready and merge only with exact validated head.
-5. Close issue `#4` and begin `NXB-IRL-004`.
+1. Validate the final documentation-only head.
+2. Inspect all three final job logs.
+3. Update issue `#4` and PR `#5` with exact final head/run/job evidence.
+4. Mark PR `#5` ready.
+5. Squash merge with expected-head locking.
+6. Close issue `#4`.
+7. Begin `NXB-IRL-004` from issue `#2`.
