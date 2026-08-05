@@ -151,7 +151,7 @@ function Resolve-NxbPowerShellHostPath {
     throw 'PowerShell child-process executable yolu çözümlenemedi.'
 }
 
-function Update-NxbProcessPeakSample {
+function Measure-NxbProcessPeakSample {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -271,7 +271,7 @@ try {
     }
 
     while (-not $process.WaitForExit($SampleIntervalMilliseconds)) {
-        Update-NxbProcessPeakSample `
+        Measure-NxbProcessPeakSample `
             -Process $process `
             -PeakWorkingSetBytes ([ref]$peakWorkingSetBytes) `
             -PeakPrivateBytes ([ref]$peakPrivateBytes) `
@@ -295,7 +295,7 @@ try {
     }
     $process.WaitForExit()
 
-    Update-NxbProcessPeakSample `
+    Measure-NxbProcessPeakSample `
         -Process $process `
         -PeakWorkingSetBytes ([ref]$peakWorkingSetBytes) `
         -PeakPrivateBytes ([ref]$peakPrivateBytes) `
@@ -410,17 +410,17 @@ $measurement = [ordered]@{
     }
     diagnostics   = @($diagnostics)
     runner_provenance = [ordered]@{
-        powershell_executable       = $powerShellPath
-        workload_relative_path      = (Get-NxbRelativePath `
+        powershell_executable        = $powerShellPath
+        workload_relative_path       = (Get-NxbRelativePath `
             -BasePath $repositoryRoot `
             -ChildPath $workloadFull).Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
-        workload_sha256             = (Get-FileHash `
+        workload_sha256              = (Get-FileHash `
             -LiteralPath $workloadFull `
             -Algorithm SHA256).Hash.ToLowerInvariant()
-        workload_length             = [int64](Get-Item -LiteralPath $workloadFull).Length
-        iterations                  = $Iterations
-        seed                        = $Seed
-        timeout_seconds             = $TimeoutSeconds
+        workload_length              = [int64](Get-Item -LiteralPath $workloadFull).Length
+        iterations                   = $Iterations
+        seed                         = $Seed
+        timeout_seconds              = $TimeoutSeconds
         sample_interval_milliseconds = $SampleIntervalMilliseconds
     }
 }
