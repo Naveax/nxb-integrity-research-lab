@@ -146,7 +146,7 @@ function Get-NxbTraceLossClassification {
     }
 }
 
-function Assert-NxbEvidencePath {
+function Resolve-NxbEvidencePath {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -173,7 +173,7 @@ function Assert-NxbEvidencePath {
     else {
         $parent = Split-Path -Parent $full
         if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
-            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            throw "Kanıt çıktı dizini bulunamadı: $parent"
         }
         [void](Test-NxbPathSafety -Path $parent -RootPath $ExperimentRoot)
     }
@@ -184,19 +184,19 @@ function Assert-NxbEvidencePath {
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 [void](Test-NxbPathSafety -Path $experimentFull -RootPath $experimentFull)
 $experimentId = [string](Split-Path -Leaf $experimentFull)
-$manifestPath = Assert-NxbEvidencePath `
+$manifestPath = Resolve-NxbEvidencePath `
     -Path (Join-Path $experimentFull 'manifest.json') `
     -ExperimentRoot $experimentFull `
     -RequireLeaf
-$identityPath = Assert-NxbEvidencePath `
+$identityPath = Resolve-NxbEvidencePath `
     -Path (Join-Path $experimentFull 'baseline\observation-identity.json') `
     -ExperimentRoot $experimentFull `
     -RequireLeaf
-$sessionPath = Assert-NxbEvidencePath `
+$sessionPath = Resolve-NxbEvidencePath `
     -Path (Join-Path $experimentFull 'trace-session.json') `
     -ExperimentRoot $experimentFull `
     -RequireLeaf
-$etlPath = Assert-NxbEvidencePath `
+$etlPath = Resolve-NxbEvidencePath `
     -Path (Join-Path $experimentFull 'traces\performance.etl') `
     -ExperimentRoot $experimentFull `
     -RequireLeaf
@@ -204,7 +204,7 @@ $etlPath = Assert-NxbEvidencePath `
 if ([string]::IsNullOrWhiteSpace($EtlMetadataPath)) {
     $EtlMetadataPath = Join-Path $experimentFull 'traces\performance.etl.json'
 }
-$etlMetadataFull = Assert-NxbEvidencePath `
+$etlMetadataFull = Resolve-NxbEvidencePath `
     -Path $EtlMetadataPath `
     -ExperimentRoot $experimentFull `
     -RequireLeaf
@@ -425,7 +425,7 @@ $document = [ordered]@{
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $experimentFull 'analysis\trace-loss-accounting.json'
 }
-$outputFull = Assert-NxbEvidencePath `
+$outputFull = Resolve-NxbEvidencePath `
     -Path $OutputPath `
     -ExperimentRoot $experimentFull
 if (Test-Path -LiteralPath $outputFull) {
