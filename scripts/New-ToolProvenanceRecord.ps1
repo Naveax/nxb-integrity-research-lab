@@ -79,6 +79,12 @@ $argumentEnvelope = [ordered]@{
 $argumentDigest = Get-NxbCanonicalJsonHash -InputObject $argumentEnvelope
 $fileHash = (Get-FileHash -LiteralPath $toolFull -Algorithm SHA256).Hash.ToLowerInvariant()
 $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($toolFull)
+$normalizedExitCode = if ($PSBoundParameters.ContainsKey('ExitCode')) {
+    [int64]$ExitCode
+}
+else {
+    $null
+}
 
 $payload = [ordered]@{
     provenance_version = 1
@@ -108,7 +114,7 @@ $payload = [ordered]@{
     redacted_argument_count = [int64]$redactedIndexes.Count
     collector_id = $CollectorId
     status = $Status
-    exit_code = if ($ExitCode.HasValue) { [int64]$ExitCode.Value } else { $null }
+    exit_code = $normalizedExitCode
 }
 
 & (Join-Path $PSScriptRoot 'New-EvidenceStoreRecord.ps1') `
