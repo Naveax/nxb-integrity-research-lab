@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "calibration_id": "cal-001",
+  "experiment_id": "experiment-overhead-001",
+  "experiment_relative_path": "experiments/experiment-overhead-001",
+  "machine_id": "machine-fixture-001",
+  "boot_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "captured_utc": "2026-08-05T08:00:02Z",
+  "power_policy": {
+    "status": "available",
+    "scheme_guid": "381b4222-f694-41f0-9685-ff5bb260df2e",
+    "name": "Balanced",
+    "source": "powercfg"
+  },
+  "power_policy_fingerprint": "9bfce2227eeee07e06b55e4adf5684ab755456dc939f2b0e9a46d8a9145d16f7",
+  "workload": {
+    "id": "fixture.cpu.v1",
+    "name": "Synthetic CPU Fixture",
+    "command": {
+      "path": "C:\\fixtures\\cpu-fixture.exe",
+      "arguments": ["--iterations", "1000"],
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "length": 4096
+    },
+    "parameters": {
+      "iterations": 1000,
+      "mode": "deterministic"
+    },
+    "timeout_seconds": 60
+  },
+  "workload_fingerprint": "8ee737b41ab74c42729898974a0cfb1f0dc7be41c623fe3fcfc9b02ce71ff1f8",
+  "protocol": {
+    "repetition_count": 1,
+    "warmup_count": 0,
+    "ordering": "control_then_capture",
+    "require_same_machine": true,
+    "require_same_boot": true,
+    "require_same_power_policy": true,
+    "require_same_workload": true,
+    "cooldown_seconds": 0
+  },
+  "pairs": [
+    {
+      "ordinal": 1,
+      "pair_id": "pair-001",
+      "machine_id": "machine-fixture-001",
+      "boot_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "power_policy_fingerprint": "9bfce2227eeee07e06b55e4adf5684ab755456dc939f2b0e9a46d8a9145d16f7",
+      "workload_fingerprint": "8ee737b41ab74c42729898974a0cfb1f0dc7be41c623fe3fcfc9b02ce71ff1f8",
+      "first_arm": "control",
+      "control": {
+        "experiment_id": "experiment-control-001",
+        "experiment_relative_path": "experiments/experiment-control-001",
+        "status": "measured",
+        "started_utc": "2026-08-05T08:00:00Z",
+        "stopped_utc": "2026-08-05T08:00:01Z",
+        "duration_ms": 1000,
+        "exit_code": 0,
+        "timed_out": false,
+        "result": {
+          "status": "measured",
+          "value": 1000,
+          "unit": "iterations",
+          "reason": null
+        },
+        "process_metrics": {
+          "cpu_time_ms": {
+            "status": "measured",
+            "value": 500,
+            "unit": "ms",
+            "reason": null
+          },
+          "peak_working_set_bytes": {
+            "status": "measured",
+            "value": 1000000,
+            "unit": "bytes",
+            "reason": null
+          },
+          "peak_private_bytes": {
+            "status": "measured",
+            "value": 800000,
+            "unit": "bytes",
+            "reason": null
+          }
+        },
+        "diagnostics": []
+      },
+      "capture": {
+        "experiment_id": "experiment-capture-001",
+        "experiment_relative_path": "experiments/experiment-capture-001",
+        "status": "measured",
+        "started_utc": "2026-08-05T08:00:01Z",
+        "stopped_utc": "2026-08-05T08:00:02.100Z",
+        "duration_ms": 1100,
+        "exit_code": 0,
+        "timed_out": false,
+        "result": {
+          "status": "measured",
+          "value": 1000,
+          "unit": "iterations",
+          "reason": null
+        },
+        "process_metrics": {
+          "cpu_time_ms": {
+            "status": "measured",
+            "value": 550,
+            "unit": "ms",
+            "reason": null
+          },
+          "peak_working_set_bytes": {
+            "status": "measured",
+            "value": 1100000,
+            "unit": "bytes",
+            "reason": null
+          },
+          "peak_private_bytes": {
+            "status": "measured",
+            "value": 880000,
+            "unit": "bytes",
+            "reason": null
+          }
+        },
+        "diagnostics": [],
+        "wpr_start_latency_ms": {
+          "status": "measured",
+          "value": 5,
+          "unit": "ms",
+          "reason": null
+        },
+        "wpr_stop_latency_ms": {
+          "status": "measured",
+          "value": 10,
+          "unit": "ms",
+          "reason": null
+        },
+        "etl": {
+          "status": "measured",
+          "path": "traces/performance.etl",
+          "sha256": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "length": 110000,
+          "effective_bytes_per_second": 100000,
+          "profile_provenance_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "reason": null
+        }
+      },
+      "deltas": {
+        "duration_absolute_ms": {
+          "status": "measured",
+          "value": 100,
+          "unit": "ms",
+          "reason": null
+        },
+        "duration_relative_percent": {
+          "status": "measured",
+          "value": 10,
+          "unit": "percent",
+          "reason": null
+        },
+        "cpu_time_absolute_ms": {
+          "status": "measured",
+          "value": 50,
+          "unit": "ms",
+          "reason": null
+        },
+        "cpu_time_relative_percent": {
+          "status": "measured",
+          "value": 10,
+          "unit": "percent",
+          "reason": null
+        },
+        "peak_working_set_absolute_bytes": {
+          "status": "measured",
+          "value": 100000,
+          "unit": "bytes",
+          "reason": null
+        },
+        "peak_working_set_relative_percent": {
+          "status": "measured",
+          "value": 10,
+          "unit": "percent",
+          "reason": null
+        },
+        "peak_private_bytes_absolute_bytes": {
+          "status": "measured",
+          "value": 80000,
+          "unit": "bytes",
+          "reason": null
+        },
+        "peak_private_bytes_relative_percent": {
+          "status": "measured",
+          "value": 10,
+          "unit": "percent",
+          "reason": null
+        }
+      }
+    }
+  ],
+  "summary": {
+    "pair_count": 1,
+    "successful_pair_count": 1,
+    "failed_pair_count": 0,
+    "duration_delta_percent": {
+      "status": "measured",
+      "count": 1,
+      "minimum": 10,
+      "median": 10,
+      "mean": 10,
+      "maximum": 10,
+      "unit": "percent",
+      "reason": null
+    },
+    "cpu_time_delta_percent": {
+      "status": "measured",
+      "count": 1,
+      "minimum": 10,
+      "median": 10,
+      "mean": 10,
+      "maximum": 10,
+      "unit": "percent",
+      "reason": null
+    },
+    "peak_working_set_delta_percent": {
+      "status": "measured",
+      "count": 1,
+      "minimum": 10,
+      "median": 10,
+      "mean": 10,
+      "maximum": 10,
+      "unit": "percent",
+      "reason": null
+    },
+    "peak_private_bytes_delta_percent": {
+      "status": "measured",
+      "count": 1,
+      "minimum": 10,
+      "median": 10,
+      "mean": 10,
+      "maximum": 10,
+      "unit": "percent",
+      "reason": null
+    },
+    "threshold_policy": {
+      "status": "not_declared",
+      "reason": "Thresholds require measured evidence and are not declared by the schema fixture."
+    }
+  }
+}

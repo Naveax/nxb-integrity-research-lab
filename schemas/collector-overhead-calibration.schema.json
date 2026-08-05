@@ -1,0 +1,435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/collector-overhead-calibration.schema.json",
+  "title": "NXB Collector Overhead Calibration Evidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "calibration_id",
+    "experiment_id",
+    "experiment_relative_path",
+    "machine_id",
+    "boot_id",
+    "captured_utc",
+    "power_policy",
+    "power_policy_fingerprint",
+    "workload",
+    "workload_fingerprint",
+    "protocol",
+    "pairs",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "calibration_id": { "$ref": "#/$defs/identifier" },
+    "experiment_id": { "type": "string", "minLength": 1 },
+    "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
+    "machine_id": { "type": "string", "minLength": 1 },
+    "boot_id": { "$ref": "#/$defs/lowerSha256" },
+    "captured_utc": { "type": "string", "format": "date-time" },
+    "power_policy": { "$ref": "#/$defs/powerPolicy" },
+    "power_policy_fingerprint": { "$ref": "#/$defs/lowerSha256" },
+    "workload": { "$ref": "#/$defs/workload" },
+    "workload_fingerprint": { "$ref": "#/$defs/lowerSha256" },
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "pairs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/trialPair" }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "experimentRelativePath": {
+      "type": "string",
+      "pattern": "^experiments/[A-Za-z0-9._-]+$"
+    },
+    "lowerSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "measurement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "value": { "type": "number" },
+            "unit": { "type": "string", "minLength": 1 },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "enum": ["unsupported", "failed"] },
+            "value": { "type": "null" },
+            "unit": { "type": "string", "minLength": 1 },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "powerPolicy": {
+      "type": "object",
+      "required": ["status", "scheme_guid", "name", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["available", "partial", "unavailable"] },
+        "scheme_guid": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9A-Fa-f-]{36}$"
+        },
+        "name": { "type": ["string", "null"] },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "command": {
+      "type": "object",
+      "required": ["path", "arguments", "sha256", "length"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "arguments": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/lowerSha256" },
+            { "type": "null" }
+          ]
+        },
+        "length": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["id", "name", "command", "parameters", "timeout_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "command": { "$ref": "#/$defs/command" },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean", "null"]
+          }
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "required": [
+        "repetition_count",
+        "warmup_count",
+        "ordering",
+        "require_same_machine",
+        "require_same_boot",
+        "require_same_power_policy",
+        "require_same_workload",
+        "cooldown_seconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "repetition_count": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "warmup_count": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "ordering": {
+          "enum": [
+            "alternating_control_first",
+            "alternating_capture_first",
+            "control_then_capture",
+            "capture_then_control"
+          ]
+        },
+        "require_same_machine": { "const": true },
+        "require_same_boot": { "const": true },
+        "require_same_power_policy": { "const": true },
+        "require_same_workload": { "const": true },
+        "cooldown_seconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+      }
+    },
+    "processMetrics": {
+      "type": "object",
+      "required": ["cpu_time_ms", "peak_working_set_bytes", "peak_private_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "cpu_time_ms": { "$ref": "#/$defs/measurement" },
+        "peak_working_set_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_private_bytes": { "$ref": "#/$defs/measurement" }
+      }
+    },
+    "workloadResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "value": { "type": ["number", "string", "boolean"] },
+            "unit": { "type": ["string", "null"] },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "enum": ["unsupported", "failed"] },
+            "value": { "type": "null" },
+            "unit": { "type": ["string", "null"] },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "armBase": {
+      "type": "object",
+      "required": [
+        "experiment_id",
+        "experiment_relative_path",
+        "status",
+        "started_utc",
+        "stopped_utc",
+        "duration_ms",
+        "exit_code",
+        "timed_out",
+        "result",
+        "process_metrics",
+        "diagnostics"
+      ],
+      "properties": {
+        "experiment_id": { "type": "string", "minLength": 1 },
+        "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
+        "status": { "enum": ["measured", "failed"] },
+        "started_utc": { "type": "string", "format": "date-time" },
+        "stopped_utc": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "exit_code": { "type": ["integer", "null"] },
+        "timed_out": { "type": "boolean" },
+        "result": { "$ref": "#/$defs/workloadResult" },
+        "process_metrics": { "$ref": "#/$defs/processMetrics" },
+        "diagnostics": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "controlArm": {
+      "allOf": [
+        { "$ref": "#/$defs/armBase" }
+      ],
+      "unevaluatedProperties": false
+    },
+    "etlEvidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "path",
+            "sha256",
+            "length",
+            "effective_bytes_per_second",
+            "profile_provenance_sha256",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "path": { "type": "string", "minLength": 1 },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "length": { "type": "integer", "minimum": 0 },
+            "effective_bytes_per_second": { "type": "number", "minimum": 0 },
+            "profile_provenance_sha256": { "$ref": "#/$defs/lowerSha256" },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "path",
+            "sha256",
+            "length",
+            "effective_bytes_per_second",
+            "profile_provenance_sha256",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "failed" },
+            "path": { "type": ["string", "null"] },
+            "sha256": { "type": "null" },
+            "length": { "type": "null" },
+            "effective_bytes_per_second": { "type": "null" },
+            "profile_provenance_sha256": {
+              "oneOf": [
+                { "$ref": "#/$defs/lowerSha256" },
+                { "type": "null" }
+              ]
+            },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "captureArm": {
+      "allOf": [
+        { "$ref": "#/$defs/armBase" },
+        {
+          "type": "object",
+          "required": ["wpr_start_latency_ms", "wpr_stop_latency_ms", "etl"],
+          "properties": {
+            "wpr_start_latency_ms": { "$ref": "#/$defs/measurement" },
+            "wpr_stop_latency_ms": { "$ref": "#/$defs/measurement" },
+            "etl": { "$ref": "#/$defs/etlEvidence" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "deltaSet": {
+      "type": "object",
+      "required": [
+        "duration_absolute_ms",
+        "duration_relative_percent",
+        "cpu_time_absolute_ms",
+        "cpu_time_relative_percent",
+        "peak_working_set_absolute_bytes",
+        "peak_working_set_relative_percent",
+        "peak_private_bytes_absolute_bytes",
+        "peak_private_bytes_relative_percent"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "duration_absolute_ms": { "$ref": "#/$defs/measurement" },
+        "duration_relative_percent": { "$ref": "#/$defs/measurement" },
+        "cpu_time_absolute_ms": { "$ref": "#/$defs/measurement" },
+        "cpu_time_relative_percent": { "$ref": "#/$defs/measurement" },
+        "peak_working_set_absolute_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_working_set_relative_percent": { "$ref": "#/$defs/measurement" },
+        "peak_private_bytes_absolute_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_private_bytes_relative_percent": { "$ref": "#/$defs/measurement" }
+      }
+    },
+    "trialPair": {
+      "type": "object",
+      "required": [
+        "ordinal",
+        "pair_id",
+        "machine_id",
+        "boot_id",
+        "power_policy_fingerprint",
+        "workload_fingerprint",
+        "first_arm",
+        "control",
+        "capture",
+        "deltas"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "pair_id": { "$ref": "#/$defs/identifier" },
+        "machine_id": { "type": "string", "minLength": 1 },
+        "boot_id": { "$ref": "#/$defs/lowerSha256" },
+        "power_policy_fingerprint": { "$ref": "#/$defs/lowerSha256" },
+        "workload_fingerprint": { "$ref": "#/$defs/lowerSha256" },
+        "first_arm": { "enum": ["control", "capture"] },
+        "control": { "$ref": "#/$defs/controlArm" },
+        "capture": { "$ref": "#/$defs/captureArm" },
+        "deltas": { "$ref": "#/$defs/deltaSet" }
+      }
+    },
+    "distribution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "count", "minimum", "median", "mean", "maximum", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "count": { "type": "integer", "minimum": 1 },
+            "minimum": { "type": "number" },
+            "median": { "type": "number" },
+            "mean": { "type": "number" },
+            "maximum": { "type": "number" },
+            "unit": { "type": "string", "minLength": 1 },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "count", "minimum", "median", "mean", "maximum", "unit", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "enum": ["unsupported", "failed"] },
+            "count": { "type": "integer", "minimum": 0 },
+            "minimum": { "type": "null" },
+            "median": { "type": "null" },
+            "mean": { "type": "null" },
+            "maximum": { "type": "null" },
+            "unit": { "type": "string", "minLength": 1 },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "pair_count",
+        "successful_pair_count",
+        "failed_pair_count",
+        "duration_delta_percent",
+        "cpu_time_delta_percent",
+        "peak_working_set_delta_percent",
+        "peak_private_bytes_delta_percent",
+        "threshold_policy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pair_count": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "successful_pair_count": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "failed_pair_count": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "duration_delta_percent": { "$ref": "#/$defs/distribution" },
+        "cpu_time_delta_percent": { "$ref": "#/$defs/distribution" },
+        "peak_working_set_delta_percent": { "$ref": "#/$defs/distribution" },
+        "peak_private_bytes_delta_percent": { "$ref": "#/$defs/distribution" },
+        "threshold_policy": {
+          "type": "object",
+          "required": ["status", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "not_declared" },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}
