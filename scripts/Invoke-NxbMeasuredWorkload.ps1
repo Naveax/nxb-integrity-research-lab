@@ -173,6 +173,7 @@ function Measure-NxbProcessPeakSample {
         [ref]$PeakPrivateBytes,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.List[string]]$Diagnostics
     )
 
