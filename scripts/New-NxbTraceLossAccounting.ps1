@@ -65,7 +65,13 @@ function ConvertTo-NxbCounterEvidence {
         }
     }
 
-    if ($status -notin @('unsupported', 'unavailable', 'failed', 'not_assessed')) {
+    if ($status -notin @(
+        'unsupported',
+        'unavailable',
+        'failed',
+        'not_assessed',
+        'not_applicable'
+    )) {
         return [ordered]@{
             status = 'failed'
             value = $null
@@ -101,7 +107,8 @@ function Get-NxbTraceLossClassification {
         [object[]]$Counters
     )
 
-    $measured = @($Counters | Where-Object status -eq 'measured')
+    $applicable = @($Counters | Where-Object status -ne 'not_applicable')
+    $measured = @($applicable | Where-Object status -eq 'measured')
     $total = [int64]0
     foreach ($counter in $measured) {
         $total += [int64]$counter.value
@@ -117,7 +124,7 @@ function Get-NxbTraceLossClassification {
         }
     }
 
-    if ($measured.Count -eq $Counters.Count) {
+    if ($applicable.Count -gt 0 -and $measured.Count -eq $applicable.Count) {
         return [ordered]@{
             classification = 'no_native_loss_reported'
             measured_counter_count = $measured.Count
@@ -127,12 +134,12 @@ function Get-NxbTraceLossClassification {
         }
     }
 
-    if (@($Counters | Where-Object status -eq 'failed').Count -gt 0) {
+    if (@($applicable | Where-Object status -eq 'failed').Count -gt 0) {
         return [ordered]@{
             classification = 'failed'
             measured_counter_count = $measured.Count
             total_reported_loss = $null
-            reason = 'Bir veya daha fazla native trace-loss counter kaynağı başarısız oldu.'
+            reason = 'Bir veya daha fazla uygulanabilir native trace-loss counter kaynağı başarısız oldu.'
             assessed = $false
         }
     }
@@ -141,7 +148,7 @@ function Get-NxbTraceLossClassification {
         classification = 'not_assessed'
         measured_counter_count = $measured.Count
         total_reported_loss = $null
-        reason = 'Tüm zorunlu native trace-loss counter alanları ölçülemedi.'
+        reason = 'Tüm uygulanabilir native trace-loss counter alanları ölçülemedi.'
         assessed = $false
     }
 }
