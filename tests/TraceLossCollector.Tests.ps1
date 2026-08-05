@@ -37,7 +37,7 @@
 
         $startedUtc = [DateTime]::UtcNow.AddMinutes(-1).ToString('o')
         $stoppedUtc = [DateTime]::UtcNow.ToString('o')
-        $profile = [ordered]@{
+        $profileEvidence = [ordered]@{
             type = 'repository_wprp'
             relative_path = 'profiles/Nxb.MinimalCpuScheduler.wprp'
             sha256 = ('2' * 64)
@@ -53,13 +53,13 @@
             keywords = @('SampledProfile')
             stacks = @('SampledProfile')
         }
-        $profileSeal = Get-NxbCanonicalJsonHash -InputObject $profile
+        $profileSeal = Get-NxbCanonicalJsonHash -InputObject $profileEvidence
         $session = [ordered]@{
             started_utc = $startedUtc
             stopped_utc = $stoppedUtc
             profile = 'NxbMinimalCpuScheduler'
             mode = 'filemode'
-            profile_provenance = $profile
+            profile_provenance = $profileEvidence
             profile_provenance_sha256 = $profileSeal
             status = 'stopped'
             wpr_executable = 'fake-wpr.exe'
@@ -92,7 +92,7 @@
             stopped_utc = $stoppedUtc
             wpr_executable = 'fake-wpr.exe'
             profile = 'NxbMinimalCpuScheduler'
-            profile_provenance = $profile
+            profile_provenance = $profileEvidence
             profile_provenance_sha256 = $profileSeal
             profile_integrity = [ordered]@{
                 status = 'valid'

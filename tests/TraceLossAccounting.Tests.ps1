@@ -165,10 +165,10 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
 
     It 'requires unbounded captures to classify circular overwrite as not applicable' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
-        $profile = $document.capture.profile
-        $profile.bounded = $false
-        $profile.file_mode = 'Unbounded'
-        $profile.maximum_file_size_mib = $null
+        $captureProfile = $document.capture.profile
+        $captureProfile.bounded = $false
+        $captureProfile.file_mode = 'Unbounded'
+        $captureProfile.maximum_file_size_mib = $null
         $document.circular_overwrite.capacity_bytes = $null
         $document.circular_overwrite.final_etl_length = $null
         $document.circular_overwrite.utilization_ratio = $null
