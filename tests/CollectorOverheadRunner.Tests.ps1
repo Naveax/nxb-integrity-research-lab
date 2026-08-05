@@ -39,35 +39,33 @@ exit /b 0
             [int]$StopExitCode = 0
         )
 
-        $stopBody = if ($StopExitCode -eq 0) {
-            @'
-  > "%~2" echo synthetic-etl
-  echo synthetic-stop
-  exit /b 0
-'@
+        $quote = [char]34
+        $lines = [Collections.Generic.List[string]]::new()
+        $lines.Add('@echo off')
+        $lines.Add("echo %*>>$quote$ArgumentLogPath$quote")
+        $lines.Add("if /I $quote%~1$quote==$quote-start$quote (")
+        $lines.Add('  echo synthetic-start')
+        $lines.Add('  exit /b 0')
+        $lines.Add(')')
+        $lines.Add("if /I $quote%~1$quote==$quote-stop$quote (")
+        if ($StopExitCode -eq 0) {
+            $lines.Add("  > $quote%~2$quote echo synthetic-etl")
+            $lines.Add('  echo synthetic-stop')
+            $lines.Add('  exit /b 0')
         }
         else {
-            "  echo synthetic-stop-failure`r`n  exit /b $StopExitCode"
+            $lines.Add('  echo synthetic-stop-failure')
+            $lines.Add("  exit /b $StopExitCode")
         }
+        $lines.Add(')')
+        $lines.Add("if /I $quote%~1$quote==$quote-cancel$quote (")
+        $lines.Add('  echo synthetic-cancel')
+        $lines.Add('  exit /b 0')
+        $lines.Add(')')
+        $lines.Add('exit /b 99')
 
-        $content = @"
-@echo off
-echo %*>>`"$ArgumentLogPath`"
-if /I "%~1"=="-start" (
-  echo synthetic-start
-  exit /b 0
-)
-if /I "%~1"=="-stop" (
-$stopBody
-)
-if /I "%~1"=="-cancel" (
-  echo synthetic-cancel
-  exit /b 0
-)
-exit /b 99
-"@
         if ($PSCmdlet.ShouldProcess($Path, 'Write fake WPR command')) {
-            Set-Content -LiteralPath $Path -Value $content -Encoding Ascii
+            Set-Content -LiteralPath $Path -Value @($lines) -Encoding Ascii
         }
         return $Path
     }
@@ -156,8 +154,10 @@ Describe 'NXB paired collector overhead runner' {
         $resultPath = Join-Path `
             $script:ParentPath `
             'analysis\collector-overhead-calibration.json'
-        { & (Join-Path $script:ScriptsRoot 'Test-CollectorOverheadCalibration.ps1') `
-            -Path $resultPath } | Should -Not -Throw
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-CollectorOverheadCalibration.ps1') `
+                -Path $resultPath
+        } | Should -Not -Throw
     }
 
     It 'preserves failed-pair evidence and cancels WPR after stop failure' {
@@ -185,8 +185,10 @@ Describe 'NXB paired collector overhead runner' {
             $script:ParentPath `
             'analysis\collector-overhead-calibration.json'
         Test-Path -LiteralPath $resultPath -PathType Leaf | Should -BeTrue
-        { & (Join-Path $script:ScriptsRoot 'Test-CollectorOverheadCalibration.ps1') `
-            -Path $resultPath } | Should -Not -Throw
+        {
+            & (Join-Path $script:ScriptsRoot 'Test-CollectorOverheadCalibration.ps1') `
+                -Path $resultPath
+        } | Should -Not -Throw
 
         $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
         $result.summary.successful_pair_count | Should -Be 0
