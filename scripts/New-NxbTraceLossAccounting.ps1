@@ -21,6 +21,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
 
 function ConvertTo-NxbCounterEvidence {
     [CmdletBinding()]
@@ -46,6 +47,15 @@ function ConvertTo-NxbCounterEvidence {
 
     $status = [string]$Counter.status
     if ($status -eq 'measured') {
+        if ([string]::IsNullOrWhiteSpace([string]$Counter.source)) {
+            return [ordered]@{
+                status = 'failed'
+                value = $null
+                unit = 'count'
+                source = $null
+                reason = 'Measured native counter source alanı eksik.'
+            }
+        }
         return [ordered]@{
             status = 'measured'
             value = [int64]$Counter.value
@@ -136,45 +146,138 @@ function Get-NxbTraceLossClassification {
     }
 }
 
-$experimentFull = Get-NxbFullPath -Path $ExperimentPath
-$experimentId = [string](Split-Path -Leaf $experimentFull)
-$manifestPath = Join-Path $experimentFull 'manifest.json'
-$identityPath = Join-Path $experimentFull 'baseline\observation-identity.json'
-$sessionPath = Join-Path $experimentFull 'trace-session.json'
+function Assert-NxbEvidencePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path,
 
-foreach ($requiredPath in @($manifestPath, $identityPath, $sessionPath)) {
-    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-        throw "Trace-loss accounting girdisi bulunamadı: $requiredPath"
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$ExperimentRoot,
+
+        [Parameter()]
+        [switch]$RequireLeaf
+    )
+
+    $full = Get-NxbFullPath -Path $Path
+    [void](Get-NxbRelativePath -BasePath $ExperimentRoot -ChildPath $full)
+
+    if ($RequireLeaf) {
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+            throw "Kanıt girdisi bulunamadı: $full"
+        }
+        [void](Test-NxbPathSafety -Path $full -RootPath $ExperimentRoot)
     }
+    else {
+        $parent = Split-Path -Parent $full
+        if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        [void](Test-NxbPathSafety -Path $parent -RootPath $ExperimentRoot)
+    }
+
+    return $full
 }
+
+$experimentFull = Get-NxbFullPath -Path $ExperimentPath
+[void](Test-NxbPathSafety -Path $experimentFull -RootPath $experimentFull)
+$experimentId = [string](Split-Path -Leaf $experimentFull)
+$manifestPath = Assert-NxbEvidencePath `
+    -Path (Join-Path $experimentFull 'manifest.json') `
+    -ExperimentRoot $experimentFull `
+    -RequireLeaf
+$identityPath = Assert-NxbEvidencePath `
+    -Path (Join-Path $experimentFull 'baseline\observation-identity.json') `
+    -ExperimentRoot $experimentFull `
+    -RequireLeaf
+$sessionPath = Assert-NxbEvidencePath `
+    -Path (Join-Path $experimentFull 'trace-session.json') `
+    -ExperimentRoot $experimentFull `
+    -RequireLeaf
+$etlPath = Assert-NxbEvidencePath `
+    -Path (Join-Path $experimentFull 'traces\performance.etl') `
+    -ExperimentRoot $experimentFull `
+    -RequireLeaf
 
 if ([string]::IsNullOrWhiteSpace($EtlMetadataPath)) {
     $EtlMetadataPath = Join-Path $experimentFull 'traces\performance.etl.json'
 }
-$etlMetadataFull = Get-NxbFullPath -Path $EtlMetadataPath
-if (-not (Test-Path -LiteralPath $etlMetadataFull -PathType Leaf)) {
-    throw "ETL metadata bulunamadı: $etlMetadataFull"
-}
+$etlMetadataFull = Assert-NxbEvidencePath `
+    -Path $EtlMetadataPath `
+    -ExperimentRoot $experimentFull `
+    -RequireLeaf
 
 if ([string]::IsNullOrWhiteSpace($StatusSnapshotPath)) {
     $StatusSnapshotPath = Join-Path $experimentFull 'analysis\wpr-status-pre-stop.json'
 }
 $statusSnapshotFull = Get-NxbFullPath -Path $StatusSnapshotPath
+[void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $statusSnapshotFull)
+if (Test-Path -LiteralPath $statusSnapshotFull -PathType Leaf) {
+    [void](Test-NxbPathSafety -Path $statusSnapshotFull -RootPath $experimentFull)
+}
+else {
+    $statusParent = Split-Path -Parent $statusSnapshotFull
+    if (Test-Path -LiteralPath $statusParent -PathType Container) {
+        [void](Test-NxbPathSafety -Path $statusParent -RootPath $experimentFull)
+    }
+}
 
 $manifest = Read-NxbJson -Path $manifestPath
 $identity = Read-NxbJson -Path $identityPath
 $session = Read-NxbJson -Path $sessionPath
 $etlMetadata = Read-NxbJson -Path $etlMetadataFull
 
+if ([string]$manifest.status -cne 'stopped') {
+    throw "Trace-loss accounting yalnız stopped deneyde üretilebilir. Mevcut durum: $($manifest.status)"
+}
+if ([string]$session.status -cne 'stopped') {
+    throw "Trace-loss accounting yalnız stopped trace session üzerinde üretilebilir. Mevcut durum: $($session.status)"
+}
+if ([string]$manifest.experiment_id -cne $experimentId) {
+    throw 'Manifest experiment_id ile deney dizini uyuşmuyor.'
+}
 if ([string]$identity.experiment_id -cne $experimentId) {
     throw 'Observation identity experiment_id ile deney dizini uyuşmuyor.'
+}
+if ([string]::IsNullOrWhiteSpace([string]$identity.machine_id) -or
+    [string]$identity.boot_id -notmatch '^[0-9a-f]{64}$') {
+    throw 'Observation identity machine_id veya boot_id alanı geçersiz.'
 }
 if ([string]$session.profile_provenance_sha256 -notmatch '^[0-9a-f]{64}$') {
     throw 'Trace session profile provenance SHA-256 değeri geçersiz.'
 }
+$actualProfileSeal = Get-NxbCanonicalJsonHash -InputObject $session.profile_provenance
+if ($actualProfileSeal -cne [string]$session.profile_provenance_sha256) {
+    throw 'Trace session profile provenance canonical SHA-256 değeri uyuşmuyor.'
+}
+if ([string]$etlMetadata.profile -cne [string]$session.profile -or
+    [string]$etlMetadata.profile_provenance_sha256 -cne [string]$session.profile_provenance_sha256) {
+    throw 'ETL metadata profile provenance ile trace session uyuşmuyor.'
+}
+if ((Get-NxbFullPath -Path ([string]$etlMetadata.path)) -cne $etlPath) {
+    throw 'ETL metadata path kanonik performance.etl yoluyla uyuşmuyor.'
+}
+
+$actualEtlItem = Get-Item -LiteralPath $etlPath
+$actualEtlLength = [int64]$actualEtlItem.Length
+$actualEtlSha256 = (Get-FileHash -LiteralPath $etlPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$metadataEtlSha256 = ([string]$etlMetadata.sha256).ToLowerInvariant()
+if ($metadataEtlSha256 -cne $actualEtlSha256 -or
+    [int64]$etlMetadata.length -ne $actualEtlLength) {
+    throw 'ETL metadata SHA-256 veya length değeri gerçek ETL ile uyuşmuyor.'
+}
 
 $statusSnapshot = if (Test-Path -LiteralPath $statusSnapshotFull -PathType Leaf) {
-    Read-NxbJson -Path $statusSnapshotFull
+    $snapshot = Read-NxbJson -Path $statusSnapshotFull
+    if ([string]$snapshot.experiment_id -cne $experimentId) {
+        throw 'Native counter snapshot experiment_id ile deney dizini uyuşmuyor.'
+    }
+    if ([string]$snapshot.raw_output_sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw 'Native counter snapshot raw_output_sha256 alanı geçersiz.'
+    }
+    $snapshot
 }
 else {
     $null
@@ -182,13 +285,13 @@ else {
 
 $eventsLost = ConvertTo-NxbCounterEvidence `
     -Counter $(if ($null -ne $statusSnapshot) { $statusSnapshot.events_lost } else { $null }) `
-    -MissingReason 'Pre-stop WPR status snapshot bulunamadı.'
+    -MissingReason 'Native counter snapshot bulunamadı.'
 $buffersLost = ConvertTo-NxbCounterEvidence `
     -Counter $(if ($null -ne $statusSnapshot) { $statusSnapshot.buffers_lost } else { $null }) `
-    -MissingReason 'Pre-stop WPR status snapshot bulunamadı.'
+    -MissingReason 'Native counter snapshot bulunamadı.'
 $realtimeBuffersLost = ConvertTo-NxbCounterEvidence `
     -Counter $(if ($null -ne $statusSnapshot) { $statusSnapshot.realtime_buffers_lost } else { $null }) `
-    -MissingReason 'Pre-stop WPR status snapshot bulunamadı.'
+    -MissingReason 'Native counter snapshot bulunamadı.'
 
 $counterSet = @($eventsLost, $buffersLost, $realtimeBuffersLost)
 $traceLossState = Get-NxbTraceLossClassification -Counters $counterSet
@@ -202,24 +305,12 @@ $maximumFileSizeMiB = if ($null -eq $profileProvenance.maximum_file_size_mib) {
 else {
     [int64]$profileProvenance.maximum_file_size_mib
 }
-$etlLength = [int64]$etlMetadata.length
-$etlSha256 = ([string]$etlMetadata.sha256).ToLowerInvariant()
 
-$etlEvidence = if ($etlSha256 -match '^[0-9a-f]{64}$' -and $etlLength -ge 0) {
-    [ordered]@{
-        status = 'measured'
-        sha256 = $etlSha256
-        length = $etlLength
-        reason = $null
-    }
-}
-else {
-    [ordered]@{
-        status = 'failed'
-        sha256 = $null
-        length = $null
-        reason = 'ETL metadata SHA-256 veya length alanı geçersiz.'
-    }
+$etlEvidence = [ordered]@{
+    status = 'measured'
+    sha256 = $actualEtlSha256
+    length = $actualEtlLength
+    reason = $null
 }
 
 $circularAssessed = $false
@@ -235,32 +326,32 @@ if (-not $bounded -or $fileMode -cne 'Circular') {
     }
     $circularAssessed = $true
 }
-elseif ($null -eq $maximumFileSizeMiB -or $etlEvidence.status -ne 'measured') {
+elseif ($null -eq $maximumFileSizeMiB) {
     $circularOverwrite = [ordered]@{
         classification = 'failed'
-        capacity_bytes = if ($null -eq $maximumFileSizeMiB) { $null } else { $maximumFileSizeMiB * 1MB }
+        capacity_bytes = $null
         final_etl_length = $null
         utilization_ratio = $null
         risk_threshold_ratio = 0.9
         risk_reasons = @()
-        reason = 'Circular kapasite veya ETL uzunluğu ölçülemedi.'
+        reason = 'Circular capture maksimum dosya kapasitesi eksik.'
     }
 }
 else {
     $capacityBytes = [int64]($maximumFileSizeMiB * 1MB)
-    $utilizationRatio = [double]$etlLength / [double]$capacityBytes
+    $utilizationRatio = [double]$actualEtlLength / [double]$capacityBytes
     $riskReasons = [Collections.Generic.List[string]]::new()
     if ($utilizationRatio -ge 0.9) {
         $riskReasons.Add('capacity_threshold_reached')
     }
-    if ($etlLength -gt $capacityBytes) {
+    if ($actualEtlLength -gt $capacityBytes) {
         $riskReasons.Add('etl_length_exceeds_declared_capacity')
     }
 
     $circularOverwrite = [ordered]@{
         classification = if ($riskReasons.Count -gt 0) { 'risk_observed' } else { 'no_risk_observed' }
         capacity_bytes = $capacityBytes
-        final_etl_length = $etlLength
+        final_etl_length = $actualEtlLength
         utilization_ratio = $utilizationRatio
         risk_threshold_ratio = 0.9
         risk_reasons = @($riskReasons)
@@ -331,13 +422,12 @@ $document = [ordered]@{
     }
 }
 
-$analysisRoot = Join-Path $experimentFull 'analysis'
-New-Item -ItemType Directory -Path $analysisRoot -Force | Out-Null
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $analysisRoot 'trace-loss-accounting.json'
+    $OutputPath = Join-Path $experimentFull 'analysis\trace-loss-accounting.json'
 }
-$outputFull = Get-NxbFullPath -Path $OutputPath
-[void](Get-NxbRelativePath -BasePath $experimentFull -ChildPath $outputFull)
+$outputFull = Assert-NxbEvidencePath `
+    -Path $OutputPath `
+    -ExperimentRoot $experimentFull
 if (Test-Path -LiteralPath $outputFull) {
     throw "Trace-loss accounting çıktısı zaten var: $outputFull"
 }
