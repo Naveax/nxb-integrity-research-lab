@@ -7,6 +7,7 @@
     "schema_version",
     "calibration_id",
     "experiment_id",
+    "experiment_relative_path",
     "machine_id",
     "boot_id",
     "captured_utc",
@@ -23,6 +24,7 @@
     "schema_version": { "type": "integer", "const": 1 },
     "calibration_id": { "$ref": "#/$defs/identifier" },
     "experiment_id": { "type": "string", "minLength": 1 },
+    "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
     "machine_id": { "type": "string", "minLength": 1 },
     "boot_id": { "$ref": "#/$defs/lowerSha256" },
     "captured_utc": { "type": "string", "format": "date-time" },
@@ -45,6 +47,10 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "experimentRelativePath": {
+      "type": "string",
+      "pattern": "^experiments/[A-Za-z0-9._-]+$"
     },
     "lowerSha256": {
       "type": "string",
@@ -204,6 +210,8 @@
     "armBase": {
       "type": "object",
       "required": [
+        "experiment_id",
+        "experiment_relative_path",
         "status",
         "started_utc",
         "stopped_utc",
@@ -215,6 +223,8 @@
         "diagnostics"
       ],
       "properties": {
+        "experiment_id": { "type": "string", "minLength": 1 },
+        "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
         "status": { "enum": ["measured", "failed"] },
         "started_utc": { "type": "string", "format": "date-time" },
         "stopped_utc": { "type": "string", "format": "date-time" },
