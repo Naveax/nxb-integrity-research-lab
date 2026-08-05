@@ -62,13 +62,14 @@ $offsetNumerator = (
 $estimatedOffset = [decimal]::Truncate($offsetNumerator / [decimal]2)
 $uncertainty = [decimal]::Ceiling($roundTrip / [decimal]2)
 
-foreach ($boundedValue in [ordered]@{
+$boundedValues = [ordered]@{
     controller_elapsed_ns = $controllerElapsed
     target_elapsed_ns = $targetElapsed
     round_trip_ns = $roundTrip
     estimated_offset_ns = $estimatedOffset
     uncertainty_ns = $uncertainty
-}.GetEnumerator()) {
+}
+foreach ($boundedValue in $boundedValues.GetEnumerator()) {
     if ($boundedValue.Value -lt [decimal][int64]::MinValue -or
         $boundedValue.Value -gt [decimal][int64]::MaxValue) {
         throw "Clock evidence int64 sınırını aşıyor: $($boundedValue.Key)"
