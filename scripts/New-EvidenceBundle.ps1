@@ -92,6 +92,35 @@ function Add-NxbBundlePathIdentity {
     $CaseMap[$RelativePath] = $RelativePath
 }
 
+function Test-NxbBundleOutputPathSafety {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$ExperimentRoot
+    )
+
+    $pathFull = Get-NxbFullPath -Path $Path
+    [void](Get-NxbRelativePath -BasePath $ExperimentRoot -ChildPath $pathFull)
+
+    $existingAncestor = $pathFull
+    while (-not (Test-Path -LiteralPath $existingAncestor)) {
+        $parent = Split-Path -Parent $existingAncestor
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            $parent.Equals($existingAncestor, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundle output yolu için mevcut güvenli ancestor bulunamadı: $pathFull"
+        }
+        $existingAncestor = $parent
+    }
+
+    [void](Test-NxbPathSafety -Path $existingAncestor -RootPath $ExperimentRoot)
+    return $true
+}
+
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 $storePath = Join-Path $experimentFull 'evidence-store'
 $recordsPath = Join-Path $storePath 'records'
@@ -105,7 +134,7 @@ $outputRelative = $outputRelative.Replace([IO.Path]::DirectorySeparatorChar, [ch
 if ($outputRelative.StartsWith('evidence-store/records/', [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Bundle manifest records dizini altında yazılamaz.'
 }
-[void](Test-NxbPathSafety -Path $outputFull -RootPath $experimentFull)
+[void](Test-NxbBundleOutputPathSafety -Path $outputFull -ExperimentRoot $experimentFull)
 
 $verifiedChain = & (Join-Path $PSScriptRoot 'Test-EvidenceStoreChain.ps1') `
     -ExperimentPath $experimentFull `
