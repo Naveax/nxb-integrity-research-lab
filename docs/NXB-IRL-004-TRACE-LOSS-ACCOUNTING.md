@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTATION IN PROGRESS — WINDOWS VALIDATION PENDING`
+`IMPLEMENTATION COMPLETE — WINDOWS VALIDATION PENDING`
 
 Tracking issue: `#2`
 
@@ -59,7 +59,7 @@ It records:
 - command and exit code,
 - collector-level `Events Lost` values when available,
 - top-level `Dropped event` only as a fallback,
-- explicit unsupported states for counters not exposed by this command.
+- explicit unsupported or unavailable states for counters not exposed by this command.
 
 ### Post-stop ETL trace statistics
 
@@ -91,7 +91,10 @@ Every observation is represented with one of these states:
 - `unsupported`: the platform or collector does not expose the observation,
 - `unavailable`: the source is normally supported but the field was absent,
 - `failed`: collection or parsing failed,
-- `not_assessed`: the evidence needed for classification was not collected.
+- `not_assessed`: the evidence needed for classification was not collected,
+- `not_applicable`: the counter does not apply to the selected capture mode.
+
+For file-mode ETL capture, `realtime_buffers_lost` is `not_applicable` because no real-time consumer delivery path exists. This state is excluded from required-counter completeness rather than being misclassified as missing evidence.
 
 ## Required bindings
 
@@ -109,12 +112,21 @@ Loss and overwrite evidence binds to:
 
 ## Trace-loss classification
 
-- `native_loss_observed`: at least one measured native counter is greater than zero,
-- `no_native_loss_reported`: every required counter is measured and zero,
-- `not_assessed`: required counters remain unsupported, unavailable or not collected,
-- `failed`: a required native accounting source failed.
+- `native_loss_observed`: at least one measured applicable native counter is greater than zero,
+- `no_native_loss_reported`: every applicable counter is measured and zero,
+- `not_assessed`: an applicable counter remains unsupported, unavailable or not collected,
+- `failed`: an applicable native accounting source failed.
 
-`no_native_loss_reported` is limited to the native counters represented by the exact evidence document. It is not a universal completeness claim.
+For the current file-mode WPR path, the applicable set is:
+
+```text
+Events Lost
+Buffers Lost
+```
+
+`realtime_buffers_lost` remains represented as `not_applicable`, not omitted.
+
+`no_native_loss_reported` is limited to the applicable native counters represented by the exact evidence document. It is not a universal completeness claim.
 
 ## Circular-overwrite classification
 
@@ -138,6 +150,8 @@ claims.capture_completeness: not_claimed
 
 - strict JSON Schema 2020-12 contract,
 - Python cross-field semantic validator,
+- hash-bound native counter source validation,
+- applicable-counter and `not_applicable` enforcement,
 - PowerShell validator wrapper with PS7/PS5.1 native stderr handling,
 - canonical valid fixture,
 - adversarial classification and provenance tests,
@@ -145,7 +159,8 @@ claims.capture_completeness: not_claimed
 - fake-xperf trace-statistics tests,
 - final collector tests,
 - accounting-aware stop lifecycle tests,
-- dedicated repository smoke gate.
+- dedicated repository smoke gate,
+- exact-head native Windows validation runner.
 
 ## Remaining work
 
