@@ -75,6 +75,7 @@ Describe 'NXB tool provenance and clock-offset evidence' {
         $record.record_type | Should -Be 'tool_provenance'
         $record.payload.argument_count | Should -Be 4
         $record.payload.redacted_argument_count | Should -Be 1
+        $record.payload.exit_code | Should -Be 0
         $record.payload.tool_sha256 | Should -Be (
             (Get-FileHash -LiteralPath $toolPath -Algorithm SHA256).Hash.ToLowerInvariant()
         )
@@ -101,6 +102,10 @@ Describe 'NXB tool provenance and clock-offset evidence' {
             -SessionId 'session-provenance-clock' `
             -CapturedUtc ([DateTime]'2026-08-04T20:00:00Z') `
             -MonotonicNs 100
+
+        $record = Get-Content -LiteralPath $result.RecordPath -Raw |
+            ConvertFrom-Json
+        $record.payload.exit_code | Should -BeNullOrEmpty
 
         [IO.File]::WriteAllBytes($toolPath, [byte[]](1, 2, 3, 4, 5))
 
