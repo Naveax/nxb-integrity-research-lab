@@ -128,6 +128,98 @@ function Test-NxbExactStringSet {
     return $true
 }
 
+function Get-NxbSystemCollectorContract {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.Xml.XmlNode]$Profiles,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Id,
+
+        [Parameter()]
+        [switch]$BoundedFile
+    )
+
+    $collector = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
+        -Context $Profiles `
+        -XPath ("./SystemCollector[@Id='{0}']" -f $Id) `
+        -Label "SystemCollector $Id")
+
+    if ((Get-NxbRequiredXmlAttribute -Element $collector -Name Name -Label $Id) -cne
+        'NT Kernel Logger') {
+        throw "$Id Name değeri NT Kernel Logger olmalıdır."
+    }
+
+    $bufferSizeNode = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
+        -Context $collector `
+        -XPath './BufferSize' `
+        -Label "$Id BufferSize")
+    $bufferSizeKiB = ConvertTo-NxbRequiredInteger `
+        -Value (Get-NxbRequiredXmlAttribute `
+            -Element $bufferSizeNode `
+            -Name Value `
+            -Label "$Id BufferSize") `
+        -Label "$Id BufferSize"
+    if ($bufferSizeKiB -ne 1024) {
+        throw "$Id BufferSize değeri 1024 KiB olmalıdır: $bufferSizeKiB"
+    }
+
+    $buffersNode = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
+        -Context $collector `
+        -XPath './Buffers' `
+        -Label "$Id Buffers")
+    $bufferCount = ConvertTo-NxbRequiredInteger `
+        -Value (Get-NxbRequiredXmlAttribute `
+            -Element $buffersNode `
+            -Name Value `
+            -Label "$Id Buffers") `
+        -Label "$Id Buffers"
+    if ($bufferCount -ne 64) {
+        throw "$Id Buffers değeri 64 olmalıdır: $bufferCount"
+    }
+
+    $maximumFileSizeMiB = $null
+    $fileMode = $null
+    $maximumFileSizeNodes = $collector.SelectNodes('./MaximumFileSize')
+    if ($BoundedFile) {
+        if ($maximumFileSizeNodes.Count -ne 1) {
+            throw "$Id tam olarak bir MaximumFileSize içermelidir."
+        }
+
+        $maximumFileSizeNode = [System.Xml.XmlElement]$maximumFileSizeNodes.Item(0)
+        $maximumFileSizeMiB = ConvertTo-NxbRequiredInteger `
+            -Value (Get-NxbRequiredXmlAttribute `
+                -Element $maximumFileSizeNode `
+                -Name Value `
+                -Label "$Id MaximumFileSize") `
+            -Label "$Id MaximumFileSize"
+        if ($maximumFileSizeMiB -ne 512) {
+            throw "Minimal profile MaximumFileSize değeri 512 MiB olmalıdır: $maximumFileSizeMiB"
+        }
+
+        $fileMode = Get-NxbRequiredXmlAttribute `
+            -Element $maximumFileSizeNode `
+            -Name FileMode `
+            -Label "$Id MaximumFileSize"
+        if ($fileMode -cne 'Circular') {
+            throw "Minimal profile file mode Circular olmalıdır: $fileMode"
+        }
+    }
+    elseif ($maximumFileSizeNodes.Count -ne 0) {
+        throw "$Id memory collector MaximumFileSize içeremez."
+    }
+
+    return [pscustomobject]@{
+        Id = $Id
+        BufferSizeKiB = $bufferSizeKiB
+        Buffers = $bufferCount
+        MaximumFileSizeMiB = $maximumFileSizeMiB
+        FileMode = $fileMode
+    }
+}
+
 function Test-NxbProfileVariant {
     [CmdletBinding()]
     param(
@@ -140,7 +232,11 @@ function Test-NxbProfileVariant {
 
         [Parameter(Mandatory)]
         [ValidateSet('File', 'Memory')]
-        [string]$LoggingMode
+        [string]$LoggingMode,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$CollectorId
     )
 
     $profile = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
@@ -168,8 +264,8 @@ function Test-NxbProfileVariant {
     if ((Get-NxbRequiredXmlAttribute `
         -Element $collectorReference `
         -Name Value `
-        -Label "$Id collector reference") -cne 'NxbMinimalCpuSchedulerSystemCollector') {
-        throw "$Id beklenmeyen system collector kullanıyor."
+        -Label "$Id collector reference") -cne $CollectorId) {
+        throw "$Id beklenmeyen system collector kullanıyor. Beklenen: $CollectorId"
     }
 
     $providerReference = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
@@ -236,60 +332,21 @@ $profiles = Get-NxbSingleXmlNode `
     -Label 'WPR Profiles container'
 
 $collectorNodes = $profiles.SelectNodes('./SystemCollector')
-if ($collectorNodes.Count -ne 1) {
-    throw "Minimal profile tam olarak bir SystemCollector içermelidir; bulunan: $($collectorNodes.Count)"
-}
-$collector = [System.Xml.XmlElement]$collectorNodes.Item(0)
-if ((Get-NxbRequiredXmlAttribute -Element $collector -Name Id -Label 'SystemCollector') -cne
-    'NxbMinimalCpuSchedulerSystemCollector') {
-    throw 'Minimal profile beklenmeyen SystemCollector Id içeriyor.'
-}
-if ((Get-NxbRequiredXmlAttribute -Element $collector -Name Name -Label 'SystemCollector') -cne
-    'NT Kernel Logger') {
-    throw 'Minimal profile SystemCollector Name değeri NT Kernel Logger olmalıdır.'
+if ($collectorNodes.Count -ne 2) {
+    throw "Minimal profile tam olarak iki File/Memory SystemCollector içermelidir; bulunan: $($collectorNodes.Count)"
 }
 
-$bufferSizeNode = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
-    -Context $collector `
-    -XPath './BufferSize' `
-    -Label 'SystemCollector BufferSize')
-$bufferSizeKiB = ConvertTo-NxbRequiredInteger `
-    -Value (Get-NxbRequiredXmlAttribute -Element $bufferSizeNode -Name Value -Label 'BufferSize') `
-    -Label 'BufferSize'
-if ($bufferSizeKiB -ne 1024) {
-    throw "Minimal profile BufferSize değeri 1024 KiB olmalıdır: $bufferSizeKiB"
-}
+$fileCollector = Get-NxbSystemCollectorContract `
+    -Profiles $profiles `
+    -Id 'NxbMinimalCpuSchedulerSystemCollectorFile' `
+    -BoundedFile
+$memoryCollector = Get-NxbSystemCollectorContract `
+    -Profiles $profiles `
+    -Id 'NxbMinimalCpuSchedulerSystemCollectorMemory'
 
-$buffersNode = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
-    -Context $collector `
-    -XPath './Buffers' `
-    -Label 'SystemCollector Buffers')
-$bufferCount = ConvertTo-NxbRequiredInteger `
-    -Value (Get-NxbRequiredXmlAttribute -Element $buffersNode -Name Value -Label 'Buffers') `
-    -Label 'Buffers'
-if ($bufferCount -ne 64) {
-    throw "Minimal profile Buffers değeri 64 olmalıdır: $bufferCount"
-}
-
-$maximumFileSizeNode = [System.Xml.XmlElement](Get-NxbSingleXmlNode `
-    -Context $collector `
-    -XPath './MaximumFileSize' `
-    -Label 'SystemCollector MaximumFileSize')
-$maximumFileSizeMiB = ConvertTo-NxbRequiredInteger `
-    -Value (Get-NxbRequiredXmlAttribute `
-        -Element $maximumFileSizeNode `
-        -Name Value `
-        -Label 'MaximumFileSize') `
-    -Label 'MaximumFileSize'
-if ($maximumFileSizeMiB -ne 512) {
-    throw "Minimal profile MaximumFileSize değeri 512 MiB olmalıdır: $maximumFileSizeMiB"
-}
-$fileMode = Get-NxbRequiredXmlAttribute `
-    -Element $maximumFileSizeNode `
-    -Name FileMode `
-    -Label 'MaximumFileSize'
-if ($fileMode -cne 'Circular') {
-    throw "Minimal profile file mode Circular olmalıdır: $fileMode"
+if ($fileCollector.BufferSizeKiB -ne $memoryCollector.BufferSizeKiB -or
+    $fileCollector.Buffers -ne $memoryCollector.Buffers) {
+    throw 'File ve Memory collector buffer sözleşmeleri uyuşmuyor.'
 }
 
 $providerNodes = $profiles.SelectNodes('./SystemProvider')
@@ -359,11 +416,13 @@ if ($profileNodes.Count -ne 2) {
 [void](Test-NxbProfileVariant `
     -Document $document `
     -Id 'NxbMinimalCpuScheduler.Verbose.File' `
-    -LoggingMode File)
+    -LoggingMode File `
+    -CollectorId 'NxbMinimalCpuSchedulerSystemCollectorFile')
 [void](Test-NxbProfileVariant `
     -Document $document `
     -Id 'NxbMinimalCpuScheduler.Verbose.Memory' `
-    -LoggingMode Memory)
+    -LoggingMode Memory `
+    -CollectorId 'NxbMinimalCpuSchedulerSystemCollectorMemory')
 
 $profileItem = Get-Item -LiteralPath $profileFull
 $relativePath = (Get-NxbRelativePath -BasePath $repositoryRoot -ChildPath $profileFull).Replace(
@@ -378,13 +437,15 @@ $result = [pscustomobject]@{
     DetailLevel = 'Verbose'
     FileProfileId = 'NxbMinimalCpuScheduler.Verbose.File'
     MemoryProfileId = 'NxbMinimalCpuScheduler.Verbose.Memory'
+    FileCollectorId = [string]$fileCollector.Id
+    MemoryCollectorId = [string]$memoryCollector.Id
     FileProfileReference = ('{0}!NxbMinimalCpuScheduler.Verbose' -f $profileFull)
     Sha256 = $profileHash
     Length = [int64]$profileItem.Length
-    BufferSizeKiB = $bufferSizeKiB
-    Buffers = $bufferCount
-    MaximumFileSizeMiB = $maximumFileSizeMiB
-    FileMode = $fileMode
+    BufferSizeKiB = [int]$fileCollector.BufferSizeKiB
+    Buffers = [int]$fileCollector.Buffers
+    MaximumFileSizeMiB = [int]$fileCollector.MaximumFileSizeMiB
+    FileMode = [string]$fileCollector.FileMode
     Keywords = $expectedKeywords
     Stacks = $expectedStacks
 }
