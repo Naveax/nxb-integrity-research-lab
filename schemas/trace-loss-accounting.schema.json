@@ -49,6 +49,10 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "nativeCounterSource": {
+      "type": "string",
+      "pattern": "^(wpr_status_snapshot|xperf_tracestats):[0-9a-f]{64}(;field=[a-z_]+)?$"
+    },
     "counterMeasurement": {
       "oneOf": [
         {
@@ -59,7 +63,7 @@
             "status": { "const": "measured" },
             "value": { "type": "integer", "minimum": 0 },
             "unit": { "const": "count" },
-            "source": { "type": "string", "minLength": 1 },
+            "source": { "$ref": "#/$defs/nativeCounterSource" },
             "reason": { "type": "null" }
           }
         },
@@ -73,7 +77,12 @@
             },
             "value": { "type": "null" },
             "unit": { "const": "count" },
-            "source": { "type": ["string", "null"] },
+            "source": {
+              "oneOf": [
+                { "$ref": "#/$defs/nativeCounterSource" },
+                { "type": "null" }
+              ]
+            },
             "reason": { "type": "string", "minLength": 1 }
           }
         }
@@ -190,7 +199,6 @@
           "items": {
             "enum": [
               "capacity_threshold_reached",
-              "native_overwrite_reported",
               "etl_length_exceeds_declared_capacity"
             ]
           }
