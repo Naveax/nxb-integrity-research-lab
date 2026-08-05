@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/trace-loss-accounting.schema.json",
+  "title": "NXB Trace-Loss and Circular-Overwrite Accounting Evidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "accounting_id",
+    "experiment_id",
+    "experiment_relative_path",
+    "machine_id",
+    "boot_id",
+    "captured_utc",
+    "capture",
+    "native_counters",
+    "trace_loss",
+    "circular_overwrite",
+    "summary",
+    "claims"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "accounting_id": { "$ref": "#/$defs/identifier" },
+    "experiment_id": { "$ref": "#/$defs/identifier" },
+    "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
+    "machine_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "boot_id": { "$ref": "#/$defs/lowerSha256" },
+    "captured_utc": { "type": "string", "format": "date-time" },
+    "capture": { "$ref": "#/$defs/capture" },
+    "native_counters": { "$ref": "#/$defs/nativeCounters" },
+    "trace_loss": { "$ref": "#/$defs/traceLoss" },
+    "circular_overwrite": { "$ref": "#/$defs/circularOverwrite" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "claims": { "$ref": "#/$defs/claims" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "experimentRelativePath": {
+      "type": "string",
+      "pattern": "^experiments/[A-Za-z0-9._-]+$"
+    },
+    "lowerSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "counterMeasurement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "source", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "value": { "type": "integer", "minimum": 0 },
+            "unit": { "const": "count" },
+            "source": { "type": "string", "minLength": 1 },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "source", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": ["unsupported", "unavailable", "failed", "not_assessed"]
+            },
+            "value": { "type": "null" },
+            "unit": { "const": "count" },
+            "source": { "type": ["string", "null"] },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "name",
+        "provenance_sha256",
+        "bounded",
+        "logging_mode",
+        "file_mode",
+        "buffer_size_kib",
+        "buffers",
+        "maximum_file_size_mib"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "provenance_sha256": { "$ref": "#/$defs/lowerSha256" },
+        "bounded": { "type": "boolean" },
+        "logging_mode": { "enum": ["File", "Memory"] },
+        "file_mode": { "enum": ["Circular", "Sequential", "Unbounded", "Memory"] },
+        "buffer_size_kib": { "type": ["integer", "null"], "minimum": 1 },
+        "buffers": { "type": ["integer", "null"], "minimum": 1 },
+        "maximum_file_size_mib": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "etl": {
+      "type": "object",
+      "required": ["status", "sha256", "length", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["measured", "unavailable", "failed"] },
+        "sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/lowerSha256" },
+            { "type": "null" }
+          ]
+        },
+        "length": { "type": ["integer", "null"], "minimum": 0 },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "required": ["started_utc", "stopped_utc", "profile", "etl"],
+      "additionalProperties": false,
+      "properties": {
+        "started_utc": { "type": "string", "format": "date-time" },
+        "stopped_utc": { "type": "string", "format": "date-time" },
+        "profile": { "$ref": "#/$defs/profile" },
+        "etl": { "$ref": "#/$defs/etl" }
+      }
+    },
+    "nativeCounters": {
+      "type": "object",
+      "required": ["events_lost", "buffers_lost", "realtime_buffers_lost"],
+      "additionalProperties": false,
+      "properties": {
+        "events_lost": { "$ref": "#/$defs/counterMeasurement" },
+        "buffers_lost": { "$ref": "#/$defs/counterMeasurement" },
+        "realtime_buffers_lost": { "$ref": "#/$defs/counterMeasurement" }
+      }
+    },
+    "traceLoss": {
+      "type": "object",
+      "required": ["classification", "measured_counter_count", "total_reported_loss", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "native_loss_observed",
+            "no_native_loss_reported",
+            "not_assessed",
+            "failed"
+          ]
+        },
+        "measured_counter_count": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "total_reported_loss": { "type": ["integer", "null"], "minimum": 0 },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "circularOverwrite": {
+      "type": "object",
+      "required": [
+        "classification",
+        "capacity_bytes",
+        "final_etl_length",
+        "utilization_ratio",
+        "risk_threshold_ratio",
+        "risk_reasons",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "not_applicable",
+            "not_assessed",
+            "risk_observed",
+            "no_risk_observed",
+            "failed"
+          ]
+        },
+        "capacity_bytes": { "type": ["integer", "null"], "minimum": 1 },
+        "final_etl_length": { "type": ["integer", "null"], "minimum": 0 },
+        "utilization_ratio": { "type": ["number", "null"], "minimum": 0 },
+        "risk_threshold_ratio": { "type": "number", "const": 0.9 },
+        "risk_reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "capacity_threshold_reached",
+              "native_overwrite_reported",
+              "etl_length_exceeds_declared_capacity"
+            ]
+          }
+        },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["evidence_completeness", "trace_loss_assessed", "circular_overwrite_assessed"],
+      "additionalProperties": false,
+      "properties": {
+        "evidence_completeness": { "enum": ["complete", "partial", "unavailable", "failed"] },
+        "trace_loss_assessed": { "type": "boolean" },
+        "circular_overwrite_assessed": { "type": "boolean" }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "required": ["trace_loss_absence", "circular_overwrite_absence", "capture_completeness"],
+      "additionalProperties": false,
+      "properties": {
+        "trace_loss_absence": { "const": false },
+        "circular_overwrite_absence": { "const": false },
+        "capture_completeness": { "const": "not_claimed" }
+      }
+    }
+  }
+}
