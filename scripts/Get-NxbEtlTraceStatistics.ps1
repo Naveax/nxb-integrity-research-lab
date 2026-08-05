@@ -268,10 +268,10 @@ $statistics = [ordered]@{
         -FallbackStatus $fallbackStatus `
         -FallbackReason $fallbackReason
     realtime_buffers_lost = [ordered]@{
-        status = 'unsupported'
+        status = 'not_applicable'
         value = $null
         source = $null
-        reason = 'File-mode ETL header does not represent real-time consumer delivery loss.'
+        reason = 'File-mode ETL gerçek zamanlı consumer teslimatı kullanmıyor.'
     }
 }
 
