@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Validate NXB paired collector-overhead calibration evidence.
-
-This validator performs JSON Schema validation and cross-field checks that
-JSON Schema cannot express, including lifecycle identity binding,
-deterministic pair ordering, summary counts, canonical fingerprints, and
-measured delta math.
-"""
+"""Validate NXB paired collector-overhead calibration evidence."""
 
 from __future__ import annotations
 
@@ -23,7 +17,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 
 class ValidationFailure(ValueError):
-    """Raised when semantic calibration validation fails."""
+    """Raised when schema or semantic validation fails."""
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +39,11 @@ def load_json(path: Path) -> Any:
         ) from exc
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValidationFailure(message)
+
+
 def canonical_sha256(value: Any) -> str:
     encoded = json.dumps(
         value,
@@ -59,29 +58,20 @@ def canonical_sha256(value: Any) -> str:
 def format_json_path(parts: Iterable[Any]) -> str:
     path = "$"
     for part in parts:
-        if isinstance(part, int):
-            path += f"[{part}]"
-        else:
-            path += f".{part}"
+        path += f"[{part}]" if isinstance(part, int) else f".{part}"
     return path
 
 
 def validate_schema(schema: Any, document: Any) -> None:
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    errors = sorted(validator.iter_errors(document), key=lambda item: list(item.path))
-    if not errors:
-        return
-
-    rendered = [
-        f"{format_json_path(error.absolute_path)}: {error.message}" for error in errors
-    ]
-    raise ValidationFailure("Schema validation failed:\n" + "\n".join(rendered))
-
-
-def require(condition: bool, message: str) -> None:
-    if not condition:
-        raise ValidationFailure(message)
+    errors = sorted(validator.iter_errors(document), key=lambda error: list(error.path))
+    if errors:
+        rendered = [
+            f"{format_json_path(error.absolute_path)}: {error.message}"
+            for error in errors
+        ]
+        raise ValidationFailure("Schema validation failed:\n" + "\n".join(rendered))
 
 
 def parse_utc(value: str, label: str) -> datetime:
@@ -89,7 +79,7 @@ def parse_utc(value: str, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ValidationFailure(f"{label} is not a valid ISO-8601 date-time: {value}") from exc
+        raise ValidationFailure(f"{label} is not a valid ISO-8601 date-time") from exc
     require(parsed.tzinfo is not None, f"{label} must include a UTC offset")
     return parsed
 
@@ -99,52 +89,57 @@ def close_enough(actual: float, expected: float) -> bool:
     return math.isclose(actual, expected, rel_tol=1e-6, abs_tol=tolerance)
 
 
-def require_measured_value(measurement: dict[str, Any], label: str) -> float:
+def measured_value(measurement: dict[str, Any], label: str) -> float:
     require(measurement["status"] == "measured", f"{label} must be measured")
     return float(measurement["value"])
 
 
-def verify_measurement_unit(measurement: dict[str, Any], expected: str, label: str) -> None:
+def require_unit(measurement: dict[str, Any], unit: str, label: str) -> None:
     require(
-        measurement["unit"] == expected,
-        f"{label}.unit must be '{expected}', found '{measurement['unit']}'",
+        measurement["unit"] == unit,
+        f"{label}.unit must be '{unit}', found '{measurement['unit']}'",
     )
+
+
+def failed_measurement(unit: str) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "value": None,
+        "unit": unit,
+        "reason": "arm failed",
+    }
+
+
+def arm_metric(arm: dict[str, Any], metric_name: str, unit: str) -> dict[str, Any]:
+    if arm["status"] != "measured":
+        return failed_measurement(unit)
+    return arm["process_metrics"][metric_name]
 
 
 def validate_experiment_binding(
     experiment_id: str,
     relative_path: str,
     label: str,
-    seen_experiment_ids: set[str],
+    seen_ids: set[str],
 ) -> None:
-    expected_path = f"experiments/{experiment_id}"
-    require(
-        relative_path == expected_path,
-        f"{label}.experiment_relative_path must be '{expected_path}'",
-    )
-    require(
-        experiment_id not in seen_experiment_ids,
-        f"duplicate lifecycle experiment_id: {experiment_id}",
-    )
-    seen_experiment_ids.add(experiment_id)
+    expected = f"experiments/{experiment_id}"
+    require(relative_path == expected, f"{label}.experiment_relative_path must be '{expected}'")
+    require(experiment_id not in seen_ids, f"duplicate lifecycle experiment_id: {experiment_id}")
+    seen_ids.add(experiment_id)
 
 
 def validate_arm(arm: dict[str, Any], label: str) -> None:
     started = parse_utc(arm["started_utc"], f"{label}.started_utc")
     stopped = parse_utc(arm["stopped_utc"], f"{label}.stopped_utc")
     require(stopped >= started, f"{label} stopped before it started")
-
     elapsed_ms = (stopped - started).total_seconds() * 1000.0
     require(
         abs(float(arm["duration_ms"]) - elapsed_ms) <= max(2000.0, elapsed_ms * 0.05),
-        f"{label}.duration_ms is inconsistent with start/stop timestamps",
+        f"{label}.duration_ms is inconsistent with timestamps",
     )
-
     if arm["status"] == "measured":
         require(not arm["timed_out"], f"{label} cannot be measured after timeout")
         require(arm["exit_code"] == 0, f"{label} measured status requires exit_code 0")
-    elif arm["timed_out"]:
-        require(arm["status"] == "failed", f"{label} timeout must fail the arm")
 
 
 def expected_first_arm(ordering: str, ordinal: int) -> str:
@@ -153,13 +148,13 @@ def expected_first_arm(ordering: str, ordinal: int) -> str:
     if ordering == "capture_then_control":
         return "capture"
     if ordering == "alternating_control_first":
-        return "control" if ordinal % 2 == 1 else "capture"
+        return "control" if ordinal % 2 else "capture"
     if ordering == "alternating_capture_first":
-        return "capture" if ordinal % 2 == 1 else "control"
+        return "capture" if ordinal % 2 else "control"
     raise ValidationFailure(f"Unsupported ordering: {ordering}")
 
 
-def expected_delta(
+def validate_delta(
     control: dict[str, Any],
     capture: dict[str, Any],
     absolute: dict[str, Any],
@@ -168,45 +163,38 @@ def expected_delta(
     absolute_unit: str,
     label: str,
 ) -> float | None:
-    verify_measurement_unit(absolute, absolute_unit, f"{label}.absolute")
-    verify_measurement_unit(relative, "percent", f"{label}.relative")
+    require_unit(absolute, absolute_unit, f"{label}.absolute")
+    require_unit(relative, "percent", f"{label}.relative")
 
-    sources_measured = (
-        control["status"] == "measured" and capture["status"] == "measured"
-    )
-    if not sources_measured:
+    if control["status"] != "measured" or capture["status"] != "measured":
         require(
             absolute["status"] != "measured" and relative["status"] != "measured",
-            f"{label} cannot be measured when a source metric is unavailable",
+            f"{label} cannot be measured when an arm or source metric failed",
         )
         return None
 
-    verify_measurement_unit(control, source_unit, f"{label}.control")
-    verify_measurement_unit(capture, source_unit, f"{label}.capture")
+    require_unit(control, source_unit, f"{label}.control")
+    require_unit(capture, source_unit, f"{label}.capture")
     control_value = float(control["value"])
     capture_value = float(capture["value"])
-    absolute_expected = capture_value - control_value
-
-    absolute_actual = require_measured_value(absolute, f"{label}.absolute")
+    expected_absolute = capture_value - control_value
+    actual_absolute = measured_value(absolute, f"{label}.absolute")
     require(
-        close_enough(absolute_actual, absolute_expected),
-        f"{label}.absolute value mismatch: expected {absolute_expected}, found {absolute_actual}",
+        close_enough(actual_absolute, expected_absolute),
+        f"{label}.absolute value mismatch: expected {expected_absolute}, found {actual_absolute}",
     )
 
     if control_value == 0:
-        require(
-            relative["status"] != "measured",
-            f"{label}.relative cannot be measured with a zero control denominator",
-        )
+        require(relative["status"] != "measured", f"{label}.relative has zero denominator")
         return None
 
-    relative_expected = absolute_expected / control_value * 100.0
-    relative_actual = require_measured_value(relative, f"{label}.relative")
+    expected_relative = expected_absolute / control_value * 100.0
+    actual_relative = measured_value(relative, f"{label}.relative")
     require(
-        close_enough(relative_actual, relative_expected),
-        f"{label}.relative value mismatch: expected {relative_expected}, found {relative_actual}",
+        close_enough(actual_relative, expected_relative),
+        f"{label}.relative value mismatch: expected {expected_relative}, found {actual_relative}",
     )
-    return relative_actual
+    return actual_relative
 
 
 def validate_pair_deltas(pair: dict[str, Any], label: str) -> dict[str, float | None]:
@@ -214,23 +202,21 @@ def validate_pair_deltas(pair: dict[str, Any], label: str) -> dict[str, float | 
     capture = pair["capture"]
     deltas = pair["deltas"]
 
-    duration_control = {
-        "status": "measured" if control["status"] == "measured" else "failed",
-        "value": control["duration_ms"] if control["status"] == "measured" else None,
-        "unit": "ms",
-        "reason": None if control["status"] == "measured" else "arm failed",
-    }
-    duration_capture = {
-        "status": "measured" if capture["status"] == "measured" else "failed",
-        "value": capture["duration_ms"] if capture["status"] == "measured" else None,
-        "unit": "ms",
-        "reason": None if capture["status"] == "measured" else "arm failed",
-    }
+    control_duration = (
+        {"status": "measured", "value": control["duration_ms"], "unit": "ms", "reason": None}
+        if control["status"] == "measured"
+        else failed_measurement("ms")
+    )
+    capture_duration = (
+        {"status": "measured", "value": capture["duration_ms"], "unit": "ms", "reason": None}
+        if capture["status"] == "measured"
+        else failed_measurement("ms")
+    )
 
     values: dict[str, float | None] = {}
-    values["duration"] = expected_delta(
-        duration_control,
-        duration_capture,
+    values["duration"] = validate_delta(
+        control_duration,
+        capture_duration,
         deltas["duration_absolute_ms"],
         deltas["duration_relative_percent"],
         "ms",
@@ -239,18 +225,11 @@ def validate_pair_deltas(pair: dict[str, Any], label: str) -> dict[str, float | 
     )
 
     metric_map = {
-        "cpu_time": (
-            "cpu_time_ms",
-            "cpu_time_absolute_ms",
-            "cpu_time_relative_percent",
-            "ms",
-            "ms",
-        ),
+        "cpu_time": ("cpu_time_ms", "cpu_time_absolute_ms", "cpu_time_relative_percent", "ms"),
         "peak_working_set": (
             "peak_working_set_bytes",
             "peak_working_set_absolute_bytes",
             "peak_working_set_relative_percent",
-            "bytes",
             "bytes",
         ),
         "peak_private_bytes": (
@@ -258,38 +237,29 @@ def validate_pair_deltas(pair: dict[str, Any], label: str) -> dict[str, float | 
             "peak_private_bytes_absolute_bytes",
             "peak_private_bytes_relative_percent",
             "bytes",
-            "bytes",
         ),
     }
-    for output_name, (
-        source_name,
-        absolute_name,
-        relative_name,
-        source_unit,
-        absolute_unit,
-    ) in metric_map.items():
-        values[output_name] = expected_delta(
-            control["process_metrics"][source_name],
-            capture["process_metrics"][source_name],
+    for result_name, (metric_name, absolute_name, relative_name, unit) in metric_map.items():
+        values[result_name] = validate_delta(
+            arm_metric(control, metric_name, unit),
+            arm_metric(capture, metric_name, unit),
             deltas[absolute_name],
             deltas[relative_name],
-            source_unit,
-            absolute_unit,
-            f"{label}.{output_name}",
+            unit,
+            unit,
+            f"{label}.{result_name}",
         )
-
     return values
 
 
 def validate_distribution(
-    distribution: dict[str, Any], values: list[float], unit: str, label: str
+    distribution: dict[str, Any],
+    values: list[float],
+    label: str,
 ) -> None:
-    require(distribution["unit"] == unit, f"{label}.unit must be '{unit}'")
+    require(distribution["unit"] == "percent", f"{label}.unit must be 'percent'")
     if not values:
-        require(
-            distribution["status"] != "measured",
-            f"{label} cannot be measured without measured pair values",
-        )
+        require(distribution["status"] != "measured", f"{label} has no measured values")
         require(distribution["count"] == 0, f"{label}.count must be 0")
         return
 
@@ -318,16 +288,14 @@ def validate_semantics(document: dict[str, Any]) -> None:
         document["workload_fingerprint"] == canonical_sha256(document["workload"]),
         "workload_fingerprint does not match canonical workload JSON",
     )
-
-    parent_expected_path = f"experiments/{document['experiment_id']}"
+    expected_parent_path = f"experiments/{document['experiment_id']}"
     require(
-        document["experiment_relative_path"] == parent_expected_path,
-        f"experiment_relative_path must be '{parent_expected_path}'",
+        document["experiment_relative_path"] == expected_parent_path,
+        f"experiment_relative_path must be '{expected_parent_path}'",
     )
 
     pairs = document["pairs"]
-    repetition_count = document["protocol"]["repetition_count"]
-    require(len(pairs) == repetition_count, "pairs count must equal repetition_count")
+    require(len(pairs) == document["protocol"]["repetition_count"], "pairs count must equal repetition_count")
     require(document["summary"]["pair_count"] == len(pairs), "summary.pair_count mismatch")
 
     seen_pair_ids: set[str] = set()
@@ -345,7 +313,6 @@ def validate_semantics(document: dict[str, Any]) -> None:
         require(pair["ordinal"] == index, f"{label}.ordinal must be {index}")
         require(pair["pair_id"] not in seen_pair_ids, f"duplicate pair_id: {pair['pair_id']}")
         seen_pair_ids.add(pair["pair_id"])
-
         require(pair["machine_id"] == document["machine_id"], f"{label}.machine_id mismatch")
         require(pair["boot_id"] == document["boot_id"], f"{label}.boot_id mismatch")
         require(
@@ -375,25 +342,11 @@ def validate_semantics(document: dict[str, Any]) -> None:
         control_result = pair["control"]["result"]
         capture_result = pair["capture"]["result"]
         if control_result["status"] == "measured" and capture_result["status"] == "measured":
-            require(
-                control_result["unit"] == capture_result["unit"],
-                f"{label} control/capture workload result units differ",
-            )
-            require(
-                control_result["value"] == capture_result["value"],
-                f"{label} control/capture workload results differ",
-            )
+            require(control_result["unit"] == capture_result["unit"], f"{label} result units differ")
+            require(control_result["value"] == capture_result["value"], f"{label} control/capture workload results differ")
 
-        verify_measurement_unit(
-            pair["capture"]["wpr_start_latency_ms"],
-            "ms",
-            f"{label}.capture.wpr_start_latency_ms",
-        )
-        verify_measurement_unit(
-            pair["capture"]["wpr_stop_latency_ms"],
-            "ms",
-            f"{label}.capture.wpr_stop_latency_ms",
-        )
+        require_unit(pair["capture"]["wpr_start_latency_ms"], "ms", f"{label}.capture.wpr_start_latency_ms")
+        require_unit(pair["capture"]["wpr_stop_latency_ms"], "ms", f"{label}.capture.wpr_stop_latency_ms")
 
         pair_success = (
             pair["control"]["status"] == "measured"
@@ -404,49 +357,36 @@ def validate_semantics(document: dict[str, Any]) -> None:
             successful_pairs += 1
             etl = pair["capture"]["etl"]
             duration_seconds = float(pair["capture"]["duration_ms"]) / 1000.0
-            if duration_seconds > 0:
-                expected_rate = float(etl["length"]) / duration_seconds
-                require(
-                    close_enough(float(etl["effective_bytes_per_second"]), expected_rate),
-                    f"{label}.capture.etl.effective_bytes_per_second mismatch",
-                )
+            require(duration_seconds > 0, f"{label}.capture duration must be positive")
+            expected_rate = float(etl["length"]) / duration_seconds
+            require(
+                close_enough(float(etl["effective_bytes_per_second"]), expected_rate),
+                f"{label}.capture.etl.effective_bytes_per_second mismatch",
+            )
 
-        delta_values = validate_pair_deltas(pair, label)
-        for name, value in delta_values.items():
+        pair_values = validate_pair_deltas(pair, label)
+        for name, value in pair_values.items():
             if value is not None:
                 relative_values[name].append(value)
 
-    failed_pairs = len(pairs) - successful_pairs
     summary = document["summary"]
+    failed_pairs = len(pairs) - successful_pairs
     require(summary["successful_pair_count"] == successful_pairs, "successful_pair_count mismatch")
     require(summary["failed_pair_count"] == failed_pairs, "failed_pair_count mismatch")
     require(
         summary["successful_pair_count"] + summary["failed_pair_count"] == summary["pair_count"],
         "summary pair counters are inconsistent",
     )
-
-    validate_distribution(
-        summary["duration_delta_percent"],
-        relative_values["duration"],
-        "percent",
-        "summary.duration_delta_percent",
-    )
-    validate_distribution(
-        summary["cpu_time_delta_percent"],
-        relative_values["cpu_time"],
-        "percent",
-        "summary.cpu_time_delta_percent",
-    )
+    validate_distribution(summary["duration_delta_percent"], relative_values["duration"], "summary.duration_delta_percent")
+    validate_distribution(summary["cpu_time_delta_percent"], relative_values["cpu_time"], "summary.cpu_time_delta_percent")
     validate_distribution(
         summary["peak_working_set_delta_percent"],
         relative_values["peak_working_set"],
-        "percent",
         "summary.peak_working_set_delta_percent",
     )
     validate_distribution(
         summary["peak_private_bytes_delta_percent"],
         relative_values["peak_private_bytes"],
-        "percent",
         "summary.peak_private_bytes_delta_percent",
     )
 
