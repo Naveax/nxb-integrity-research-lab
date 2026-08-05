@@ -290,7 +290,11 @@ try {
         }
     }
 
+    if (-not $process.HasExited -and -not $process.WaitForExit(5000)) {
+        throw 'Timed-out workload process teardown sınırı içinde sonlanmadı.'
+    }
     $process.WaitForExit()
+
     Update-NxbProcessPeakSample `
         -Process $process `
         -PeakWorkingSetBytes ([ref]$peakWorkingSetBytes) `
@@ -400,23 +404,23 @@ $measurement = [ordered]@{
     timed_out     = $timedOut
     result        = $resultEvidence
     process_metrics = [ordered]@{
-        cpu_time_ms             = $cpuMeasurement
-        peak_working_set_bytes  = $workingSetMeasurement
-        peak_private_bytes      = $privateBytesMeasurement
+        cpu_time_ms            = $cpuMeasurement
+        peak_working_set_bytes = $workingSetMeasurement
+        peak_private_bytes     = $privateBytesMeasurement
     }
     diagnostics   = @($diagnostics)
     runner_provenance = [ordered]@{
-        powershell_executable = $powerShellPath
-        workload_relative_path = (Get-NxbRelativePath `
+        powershell_executable       = $powerShellPath
+        workload_relative_path      = (Get-NxbRelativePath `
             -BasePath $repositoryRoot `
             -ChildPath $workloadFull).Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
-        workload_sha256 = (Get-FileHash `
+        workload_sha256             = (Get-FileHash `
             -LiteralPath $workloadFull `
             -Algorithm SHA256).Hash.ToLowerInvariant()
-        workload_length = [int64](Get-Item -LiteralPath $workloadFull).Length
-        iterations = $Iterations
-        seed = $Seed
-        timeout_seconds = $TimeoutSeconds
+        workload_length             = [int64](Get-Item -LiteralPath $workloadFull).Length
+        iterations                  = $Iterations
+        seed                        = $Seed
+        timeout_seconds             = $TimeoutSeconds
         sample_interval_milliseconds = $SampleIntervalMilliseconds
     }
 }
