@@ -31,21 +31,21 @@
       "status": "measured",
       "value": 0,
       "unit": "count",
-      "source": "synthetic-fixture",
+      "source": "wpr_status_snapshot:4444444444444444444444444444444444444444444444444444444444444444;field=collector_events_lost",
       "reason": null
     },
     "buffers_lost": {
       "status": "measured",
       "value": 0,
       "unit": "count",
-      "source": "synthetic-fixture",
+      "source": "xperf_tracestats:5555555555555555555555555555555555555555555555555555555555555555;field=buffers_lost",
       "reason": null
     },
     "realtime_buffers_lost": {
       "status": "measured",
       "value": 0,
       "unit": "count",
-      "source": "synthetic-fixture",
+      "source": "xperf_tracestats:5555555555555555555555555555555555555555555555555555555555555555;field=realtime_buffers_lost",
       "reason": null
     }
   },
