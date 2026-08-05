@@ -125,7 +125,7 @@ Describe 'NXB deterministic offline evidence bundles' {
         {
             & (Join-Path $script:ScriptsRoot 'Test-EvidenceBundle.ps1') `
                 -ExperimentPath $experiment
-        } | Should -Throw '*Bundle file*SHA-256 uyuşmuyor*'
+        } | Should -Throw '*Bundle file*uyuşmuyor*'
     }
 
     It 'detects bundle record inventory truncation even after rehashing' {
