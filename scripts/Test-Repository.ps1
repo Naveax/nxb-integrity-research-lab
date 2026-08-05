@@ -32,6 +32,15 @@ foreach ($file in $scriptFiles) {
     }
 }
 
+Write-Host 'Bounded WPR profile sözleşmesi denetleniyor...'
+$wprProfile = & (Join-Path $PSScriptRoot 'Test-WprProfile.ps1') -PassThru
+if ([string]$wprProfile.RelativePath -cne 'profiles/Nxb.MinimalCpuScheduler.wprp' -or
+    -not [bool]$wprProfile.MaximumFileSizeMiB -or
+    [int]$wprProfile.MaximumFileSizeMiB -ne 512 -or
+    [string]$wprProfile.FileMode -cne 'Circular') {
+    throw 'Bounded WPR profile repository smoke sözleşmesini karşılamıyor.'
+}
+
 Write-Host 'JSON dosyaları denetleniyor...'
 $jsonFiles = @(
     (Join-Path $repositoryRoot 'config\lab.config.example.json'),
