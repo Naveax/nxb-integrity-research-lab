@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — EVIDENCE CONTRACT AND CONTROLLED WORKLOAD IMPLEMENTED`
+`IMPLEMENTED — DUAL-RUNTIME AND CONTROLLED LIVE VALIDATION PENDING`
 
 Tracking issue: `#2`
 
@@ -12,47 +12,49 @@ Preceding capture-profile merge: `#6` / `04214ac4e27a1b35e4327392480c2f89e9caadd
 
 ## Objective
 
-Measure the performance cost attributable to the bounded CPU/scheduler WPR profile using paired control and capture trials on the same machine, boot identity, power policy and deterministic workload.
+Measure the cost attributable to the bounded CPU/scheduler WPR profile using paired control and capture trials on the same machine, boot identity, power policy and deterministic workload.
 
-This block does not declare an acceptable overhead threshold. It first establishes evidence that can support a later threshold decision without treating missing measurements as zero or treating an ETL file as proof of completeness.
+This block does not declare an acceptable overhead threshold. Missing measurements are not converted to zero, and an ETL file is not treated as proof of trace completeness.
 
-## Implemented evidence contract
+## Implemented components
 
-Schema:
+Evidence contract:
 
 ```text
 schemas/collector-overhead-calibration.schema.json
-```
-
-Validator wrapper:
-
-```text
 scripts/Test-CollectorOverheadCalibration.ps1
-```
-
-Semantic validator:
-
-```text
 tools/validate_overhead_calibration.py
-```
-
-Deterministic valid fixture:
-
-```text
 tests/fixtures/collector-overhead-calibration.valid.json
 ```
 
-Adversarial tests:
+Controlled workload and independent sampler:
+
+```text
+tools/Invoke-NxbCpuWorkload.ps1
+scripts/Invoke-NxbMeasuredWorkload.ps1
+```
+
+Power-policy and paired-run orchestration:
+
+```text
+scripts/Get-NxbActivePowerPolicy.ps1
+scripts/Invoke-CollectorOverheadCalibration.ps1
+```
+
+Tests:
 
 ```text
 tests/CollectorOverheadCalibration.Tests.ps1
+tests/CpuWorkload.Tests.ps1
+tests/MeasuredWorkload.Tests.ps1
+tests/CollectorOverheadRunner.Tests.ps1
 ```
 
-Repository smoke validates both the JSON Schema and cross-field semantic contract.
+Repository smoke validates the JSON Schema, deterministic fixture and cross-field semantic contract without starting a real WPR session.
 
 ## Measurement-state contract
 
-Every optional measurement is represented explicitly as one of:
+Every optional measurement is explicitly classified as:
 
 ```text
 measured
@@ -60,37 +62,72 @@ unsupported
 failed
 ```
 
-A `measured` value must include a numeric value and unit.
+A measured value contains a numeric value and unit. An unsupported or failed value contains:
 
-An `unsupported` or `failed` value must contain:
+- `value: null`,
+- the intended unit,
+- a non-empty reason.
 
-- `value: null`
-- the intended unit
-- a non-empty reason
+Unavailable process metrics, failed ETL finalization and unavailable counters are never represented as zero.
 
-Missing process metrics, failed ETL finalization or unavailable counters are never converted to zero.
+## Identity and lifecycle binding
 
-## Identity binding
+The parent calibration record binds:
 
-The calibration record binds:
-
-- parent experiment ID,
+- parent experiment ID and repository-relative experiment path,
 - machine ID,
 - boot ID,
 - canonical power-policy fingerprint,
 - canonical workload fingerprint,
-- deterministic trial ordering,
-- bounded repetition count.
+- deterministic ordering,
+- bounded repetition and warmup counts.
 
-Each pair repeats the machine, boot, power-policy and workload fingerprints. The semantic validator rejects any mismatch.
+Every control, capture and warmup arm receives a separate lifecycle experiment. The semantic validator requires:
 
-Power-policy and workload fingerprints use canonical UTF-8 JSON with:
+```text
+experiment_relative_path == experiments/<experiment_id>
+```
 
-- lexicographically sorted object keys,
-- no insignificant whitespace,
-- SHA-256 lowercase hex output.
+Child experiment IDs must be unique and must not equal the parent experiment ID. Machine and boot identity are collected for every child and compared with the parent before the workload runs.
 
-## Protocol contract
+## Power-policy contract
+
+`scripts/Get-NxbActivePowerPolicy.ps1` resolves `powercfg.exe`, parses the active scheme GUID and records command provenance. The paired runner hashes canonical power-policy JSON and verifies the fingerprint:
+
+- before each warmup,
+- after each warmup,
+- before each control/capture arm,
+- after each control/capture arm.
+
+A policy change invalidates the arm. Successful child experiments are not finalized until the post-arm policy check completes.
+
+## Workload contract
+
+`tools/Invoke-NxbCpuWorkload.ps1`:
+
+- operates on an in-memory 4096-byte buffer,
+- executes a deterministic SHA-256 chain,
+- accepts bounded iteration and seed values,
+- writes one atomic JSON result,
+- refuses to overwrite an existing result,
+- produces the same checksum for identical parameters.
+
+`scripts/Invoke-NxbMeasuredWorkload.ps1` executes the workload in a separate PowerShell process and records:
+
+- wall-clock duration,
+- process exit code,
+- timeout state,
+- workload checksum,
+- CPU time,
+- sampled peak working set,
+- sampled peak private bytes,
+- stdout/stderr,
+- workload file SHA-256, length and repository path,
+- child PowerShell executable provenance.
+
+The process timeout is bounded, and timed-out teardown receives a second five-second bound.
+
+## Paired protocol
 
 Supported deterministic orderings:
 
@@ -101,61 +138,47 @@ control_then_capture
 capture_then_control
 ```
 
-The validator enforces:
+The schema supports up to 100 pairs. The current command limits one invocation to 20 pairs and five warmups to keep operator runs bounded.
 
-- `pairs.Count == protocol.repetition_count`,
-- ordinal sequence starts at 1 and contains no gaps,
-- pair IDs are unique,
-- each pair follows the selected first-arm ordering,
-- all pair identity fields match the top-level calibration identity.
+Example:
 
-Current schema bounds:
-
-```text
-repetition_count: 1..100
-warmup_count:     0..20
-cooldown_seconds: 0..3600
-timeout_seconds:  1..86400
+```powershell
+./scripts/Invoke-CollectorOverheadCalibration.ps1 `
+  -ExperimentPath <prepared-parent-experiment> `
+  -RepetitionCount 3 `
+  -WarmupCount 1 `
+  -Ordering alternating_control_first `
+  -Iterations 1000 `
+  -Confirm:$false
 ```
 
-## Arm evidence
+The runner creates:
 
-Both control and capture arms record:
+```text
+analysis/collector-overhead-warmups.json
+analysis/collector-overhead-calibration.json
+```
 
-- status,
-- start and stop UTC,
-- wall-clock duration,
-- process exit code,
-- timeout state,
-- workload result,
-- process CPU time,
-- peak working set,
-- peak private bytes,
-- diagnostics.
+Each control and capture arm has its own experiment directory under the same lab root.
 
-The capture arm additionally records:
+## Capture-arm behavior
+
+The capture arm records:
 
 - WPR start latency,
+- measured workload evidence,
 - WPR stop/finalization latency,
-- ETL path,
-- ETL SHA-256,
-- ETL byte length,
+- ETL path, SHA-256 and byte length,
 - effective ETL byte rate,
 - profile-provenance SHA-256.
 
-The semantic validator rejects a measured arm that timed out or returned a nonzero exit code.
+WPR stop is attempted after the workload regardless of workload success. If stop/finalization fails, the runner attempts explicit `wpr.exe -cancel`, marks the child experiment failed and preserves failed-pair evidence.
+
+A failed pair does not produce measured workload-overhead deltas. The parent calibration evidence may still be finalized and validated, after which the command returns failure so automation cannot mistake partial evidence for a successful calibration.
 
 ## Delta and distribution contract
 
-Per-pair deltas cover:
-
-- absolute workload-duration delta,
-- relative workload-duration delta,
-- absolute and relative CPU-time delta,
-- absolute and relative peak-working-set delta,
-- absolute and relative peak-private-bytes delta.
-
-For measured source values:
+For a successful pair:
 
 ```text
 absolute = capture - control
@@ -164,17 +187,14 @@ relative_percent = absolute / control * 100
 
 A zero control denominator cannot produce a measured relative delta.
 
-Summary distributions contain:
+Per-pair values cover:
 
-- count,
-- minimum,
-- median,
-- arithmetic mean,
-- maximum,
-- unit,
-- explicit status and reason.
+- workload duration,
+- process CPU time,
+- peak working set,
+- peak private bytes.
 
-The semantic validator recomputes pair deltas and summary distributions rather than trusting submitted values.
+Summary distributions contain count, minimum, median, arithmetic mean and maximum. The Python semantic validator recomputes pair deltas and summary statistics instead of trusting submitted values.
 
 ## ETL byte-rate contract
 
@@ -184,7 +204,7 @@ For a successful measured pair:
 effective_bytes_per_second = etl.length / (capture.duration_ms / 1000)
 ```
 
-This value describes effective ETL growth during the measured workload arm. It is not a disk-latency measurement and does not certify that no circular overwrite or event loss occurred.
+This describes effective ETL growth during the workload arm. It is not a storage-latency measurement and does not certify absence of dropped events or circular overwrite.
 
 ## Threshold policy
 
@@ -197,72 +217,51 @@ The schema requires:
 }
 ```
 
-A `passed`, `failed`, `acceptable` or similar threshold verdict is rejected by schema validation.
+A `passed`, `failed`, `acceptable` or similar threshold verdict is rejected. Thresholds require representative measured evidence across multiple machines and workloads.
 
-Thresholds may be proposed only after measured repetitions exist across representative machines and workloads.
+## Adversarial coverage
 
-## Controlled workload
+The current matrix covers:
 
-Implemented fixture:
-
-```text
-tools/Invoke-NxbCpuWorkload.ps1
-```
-
-The fixture:
-
-- operates only on an in-memory 4096-byte buffer,
-- executes a deterministic SHA-256 chain,
-- accepts bounded iteration and seed values,
-- writes one atomic JSON result,
-- refuses to overwrite an existing result file,
-- produces the same checksum for the same parameters.
-
-It is a calibration workload, not a real-world performance conclusion.
-
-Tests:
-
-```text
-tests/CpuWorkload.Tests.ps1
-```
-
-## Adversarial validation
-
-The current test matrix rejects:
-
-- changed canonical power-policy content,
-- changed canonical workload parameters,
-- pair boot-identity substitution,
-- ordinal gaps,
-- deterministic ordering violations,
-- incorrect absolute or relative delta math,
-- incorrect ETL byte rate,
-- inconsistent summary pair counters,
-- changed distribution statistics,
+- canonical power-policy and workload fingerprint changes,
+- parent or child experiment-path substitution,
+- duplicate child experiment IDs,
+- boot-identity substitution,
+- ordinal gaps and deterministic ordering violations,
+- control/capture checksum mismatch,
+- incorrect absolute and relative delta math,
+- incorrect ETL effective byte rate,
+- inconsistent summary counters or statistics,
 - undeclared capture-arm properties,
-- threshold verdicts.
+- threshold verdict injection,
+- workload nonzero exit,
+- workload timeout and bounded teardown,
+- external workload-script rejection,
+- successful fake-WPR paired lifecycle,
+- WPR stop failure, explicit cancel and preserved failed-pair evidence.
 
-## Remaining implementation
+## Remaining validation and follow-up
 
-The following are not yet claimed:
+Not yet claimed:
 
-- paired control/capture execution orchestration,
-- separate lifecycle experiment per arm,
-- independent process sampling loop,
-- WPR teardown across every failure path in the calibration runner,
-- warmup execution and cooldown enforcement,
-- partial-run recovery and resume,
-- final evidence-store record integration,
-- measured overhead results.
+- manually executed full Pester results on PowerShell 7,
+- manually executed full Pester results on Windows PowerShell 5.1,
+- zero-finding PSScriptAnalyzer result for the exact final head,
+- a controlled live run using native `wpr.exe`,
+- representative measured overhead results,
+- acceptable overhead thresholds,
+- trace-loss accounting,
+- partial-run resume after host interruption.
 
 ## GitHub Actions policy
 
-GitHub Actions are intentionally disabled repository-wide. This PR must not reintroduce workflow files or claim exact-head hosted validation.
+GitHub Actions are intentionally disabled repository-wide. This PR must not add workflow files or claim exact-head hosted validation.
 
-Validation evidence for this block must distinguish:
+Validation records must distinguish:
 
 - static source review,
-- manually executed PowerShell 7 tests,
-- manually executed Windows PowerShell 5.1 tests,
-- schema/semantic fixture validation,
-- controlled live calibration evidence.
+- schema and semantic fixture validation,
+- PowerShell 7 tests,
+- Windows PowerShell 5.1 tests,
+- controlled fake-WPR lifecycle tests,
+- controlled native-WPR calibration evidence.
