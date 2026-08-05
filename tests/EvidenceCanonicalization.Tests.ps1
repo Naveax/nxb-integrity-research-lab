@@ -69,6 +69,37 @@ Describe 'NXB evidence canonical JSON' {
             Should -Be 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
     }
 
+    It 'normalizes DateTime and DateTimeOffset values to the same UTC timestamp' {
+        $utcDateTime = [DateTime]::new(
+            2026,
+            8,
+            5,
+            5,
+            34,
+            59,
+            [DateTimeKind]::Utc
+        ).AddTicks(1234567)
+        $offsetDateTime = [DateTimeOffset]::new(
+            2026,
+            8,
+            5,
+            8,
+            34,
+            59,
+            [TimeSpan]::FromHours(3)
+        ).AddTicks(1234567)
+
+        $utcJson = ConvertTo-NxbCanonicalJson `
+            -InputObject ([ordered]@{ timestamp = $utcDateTime })
+        $offsetJson = ConvertTo-NxbCanonicalJson `
+            -InputObject ([ordered]@{ timestamp = $offsetDateTime })
+
+        $utcJson | Should -Be '{"timestamp":"2026-08-05T05:34:59.1234567Z"}'
+        $offsetJson | Should -Be $utcJson
+        (Get-NxbCanonicalJsonHash -InputObject ([ordered]@{ timestamp = $offsetDateTime })) |
+            Should -Be (Get-NxbCanonicalJsonHash -InputObject ([ordered]@{ timestamp = $utcDateTime }))
+    }
+
     It 'rejects floating-point values in hash-bearing JSON' {
         {
             ConvertTo-NxbCanonicalJson -InputObject ([ordered]@{ value = [double]1.5 })
