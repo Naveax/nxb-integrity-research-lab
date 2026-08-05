@@ -118,6 +118,30 @@ Describe 'NXB WPR failure paths' {
         Test-Path -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') |
             Should -BeFalse
     }
+    It 'treats an already-idle WPR cancellation as idempotent cleanup' {
+        $argumentLog = Join-Path $script:TempRoot 'idle-cancel-arguments.txt'
+        $fakeWpr = New-NxbFakeWprCommand `
+            -Path (Join-Path $script:TempRoot 'idle-cancel.cmd') `
+            -CancelExitCode -984076288 `
+            -ArgumentLogPath $argumentLog `
+            -Confirm:$false
+
+        & (Join-Path $script:ScriptsRoot 'Start-PerformanceTrace.ps1') `
+            -ExperimentPath $script:ExperimentPath `
+            -WprExecutablePath $fakeWpr `
+            -CancelExistingSession
+
+        $manifest = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'manifest.json') -Raw |
+            ConvertFrom-Json
+        $session = Get-Content -LiteralPath (Join-Path $script:ExperimentPath 'trace-session.json') -Raw |
+            ConvertFrom-Json
+        $arguments = Get-Content -LiteralPath $argumentLog -Raw
+
+        $manifest.status | Should -Be 'recording'
+        $session.status | Should -Be 'recording'
+        $arguments | Should -Match '(?m)^-cancel\r?$'
+        $arguments | Should -Match '(?m)^-start '
+    }
 
     It 'preserves prepared state when WPR start returns a failure code' {
         $fakeWpr = New-NxbFakeWprCommand `

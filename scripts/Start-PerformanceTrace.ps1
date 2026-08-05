@@ -103,7 +103,9 @@ if (Test-Path -LiteralPath $sessionPath) {
 if ($CancelExistingSession) {
     $cancelOutput = & $wprPath -cancel 2>&1
     $cancelExitCode = $LASTEXITCODE
-    if ($cancelExitCode -ne 0) {
+    $noRunningTraceProfilesExitCode = -984076288 # 0xC5583000
+    if ($cancelExitCode -ne 0 -and
+        $cancelExitCode -ne $noRunningTraceProfilesExitCode) {
         throw "Mevcut WPR oturumu iptal edilemedi (exit $cancelExitCode): $($cancelOutput -join [Environment]::NewLine)"
     }
 }
