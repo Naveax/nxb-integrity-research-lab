@@ -73,7 +73,7 @@ exit /b 7
         $snapshot.events_lost.source |
             Should -Match '^wpr_status_snapshot:[0-9a-f]{64};field=collector_events_lost$'
         $snapshot.buffers_lost.status | Should -Be 'unsupported'
-        $snapshot.realtime_buffers_lost.status | Should -Be 'unsupported'
+        $snapshot.realtime_buffers_lost.status | Should -Be 'not_applicable'
     }
 
     It 'uses Dropped event only when collector Events Lost is absent' {
