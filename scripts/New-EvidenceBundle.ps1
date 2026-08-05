@@ -72,9 +72,11 @@ function Add-NxbBundlePathIdentity {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.Dictionary[string, string]]$CaseMap,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.HashSet[string]]$ExactSet,
 
         [Parameter(Mandatory)]
