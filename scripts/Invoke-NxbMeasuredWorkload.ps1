@@ -246,8 +246,7 @@ $argumentValues = @(
     '-Seed',
     [string]$Seed,
     '-OutputPath',
-    $resultPath,
-    '-Confirm:$false'
+    $resultPath
 )
 $commandLine = ($argumentValues | ForEach-Object {
     ConvertTo-NxbWindowsCommandLineArgument -Value ([string]$_)

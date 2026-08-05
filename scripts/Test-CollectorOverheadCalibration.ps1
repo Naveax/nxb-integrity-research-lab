@@ -49,10 +49,50 @@ $arguments = @(
     $manifestFull
 )
 
-$output = & $python.Source @arguments 2>&1
-$exitCode = $LASTEXITCODE
-if ($exitCode -ne 0) {
-    throw "Collector overhead calibration doğrulaması başarısız (exit $exitCode):`n$($output -join [Environment]::NewLine)"
+$previousErrorActionPreference = $ErrorActionPreference
+$nativePreferenceVariable = Get-Variable `
+    -Name PSNativeCommandUseErrorActionPreference `
+    -ErrorAction SilentlyContinue
+$nativePreferenceAvailable = $null -ne $nativePreferenceVariable
+$previousNativePreference = if ($nativePreferenceAvailable) {
+    [bool]$nativePreferenceVariable.Value
+}
+else {
+    $null
 }
 
-$output | ForEach-Object { Write-Host $_ }
+$output = @()
+$exitCode = 1
+try {
+    $ErrorActionPreference = 'Continue'
+    if ($nativePreferenceAvailable) {
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $false `
+            -Scope Local
+    }
+
+    $output = @(& $python.Source @arguments 2>&1)
+    $exitCode = if ($null -eq $LASTEXITCODE) {
+        1
+    }
+    else {
+        [int]$LASTEXITCODE
+    }
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($nativePreferenceAvailable) {
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $previousNativePreference `
+            -Scope Local
+    }
+}
+
+$outputText = @($output | ForEach-Object { [string]$_ })
+if ($exitCode -ne 0) {
+    throw "Collector overhead calibration doğrulaması başarısız (exit $exitCode):`n$($outputText -join [Environment]::NewLine)"
+}
+
+$outputText | ForEach-Object { Write-Host $_ }
