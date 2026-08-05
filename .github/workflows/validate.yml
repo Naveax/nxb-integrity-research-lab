@@ -39,6 +39,24 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-PublicRepositoryContent.ps1
 
+      - name: Validate WPR profile with native parser
+        shell: pwsh
+        run: |
+          $wpr = Get-Command wpr.exe -ErrorAction Stop
+          $profile = (Resolve-Path -LiteralPath ./profiles/Nxb.MinimalCpuScheduler.wprp).Path
+          $output = & $wpr.Source -profiles $profile 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+
+          if ($exitCode -ne 0) {
+            throw "wpr.exe profile validation failed with exit code $exitCode."
+          }
+
+          $text = $output -join [Environment]::NewLine
+          if ($text -notmatch 'NxbMinimalCpuScheduler') {
+            throw 'wpr.exe did not enumerate NxbMinimalCpuScheduler from the repository profile.'
+          }
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: |
