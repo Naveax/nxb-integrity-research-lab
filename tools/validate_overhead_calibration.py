@@ -2,8 +2,9 @@
 """Validate NXB paired collector-overhead calibration evidence.
 
 This validator performs JSON Schema validation and cross-field checks that
-JSON Schema cannot express, including identity binding, deterministic pair
-ordering, summary counts, canonical fingerprints, and measured delta math.
+JSON Schema cannot express, including lifecycle identity binding,
+deterministic pair ordering, summary counts, canonical fingerprints, and
+measured delta math.
 """
 
 from __future__ import annotations
@@ -108,6 +109,24 @@ def verify_measurement_unit(measurement: dict[str, Any], expected: str, label: s
         measurement["unit"] == expected,
         f"{label}.unit must be '{expected}', found '{measurement['unit']}'",
     )
+
+
+def validate_experiment_binding(
+    experiment_id: str,
+    relative_path: str,
+    label: str,
+    seen_experiment_ids: set[str],
+) -> None:
+    expected_path = f"experiments/{experiment_id}"
+    require(
+        relative_path == expected_path,
+        f"{label}.experiment_relative_path must be '{expected_path}'",
+    )
+    require(
+        experiment_id not in seen_experiment_ids,
+        f"duplicate lifecycle experiment_id: {experiment_id}",
+    )
+    seen_experiment_ids.add(experiment_id)
 
 
 def validate_arm(arm: dict[str, Any], label: str) -> None:
@@ -300,12 +319,19 @@ def validate_semantics(document: dict[str, Any]) -> None:
         "workload_fingerprint does not match canonical workload JSON",
     )
 
+    parent_expected_path = f"experiments/{document['experiment_id']}"
+    require(
+        document["experiment_relative_path"] == parent_expected_path,
+        f"experiment_relative_path must be '{parent_expected_path}'",
+    )
+
     pairs = document["pairs"]
     repetition_count = document["protocol"]["repetition_count"]
     require(len(pairs) == repetition_count, "pairs count must equal repetition_count")
     require(document["summary"]["pair_count"] == len(pairs), "summary.pair_count mismatch")
 
-    seen_ids: set[str] = set()
+    seen_pair_ids: set[str] = set()
+    seen_experiment_ids: set[str] = {document["experiment_id"]}
     successful_pairs = 0
     relative_values: dict[str, list[float]] = {
         "duration": [],
@@ -317,8 +343,8 @@ def validate_semantics(document: dict[str, Any]) -> None:
     for index, pair in enumerate(pairs, start=1):
         label = f"pairs[{index - 1}]"
         require(pair["ordinal"] == index, f"{label}.ordinal must be {index}")
-        require(pair["pair_id"] not in seen_ids, f"duplicate pair_id: {pair['pair_id']}")
-        seen_ids.add(pair["pair_id"])
+        require(pair["pair_id"] not in seen_pair_ids, f"duplicate pair_id: {pair['pair_id']}")
+        seen_pair_ids.add(pair["pair_id"])
 
         require(pair["machine_id"] == document["machine_id"], f"{label}.machine_id mismatch")
         require(pair["boot_id"] == document["boot_id"], f"{label}.boot_id mismatch")
@@ -335,13 +361,38 @@ def validate_semantics(document: dict[str, Any]) -> None:
             f"{label}.first_arm violates deterministic ordering",
         )
 
-        validate_arm(pair["control"], f"{label}.control")
-        validate_arm(pair["capture"], f"{label}.capture")
+        for arm_name in ("control", "capture"):
+            arm = pair[arm_name]
+            arm_label = f"{label}.{arm_name}"
+            validate_experiment_binding(
+                arm["experiment_id"],
+                arm["experiment_relative_path"],
+                arm_label,
+                seen_experiment_ids,
+            )
+            validate_arm(arm, arm_label)
+
+        control_result = pair["control"]["result"]
+        capture_result = pair["capture"]["result"]
+        if control_result["status"] == "measured" and capture_result["status"] == "measured":
+            require(
+                control_result["unit"] == capture_result["unit"],
+                f"{label} control/capture workload result units differ",
+            )
+            require(
+                control_result["value"] == capture_result["value"],
+                f"{label} control/capture workload results differ",
+            )
+
         verify_measurement_unit(
-            pair["capture"]["wpr_start_latency_ms"], "ms", f"{label}.capture.wpr_start_latency_ms"
+            pair["capture"]["wpr_start_latency_ms"],
+            "ms",
+            f"{label}.capture.wpr_start_latency_ms",
         )
         verify_measurement_unit(
-            pair["capture"]["wpr_stop_latency_ms"], "ms", f"{label}.capture.wpr_stop_latency_ms"
+            pair["capture"]["wpr_stop_latency_ms"],
+            "ms",
+            f"{label}.capture.wpr_stop_latency_ms",
         )
 
         pair_success = (
@@ -375,10 +426,16 @@ def validate_semantics(document: dict[str, Any]) -> None:
     )
 
     validate_distribution(
-        summary["duration_delta_percent"], relative_values["duration"], "percent", "summary.duration_delta_percent"
+        summary["duration_delta_percent"],
+        relative_values["duration"],
+        "percent",
+        "summary.duration_delta_percent",
     )
     validate_distribution(
-        summary["cpu_time_delta_percent"], relative_values["cpu_time"], "percent", "summary.cpu_time_delta_percent"
+        summary["cpu_time_delta_percent"],
+        relative_values["cpu_time"],
+        "percent",
+        "summary.cpu_time_delta_percent",
     )
     validate_distribution(
         summary["peak_working_set_delta_percent"],
