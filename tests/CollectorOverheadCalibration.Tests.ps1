@@ -79,6 +79,40 @@ Describe 'NXB collector overhead calibration validation' {
         } | Should -Throw '*boot_id mismatch*'
     }
 
+    It 'rejects a parent experiment relative-path substitution' {
+        $document = Read-NxbCalibrationFixture
+        $document.experiment_relative_path = 'experiments/another-parent'
+        Write-NxbCalibrationFixture -Document $document -Confirm:$false
+
+        {
+            & $script:Validator -Path $script:ManifestPath
+        } | Should -Throw '*experiment_relative_path must be*'
+    }
+
+    It 'rejects a child experiment relative-path substitution' {
+        $document = Read-NxbCalibrationFixture
+        $document.pairs[0].capture.experiment_relative_path = `
+            'experiments/another-capture'
+        Write-NxbCalibrationFixture -Document $document -Confirm:$false
+
+        {
+            & $script:Validator -Path $script:ManifestPath
+        } | Should -Throw '*capture.experiment_relative_path must be*'
+    }
+
+    It 'rejects duplicate lifecycle experiment identities across arms' {
+        $document = Read-NxbCalibrationFixture
+        $document.pairs[0].capture.experiment_id = `
+            $document.pairs[0].control.experiment_id
+        $document.pairs[0].capture.experiment_relative_path = `
+            $document.pairs[0].control.experiment_relative_path
+        Write-NxbCalibrationFixture -Document $document -Confirm:$false
+
+        {
+            & $script:Validator -Path $script:ManifestPath
+        } | Should -Throw '*duplicate lifecycle experiment_id*'
+    }
+
     It 'rejects a pair ordinal gap' {
         $document = Read-NxbCalibrationFixture
         $document.pairs[0].ordinal = 2
@@ -97,6 +131,16 @@ Describe 'NXB collector overhead calibration validation' {
         {
             & $script:Validator -Path $script:ManifestPath
         } | Should -Throw '*first_arm violates deterministic ordering*'
+    }
+
+    It 'rejects different measured workload results across paired arms' {
+        $document = Read-NxbCalibrationFixture
+        $document.pairs[0].capture.result.value = 2000
+        Write-NxbCalibrationFixture -Document $document -Confirm:$false
+
+        {
+            & $script:Validator -Path $script:ManifestPath
+        } | Should -Throw '*control/capture workload results differ*'
     }
 
     It 'rejects incorrect absolute and relative overhead math' {
