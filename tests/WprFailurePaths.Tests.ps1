@@ -255,7 +255,7 @@ Describe 'NXB WPR failure paths' {
         $metadata.sha256 | Should -Match '^[0-9A-F]{64}$'
         $arguments | Should -Match '(?m)^-start '
         $arguments | Should -Match 'Nxb\.MinimalCpuScheduler\.wprp!NxbMinimalCpuScheduler\.Verbose'
-        $arguments | Should -Match '(?m)-filemode$'
+        $arguments | Should -Match '(?m)-filemode\r?$'
     }
 
     It 'supports the legacy GeneralProfile only with explicit unbounded provenance' {
@@ -285,6 +285,6 @@ Describe 'NXB WPR failure paths' {
         $session.profile_provenance.bounded | Should -BeFalse
         $session.profile_provenance.file_mode | Should -Be 'Unbounded'
         $session.profile_provenance.maximum_file_size_mib | Should -BeNullOrEmpty
-        $arguments | Should -Match '(?m)^-start GeneralProfile -filemode$'
+        $arguments | Should -Match '(?m)^-start GeneralProfile -filemode\r?$'
     }
 }
