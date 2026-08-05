@@ -117,6 +117,22 @@ function ConvertTo-NxbCanonicalJsonValue {
         return 'false'
     }
 
+    if ($Value -is [DateTimeOffset]) {
+        $timestamp = ([DateTimeOffset]$Value).UtcDateTime.ToString(
+            'yyyy-MM-ddTHH:mm:ss.fffffffZ',
+            [Globalization.CultureInfo]::InvariantCulture
+        )
+        return ConvertTo-NxbJsonStringLiteral -Value $timestamp
+    }
+
+    if ($Value -is [DateTime]) {
+        $timestamp = ([DateTime]$Value).ToUniversalTime().ToString(
+            'yyyy-MM-ddTHH:mm:ss.fffffffZ',
+            [Globalization.CultureInfo]::InvariantCulture
+        )
+        return ConvertTo-NxbJsonStringLiteral -Value $timestamp
+    }
+
     if ($Value -is [string] -or $Value -is [char]) {
         return ConvertTo-NxbJsonStringLiteral -Value ([string]$Value)
     }
