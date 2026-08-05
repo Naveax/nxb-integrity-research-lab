@@ -2,13 +2,19 @@
 
 ## Status
 
-`IMPLEMENTED — FINAL WINDOWS VALIDATION PENDING`
+`IMPLEMENTED — MERGED IN PR #6`
 
 Tracking issue: `#2`
 
-Draft pull request: `#6`
+Merged pull request: `#6`
 
-This document defines the first executable block of the full-system observability fabric. It records what the profile captures, how it is bounded, how provenance is preserved and which overhead/loss measurements remain explicitly unimplemented.
+Merge commit:
+
+```text
+04214ac4e27a1b35e4327392480c2f89e9caaddc
+```
+
+This document defines the first executable block of the full-system observability fabric. It records what the profile captures, how growth is bounded and how capture provenance is preserved.
 
 ## Objective
 
@@ -48,7 +54,7 @@ Buffers:          64
 MaximumFileSize:  not present
 ```
 
-The memory variant exists to satisfy the WPR profile-pair contract. `Start-PerformanceTrace.ps1` currently selects the bounded File variant.
+The memory variant satisfies the WPR profile-pair contract. `Start-PerformanceTrace.ps1` selects the bounded File variant.
 
 ## Kernel event contract
 
@@ -79,22 +85,19 @@ Stack points:
 
 Any change to these exact sets, collector bounds or File/Memory pairing fails the repository profile validator.
 
-## Native and repository validation
+## Profile validation
 
-The profile is checked by two independent layers:
+`scripts/Test-WprProfile.ps1` enforces:
 
-1. `scripts/Test-WprProfile.ps1`
-   - repository containment,
-   - reparse-point rejection,
-   - DTD prohibition and disabled XML resolver,
-   - exact collectors, provider, keywords, stacks and variants,
-   - exact file-size and buffer bounds.
+- repository containment,
+- reparse-point rejection,
+- DTD prohibition and disabled XML resolver,
+- exact collectors and provider,
+- exact keyword and stack sets,
+- exact File/Memory variants,
+- exact buffer and file-size bounds.
 
-2. Windows CI native parser
-   - `wpr.exe -profiles <profile>` must succeed,
-   - `NxbMinimalCpuScheduler` must be enumerated by WPR.
-
-Repository smoke validation executes the deterministic profile contract without starting a real trace.
+The profile was also accepted by the native Microsoft WPR parser during PR #6 validation. Repository smoke validates the deterministic profile contract without starting a trace.
 
 ## Capture selection
 
@@ -137,25 +140,23 @@ At stop:
 2. A successful ETL is retained even when provenance verification fails.
 3. The canonical provenance seal is recomputed.
 4. Repository WPRP path, SHA-256 and length are revalidated.
-5. `performance.etl.json` records the profile, provenance, seal and integrity result.
-6. A mismatch transitions the experiment and session to `failed` rather than silently producing `stopped` success.
+5. `performance.etl.json` records profile provenance and integrity status.
+6. A mismatch transitions the experiment and session to `failed` rather than silently producing success.
 
 This is integrity and reproducibility evidence; it is not a trusted-signature mechanism.
 
 ## Adversarial coverage
 
-The current test matrix covers:
+The profile/lifecycle matrix covers:
 
 - missing WPR executable,
 - existing-session cancellation failure,
-- WPR start failure,
-- WPR stop failure,
-- success exit without an ETL,
-- unacknowledged built-in `GeneralProfile`,
+- WPR start and stop failure,
+- success exit without ETL,
+- unacknowledged `GeneralProfile`,
 - exact bounded-profile WPR arguments,
 - Windows CRLF argument-log behavior,
-- repository-external profile path,
-- reparse-point profile path,
+- repository-external and reparse-point profile paths,
 - DTD/XXE-bearing XML,
 - changed keyword set,
 - changed or unbounded file collector,
@@ -163,46 +164,46 @@ The current test matrix covers:
 - modified sealed session provenance,
 - teardown-first preservation of ETL and metadata on provenance failure.
 
-## Collector overhead: not yet measured
+## Collector overhead calibration
 
-The following values are **not implemented or validated by this block**:
+The overhead evidence contract and paired runner are implemented in draft PR #7:
 
-- CPU cost attributable to WPR/ETW collection,
-- additional committed or working-set memory,
-- ETL write throughput and storage latency impact,
-- scheduler perturbation caused by stack walking,
-- start and stop latency distributions,
-- workload performance delta between tracing and control runs,
-- acceptable overhead thresholds.
+```text
+docs/NXB-IRL-004-OVERHEAD-CALIBRATION.md
+schemas/collector-overhead-calibration.schema.json
+scripts/Invoke-CollectorOverheadCalibration.ps1
+```
 
-A later NXB-IRL-004 block must use paired control/capture trials on the same machine, boot identity, power policy and workload fixture. It must record at minimum:
+That block adds:
 
-- workload identity and parameters,
-- control-run duration and result,
-- capture-run duration and result,
-- WPR start latency,
-- WPR stop/finalization latency,
-- ETL byte length,
-- effective ETL byte rate,
-- collector CPU and memory observations from an independent measurement path,
+- separate parent/control/capture lifecycle experiments,
+- same-machine and same-boot binding,
+- active power-policy fingerprinting,
+- deterministic workload fingerprinting,
+- bounded warmups and repetitions,
+- independent process CPU/memory sampling,
+- WPR start and stop latency,
+- ETL length and effective byte rate,
 - absolute and relative workload deltas,
-- repetition count and distribution summary.
+- distribution summaries,
+- explicit failed/unsupported measurements,
+- mandatory `not_declared` threshold policy.
 
-No overhead threshold is declared in this PR. Thresholds require measured evidence and must not be inferred from the 512 MiB file bound.
+No native-WPR overhead result or acceptable threshold is claimed yet. Those require manual dual-runtime validation and controlled live measurement.
 
 ## Trace loss: not yet measured
 
-The following values are also **not implemented or validated by this block**:
+Still unimplemented:
 
 - lost ETW events,
 - lost buffers,
 - provider-specific drop counts,
 - stack-walk loss or unavailable stacks,
 - circular overwrite amount,
-- earliest retained timestamp after circular overwrite,
-- completeness of every requested event class.
+- earliest retained timestamp after overwrite,
+- completeness of requested event classes.
 
-A later block must extract trace-session statistics from a documented Windows ETW/WPR analysis path and bind them to the experiment evidence store. Required output must distinguish:
+A later block must classify trace-session statistics as:
 
 ```text
 complete
@@ -213,20 +214,11 @@ analysis_failed
 
 `statistics_unavailable` must not be treated as `complete`.
 
-The loss record must include:
+The loss record must bind ETL hash/length, profile provenance, trace timestamps, available loss counters, circular-overwrite evidence, analysis-tool provenance and explicit uncertainty.
 
-- ETL SHA-256 and length,
-- profile-provenance SHA-256,
-- trace start and stop timestamps,
-- observed first and last event timestamps where available,
-- event/buffer loss counters where available,
-- circular-overwrite evidence where available,
-- analysis tool provenance,
-- explicit uncertainty or unsupported fields.
+## Completion boundary
 
-## Current completion boundary
-
-This block establishes:
+The merged profile block establishes:
 
 - a native-parser-valid minimal CPU/scheduler WPR profile,
 - bounded file-mode growth,
@@ -234,25 +226,18 @@ This block establishes:
 - deterministic profile selection and provenance,
 - profile-to-ETL metadata binding,
 - teardown-first fail-closed provenance enforcement,
-- dual-runtime adversarial tests,
+- dual-runtime adversarial coverage,
 - repository smoke integration.
 
-It does **not** establish:
+It does not establish:
 
 - ETL event extraction,
 - cross-domain correlation,
-- overhead calibration,
 - trace-loss accounting,
 - capture completeness certification,
+- acceptable overhead thresholds,
 - CPU bottleneck conclusions.
 
-## Validation gate
+## Validation boundary
 
-Before this block can be considered merge-ready, the exact final head must pass and have complete logs inspected for:
-
-- native WPR profile parsing,
-- public repository content guard,
-- zero PSScriptAnalyzer Error/Warning findings,
-- repository smoke validation,
-- PowerShell 7 Pester matrix,
-- Windows PowerShell 5.1 Pester matrix.
+PR #6 recorded the actual validation boundary rather than claiming an unavailable exact-head hosted run. GitHub Actions are now intentionally disabled repository-wide. Future validation must distinguish static review, manual PowerShell 7 tests, manual Windows PowerShell 5.1 tests and controlled native-WPR evidence.
