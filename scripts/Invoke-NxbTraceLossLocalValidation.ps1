@@ -114,11 +114,12 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $gitPath = Resolve-NxbValidationExecutable -Candidate @('git.exe', 'git')
 $wprPath = Resolve-NxbValidationExecutable -Candidate @('wpr.exe', 'wpr')
 $xperfPath = Resolve-NxbValidationExecutable -Candidate @('xperf.exe', 'xperf')
-foreach ($required in [ordered]@{
+$requiredExecutables = [ordered]@{
     git = $gitPath
     wpr = $wprPath
     xperf = $xperfPath
-}.GetEnumerator()) {
+}
+foreach ($required in $requiredExecutables.GetEnumerator()) {
     if ([string]::IsNullOrWhiteSpace([string]$required.Value) -or
         -not (Test-Path -LiteralPath $required.Value -PathType Leaf)) {
         throw "Gerekli executable bulunamadı: $($required.Key)"
