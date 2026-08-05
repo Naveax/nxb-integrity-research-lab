@@ -36,6 +36,27 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
             Should -Throw '*experiment_relative_path*'
     }
 
+    It 'rejects a measured counter source without a native-output hash' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $document.native_counters.events_lost.source = 'synthetic-fixture'
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } |
+            Should -Throw '*source*'
+    }
+
+    It 'rejects a counter source field assigned to the wrong counter' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $document.native_counters.buffers_lost.source = `
+            'xperf_tracestats:5555555555555555555555555555555555555555555555555555555555555555;field=events_lost'
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } |
+            Should -Throw '*inconsistent*'
+    }
+
     It 'requires native loss classification when a measured counter is nonzero' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
         $document.native_counters.events_lost.value = 2
@@ -84,6 +105,17 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
 
         { & $script:Validator -Path $script:DocumentPath } |
             Should -Throw '*risk_reasons*'
+    }
+
+    It 'rejects an overwrite risk reason without a represented native evidence field' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $document.circular_overwrite.classification = 'risk_observed'
+        $document.circular_overwrite.risk_reasons = @('native_overwrite_reported')
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } |
+            Should -Throw '*native_overwrite_reported*'
     }
 
     It 'rejects a trace-loss absence claim even when native counters are zero' {
