@@ -2,6 +2,7 @@
   "schema_version": 1,
   "calibration_id": "cal-001",
   "experiment_id": "experiment-overhead-001",
+  "experiment_relative_path": "experiments/experiment-overhead-001",
   "machine_id": "machine-fixture-001",
   "boot_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "captured_utc": "2026-08-05T08:00:02Z",
@@ -48,6 +49,8 @@
       "workload_fingerprint": "8ee737b41ab74c42729898974a0cfb1f0dc7be41c623fe3fcfc9b02ce71ff1f8",
       "first_arm": "control",
       "control": {
+        "experiment_id": "experiment-control-001",
+        "experiment_relative_path": "experiments/experiment-control-001",
         "status": "measured",
         "started_utc": "2026-08-05T08:00:00Z",
         "stopped_utc": "2026-08-05T08:00:01Z",
@@ -83,6 +86,8 @@
         "diagnostics": []
       },
       "capture": {
+        "experiment_id": "experiment-capture-001",
+        "experiment_relative_path": "experiments/experiment-capture-001",
         "status": "measured",
         "started_utc": "2026-08-05T08:00:01Z",
         "stopped_utc": "2026-08-05T08:00:02.100Z",
