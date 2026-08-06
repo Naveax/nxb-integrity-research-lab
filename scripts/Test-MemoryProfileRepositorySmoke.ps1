@@ -8,27 +8,15 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $profilePath = Join-Path $repositoryRoot 'profiles\Nxb.MemoryWorkingSet.wprp'
 $profileValidatorPath = Join-Path $PSScriptRoot 'Test-NxbMemoryWprProfile.ps1'
 $profileTestPath = Join-Path $repositoryRoot 'tests\MemoryWprProfile.Tests.ps1'
-$smokeTestPath = Join-Path `
-    $repositoryRoot `
-    'tests\MemoryProfileRepositorySmoke.Tests.ps1'
-$profileValidationPath = Join-Path `
-    $PSScriptRoot `
-    'Invoke-NxbMemoryProfileLocalValidation.ps1'
-$memorySchemaPath = Join-Path `
-    $repositoryRoot `
-    'schemas\memory-snapshot.schema.json'
-$memoryFixturePath = Join-Path `
-    $repositoryRoot `
-    'tests\fixtures\memory-snapshot.valid.json'
+$smokeTestPath = Join-Path $repositoryRoot 'tests\MemoryProfileRepositorySmoke.Tests.ps1'
+$profileValidationPath = Join-Path $PSScriptRoot 'Invoke-NxbMemoryProfileLocalValidation.ps1'
+$memorySchemaPath = Join-Path $repositoryRoot 'schemas\memory-snapshot.schema.json'
+$memoryFixturePath = Join-Path $repositoryRoot 'tests\fixtures\memory-snapshot.valid.json'
 $memoryValidatorPath = Join-Path $PSScriptRoot 'Test-MemorySnapshot.ps1'
-$memoryCollectorPath = Join-Path $PSScriptRoot 'New-NxbMemorySnapshot.ps1'
-$memoryPythonValidatorPath = Join-Path `
-    $repositoryRoot `
-    'tools\validate_memory_snapshot.py'
+$memoryPythonValidatorPath = Join-Path $repositoryRoot 'tools\validate_memory_snapshot.py'
 $memoryTestPath = Join-Path $repositoryRoot 'tests\MemorySnapshot.Tests.ps1'
-$memoryCollectorTestPath = Join-Path `
-    $repositoryRoot `
-    'tests\MemorySnapshotCollector.Tests.ps1'
+$collectorPath = Join-Path $PSScriptRoot 'New-NxbMemorySnapshot.ps1'
+$collectorTestPath = Join-Path $repositoryRoot 'tests\MemorySnapshotCollector.Tests.ps1'
 
 $requiredFiles = @(
     $profilePath,
@@ -39,14 +27,14 @@ $requiredFiles = @(
     $memorySchemaPath,
     $memoryFixturePath,
     $memoryValidatorPath,
-    $memoryCollectorPath,
     $memoryPythonValidatorPath,
     $memoryTestPath,
-    $memoryCollectorTestPath
+    $collectorPath,
+    $collectorTestPath
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
-        throw "Memory foundation repository smoke girdisi bulunamadı: $requiredFile"
+        throw "Memory repository smoke input missing: $requiredFile"
     }
 }
 
@@ -56,9 +44,9 @@ $powerShellFiles = @(
     $smokeTestPath,
     $profileValidationPath,
     $memoryValidatorPath,
-    $memoryCollectorPath,
     $memoryTestPath,
-    $memoryCollectorTestPath
+    $collectorPath,
+    $collectorTestPath
 )
 foreach ($powerShellFile in $powerShellFiles) {
     $tokens = $null
@@ -90,7 +78,7 @@ if ([string]$result.RelativePath -cne 'profiles/Nxb.MemoryWorkingSet.wprp' -or
     [bool]$result.ReferenceSetEnabled -or
     @($result.Keywords).Count -ne 11 -or
     @($result.Stacks).Count -ne 9) {
-    throw 'Memory profile repository smoke sözleşmesini karşılamıyor.'
+    throw 'Memory profile repository smoke contract failed.'
 }
 
 foreach ($requiredKeyword in @(
@@ -103,24 +91,38 @@ foreach ($requiredKeyword in @(
     'VirtualAllocation'
 )) {
     if (@($result.Keywords) -notcontains $requiredKeyword) {
-        throw "Memory profile zorunlu keyword içermiyor: $requiredKeyword"
+        throw "Memory profile required keyword missing: $requiredKeyword"
     }
 }
 
-# Argümansız çağrı kanonik fixture/schema varsayılanlarını doğrular.
 & $memoryValidatorPath
 
 $smokeRoot = Join-Path `
     ([IO.Path]::GetTempPath()) `
     ('nxb-memory-collector-smoke-' + [guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($smokeRoot) | Out-Null
 $smokeOutput = Join-Path $smokeRoot 'memory-snapshot.json'
 try {
-    [IO.Directory]::CreateDirectory($smokeRoot) | Out-Null
-    & $memoryCollectorPath `
-        -ExperimentId 'repository-smoke-memory' `
+    & $collectorPath `
+        -ExperimentId 'repository-smoke' `
         -ProcessId $PID `
         -OutputPath $smokeOutput
+
     & $memoryValidatorPath -Path $smokeOutput -SchemaPath $memorySchemaPath
+    $document = Get-Content -LiteralPath $smokeOutput -Raw | ConvertFrom-Json
+    if ([int]$document.target.process_id -ne $PID -or
+        [int]$document.summary.system_measurement_count -le 0 -or
+        [int]$document.summary.process_measurement_count -le 0) {
+        throw 'Native collector repository smoke produced incomplete identity or measurements.'
+    }
+
+    $collectorHash = (
+        Get-FileHash -LiteralPath $collectorPath -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+    if ([string]$document.processes[0].working_set_bytes.source.provenance_sha256 -cne
+        $collectorHash) {
+        throw 'Native collector repository smoke provenance mismatch.'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $smokeRoot) {
@@ -128,4 +130,4 @@ finally {
     }
 }
 
-Write-Host 'Memory profile, snapshot contract and native collector repository smoke başarılı.'
+Write-Host 'Memory profile, snapshot contract, and native collector repository smoke passed.'
