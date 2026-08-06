@@ -41,7 +41,7 @@ reference_set_enabled:  false
 
 ## Exact-head gate results
 
-All nine gates passed:
+All substantive gates passed:
 
 - [x] dependency bootstrap — PowerShell 7
 - [x] dependency bootstrap — Windows PowerShell 5.1
@@ -83,12 +83,28 @@ The archive contains:
 
 ## Earlier failed attempts
 
-Two non-elevated launcher attempts were correctly rejected before cloning or validation. The first elevated implementation attempt reached a fresh exact-head clone but stopped before substantive gates because the gate-recording helper did not accept an initially empty strongly typed list. That binder defect was repaired with `AllowEmptyCollection`; the successful run above supersedes those attempts.
+Two non-elevated launcher attempts were correctly rejected before substantive validation. The first elevated implementation attempt reached a fresh exact-head clone but stopped before substantive gates because the gate-recording helper did not accept an initially empty strongly typed list. That binder defect was repaired with `AllowEmptyCollection`; the successful run above supersedes those attempts.
+
+## Post-validation boundary
+
+Commits after `d494a12fd7dd044ca0abaa83f1a8c6ffcbff6773` add the memory snapshot evidence contract and its combined foundation runner. They do not invalidate the profile result above, but the newer foundation head requires a separate exact-head validation before the snapshot-contract slice is marked validated.
+
+Canonical post-profile additions:
+
+```text
+schemas/memory-snapshot.schema.json
+tests/fixtures/memory-snapshot.valid.json
+tools/validate_memory_snapshot.py
+scripts/Test-MemorySnapshot.ps1
+tests/MemorySnapshot.Tests.ps1
+scripts/Invoke-NxbMemoryFoundationLocalValidation.ps1
+```
 
 ## Scope boundary
 
 This validation closes the bounded memory WPR profile foundation only. It does not yet validate:
 
+- the post-profile memory snapshot contract head,
 - process/system memory snapshot collection,
 - ETL hard/soft fault extraction,
 - deterministic bounded memory-pressure fixtures,
