@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 
 Set-StrictMode -Version Latest
@@ -21,10 +21,14 @@ $memoryFixturePath = Join-Path `
     $repositoryRoot `
     'tests\fixtures\memory-snapshot.valid.json'
 $memoryValidatorPath = Join-Path $PSScriptRoot 'Test-MemorySnapshot.ps1'
+$memoryCollectorPath = Join-Path $PSScriptRoot 'New-NxbMemorySnapshot.ps1'
 $memoryPythonValidatorPath = Join-Path `
     $repositoryRoot `
     'tools\validate_memory_snapshot.py'
 $memoryTestPath = Join-Path $repositoryRoot 'tests\MemorySnapshot.Tests.ps1'
+$memoryCollectorTestPath = Join-Path `
+    $repositoryRoot `
+    'tests\MemorySnapshotCollector.Tests.ps1'
 
 $requiredFiles = @(
     $profilePath,
@@ -35,8 +39,10 @@ $requiredFiles = @(
     $memorySchemaPath,
     $memoryFixturePath,
     $memoryValidatorPath,
+    $memoryCollectorPath,
     $memoryPythonValidatorPath,
-    $memoryTestPath
+    $memoryTestPath,
+    $memoryCollectorTestPath
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
@@ -50,7 +56,9 @@ $powerShellFiles = @(
     $smokeTestPath,
     $profileValidationPath,
     $memoryValidatorPath,
-    $memoryTestPath
+    $memoryCollectorPath,
+    $memoryTestPath,
+    $memoryCollectorTestPath
 )
 foreach ($powerShellFile in $powerShellFiles) {
     $tokens = $null
@@ -102,4 +110,22 @@ foreach ($requiredKeyword in @(
 # Argümansız çağrı kanonik fixture/schema varsayılanlarını doğrular.
 & $memoryValidatorPath
 
-Write-Host 'Memory profile and snapshot repository smoke başarılı.'
+$smokeRoot = Join-Path `
+    ([IO.Path]::GetTempPath()) `
+    ('nxb-memory-collector-smoke-' + [guid]::NewGuid().ToString('N'))
+$smokeOutput = Join-Path $smokeRoot 'memory-snapshot.json'
+try {
+    [IO.Directory]::CreateDirectory($smokeRoot) | Out-Null
+    & $memoryCollectorPath `
+        -ExperimentId 'repository-smoke-memory' `
+        -ProcessId $PID `
+        -OutputPath $smokeOutput
+    & $memoryValidatorPath -Path $smokeOutput -SchemaPath $memorySchemaPath
+}
+finally {
+    if (Test-Path -LiteralPath $smokeRoot) {
+        Remove-Item -LiteralPath $smokeRoot -Recurse -Force
+    }
+}
+
+Write-Host 'Memory profile, snapshot contract and native collector repository smoke başarılı.'
