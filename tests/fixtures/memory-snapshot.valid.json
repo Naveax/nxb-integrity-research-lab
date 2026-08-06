@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "memory-snapshot-fixture-001",
+  "experiment_id": "fixture-memory-001",
+  "experiment_relative_path": "experiments/fixture-memory-001",
+  "machine_id": "fixture-machine",
+  "boot_id": "2222222222222222222222222222222222222222222222222222222222222222",
+  "captured_utc": "2026-08-06T17:30:00Z",
+  "target": {
+    "process_id": 4242,
+    "process_start_utc": "2026-08-06T17:00:00Z",
+    "image_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "system": {
+    "physical_memory_total_bytes": {
+      "status": "measured",
+      "value": 34359738368,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "physical_memory_available_bytes": {
+      "status": "measured",
+      "value": 17179869184,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "commit_limit_bytes": {
+      "status": "measured",
+      "value": 51539607552,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "commit_used_bytes": {
+      "status": "measured",
+      "value": 12884901888,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "standby_cache_bytes": {
+      "status": "measured",
+      "value": 4294967296,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "modified_page_list_bytes": {
+      "status": "measured",
+      "value": 268435456,
+      "unit": "bytes",
+      "source": {
+        "collector": "nxb-memory-fixture",
+        "kind": "synthetic_fixture",
+        "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": null
+    },
+    "compression_store_bytes": {
+      "status": "not_assessed",
+      "value": null,
+      "unit": "bytes",
+      "source": null,
+      "reason": "Memory compression store is not available from the fixture collector."
+    }
+  },
+  "processes": [
+    {
+      "process_id": 4242,
+      "process_start_utc": "2026-08-06T17:00:00Z",
+      "image_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "is_target": true,
+      "working_set_bytes": {
+        "status": "measured",
+        "value": 536870912,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "peak_working_set_bytes": {
+        "status": "measured",
+        "value": 805306368,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "private_bytes": {
+        "status": "measured",
+        "value": 402653184,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "virtual_size_bytes": {
+        "status": "measured",
+        "value": 2147483648,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "peak_virtual_size_bytes": {
+        "status": "measured",
+        "value": 2684354560,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "paged_memory_bytes": {
+        "status": "measured",
+        "value": 314572800,
+        "unit": "bytes",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "page_fault_count": {
+        "status": "measured",
+        "value": 1200,
+        "unit": "count",
+        "source": {
+          "collector": "nxb-memory-fixture",
+          "kind": "synthetic_fixture",
+          "provenance_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "reason": null
+      },
+      "hard_fault_count": {
+        "status": "not_assessed",
+        "value": null,
+        "unit": "count",
+        "source": null,
+        "reason": "Hard-fault attribution requires ETW summary evidence."
+      },
+      "soft_fault_count": {
+        "status": "not_assessed",
+        "value": null,
+        "unit": "count",
+        "source": null,
+        "reason": "Soft-fault attribution requires ETW summary evidence."
+      }
+    }
+  ],
+  "summary": {
+    "system_measurement_count": 6,
+    "process_count": 1,
+    "process_measurement_count": 7,
+    "failed_measurement_count": 0,
+    "evidence_completeness": "partial"
+  },
+  "claims": {
+    "working_set_equals_total_memory_cost": false,
+    "memory_pressure_absence": false,
+    "page_fault_absence": false,
+    "capture_completeness": "not_claimed"
+  }
+}
