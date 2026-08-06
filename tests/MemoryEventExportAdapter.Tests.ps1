@@ -126,31 +126,31 @@ Describe 'NXB memory event export adapter' {
     }
 
     It 'rejects an unknown event type' {
-        $input = Join-Path $TestDrive 'unknown-event.csv'
+        $inputPath = Join-Path $TestDrive 'unknown-event.csv'
         @(
             'event_type,timestamp_us,process_id,thread_id,size_bytes',
             'unknown_memory_event,1000,4242,101,'
-        ) | Set-Content -LiteralPath $input -Encoding Ascii
+        ) | Set-Content -LiteralPath $inputPath -Encoding Ascii
         $output = Join-Path $TestDrive 'unknown-event.json'
 
         {
             Invoke-MemoryEtlAdapter `
-                -InputPath $input `
+                -InputPath $inputPath `
                 -OutputPath $output
         } | Should -Throw '*Unsupported memory event_type*'
     }
 
     It 'rejects an event outside the declared trace range' {
-        $input = Join-Path $TestDrive 'bad-time.csv'
+        $inputPath = Join-Path $TestDrive 'bad-time.csv'
         @(
             'event_type,timestamp_us,process_id,thread_id,size_bytes',
             'hard_fault,11000000,4242,101,4096'
-        ) | Set-Content -LiteralPath $input -Encoding Ascii
+        ) | Set-Content -LiteralPath $inputPath -Encoding Ascii
         $output = Join-Path $TestDrive 'bad-time.json'
 
         {
             Invoke-MemoryEtlAdapter `
-                -InputPath $input `
+                -InputPath $inputPath `
                 -OutputPath $output
         } | Should -Throw '*exceeds the declared trace range*'
     }
