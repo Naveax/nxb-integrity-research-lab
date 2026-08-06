@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
     $script:CollectorPath = Join-Path `
         $script:RepositoryRoot `
@@ -89,13 +89,23 @@ Describe 'NXB native memory snapshot collector' {
         ).Hash.ToLowerInvariant()
 
         $measured = @(
-            $document.system.PSObject.Properties.Value,
-            $document.processes[0].PSObject.Properties.Value
-        ) | Where-Object {
-            $null -ne $_ -and
-            $null -ne $_.PSObject.Properties['status'] -and
-            [string]$_.status -eq 'measured'
-        }
+            foreach ($property in $document.system.PSObject.Properties) {
+                $measurement = $property.Value
+                if ($null -ne $measurement -and
+                    $null -ne $measurement.PSObject.Properties['status'] -and
+                    [string]$measurement.status -ceq 'measured') {
+                    $measurement
+                }
+            }
+            foreach ($property in $document.processes[0].PSObject.Properties) {
+                $measurement = $property.Value
+                if ($null -ne $measurement -and
+                    $null -ne $measurement.PSObject.Properties['status'] -and
+                    [string]$measurement.status -ceq 'measured') {
+                    $measurement
+                }
+            }
+        )
 
         $measured.Count | Should -BeGreaterThan 0
         foreach ($measurement in $measured) {
