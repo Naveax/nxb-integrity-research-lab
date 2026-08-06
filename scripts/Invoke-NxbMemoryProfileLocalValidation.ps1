@@ -128,6 +128,7 @@ function Add-NxbMemoryGate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.List[object]]$GateList,
 
         [Parameter(Mandatory)]
