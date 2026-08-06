@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — PROFILE VALIDATED — SNAPSHOT CONTRACT IMPLEMENTED`
+`IN PROGRESS — COLLECTOR VALIDATED — ETL ADAPTER FOUNDATION IMPLEMENTED`
 
 - Tracking issue: `#2`
 - Parent draft PR: `#8 — trace-loss and circular-overwrite accounting`
@@ -10,32 +10,36 @@
 - Stacked draft PR: `#9`
 - Stacked branch: `nxb-irl-004-memory-working-set`
 - Validated profile head: `d494a12fd7dd044ca0abaa83f1a8c6ffcbff6773`
+- Validated foundation head: `ae3debb4bf16276c08eb79dc3575ed7cf8ce5492`
+- Validated native collector head: `d49aaef68da1e8be4141ccc55f032c13e211e64a`
 - Profile validation record: `docs/NXB-IRL-004-MEMORY-PROFILE-VALIDATION.md`
+- Foundation validation record: `docs/NXB-IRL-004-MEMORY-FOUNDATION-VALIDATION.md`
+- Collector validation record: `docs/NXB-IRL-004-MEMORY-COLLECTOR-VALIDATION.md`
 
-GitHub Actions remain intentionally disabled repository-wide. Native validation must run on a real Windows installation from an elevated PowerShell 7 shell.
+GitHub Actions remain intentionally disabled repository-wide. Native validation runs on a real Windows installation from elevated PowerShell 7.
 
 ## Objective
 
-Add a bounded memory-observability capture domain that can explain:
+Add a bounded memory-observability domain that can explain:
 
 - process working-set and private/commit changes,
-- system memory pressure,
+- system physical-memory and commit state,
 - hard and soft page-fault activity,
-- virtual allocation/free and mapped-region lifecycle,
+- virtual allocation/free and mapped-section lifecycle,
 - page-in behavior that can later be correlated with storage and scheduler events,
 - collector overhead and trace loss through the existing NXB-IRL-004 mechanisms.
 
-All evidence must remain bound to experiment, machine, boot, collector and profile provenance. Unsupported or unavailable measurements must be represented explicitly rather than synthesized as zero.
+All evidence remains bound to experiment, machine, boot, target, collector, trace and profile provenance. Unsupported or unavailable evidence is represented explicitly rather than synthesized as zero.
 
 ## Validated profile foundation
 
-Profile name:
+Profile:
 
 ```text
 NxbMemoryWorkingSet
 ```
 
-Profile variants:
+Variants:
 
 ```text
 NxbMemoryWorkingSet.Verbose.File
@@ -51,20 +55,16 @@ maximum_file_size_mib: 512
 file_mode:             Circular
 ```
 
-The matching memory-mode collector uses the same buffer size and count but does not declare `MaximumFileSize`.
-
 Exact head `d494a12fd7dd044ca0abaa83f1a8c6ffcbff6773` passed:
 
 - native `wpr.exe -profiles`,
 - repository smoke,
 - PowerShell parser,
-- PSScriptAnalyzer,
+- zero-finding PSScriptAnalyzer,
 - PowerShell 7 Pester: 10/10,
 - Windows PowerShell 5.1 Pester: 10/10.
 
-## Minimal kernel event contract
-
-Required system keywords:
+Required kernel keywords:
 
 ```text
 AllFaults
@@ -94,40 +94,11 @@ VirtualAllocation
 VirtualFree
 ```
 
-The minimal profile records soft-fault events but does not require stacks for every soft-fault subtype. Soft-fault stack capture remains deferred until native overhead and event-rate measurements justify it.
+`ReferenceSet` remains excluded from the minimal profile because working-set removal at capture start can materially perturb the scenario.
 
-## Reference-set boundary
+## Validated snapshot and collector foundation
 
-`ReferenceSet` is deliberately excluded from the minimal profile.
-
-Reference-set tracing removes pages from process working sets at capture start and can materially perturb system behavior. It belongs only in a short, explicit, focused diagnostic mode with separate operator acknowledgement, overhead calibration and result classification. It must not be silently enabled by the normal RAM/page-fault profile.
-
-## Evidence separation
-
-The memory domain keeps the following evidence classes separate:
-
-1. **Process footprint evidence**
-   - working set and peak working set,
-   - private bytes,
-   - paged memory,
-   - virtual size and peak virtual size.
-2. **Fault evidence**
-   - cumulative process page-fault count,
-   - hard and soft fault attribution from future ETW summaries,
-   - explicit non-measured state until ETW evidence exists.
-3. **System pressure evidence**
-   - total and available physical memory,
-   - commit limit and commit use,
-   - standby, modified and compression-store state where exposed.
-4. **Scenario reference-set evidence**
-   - excluded from minimal mode,
-   - future focused diagnostic only.
-
-A process working set is a point-in-time resident-set measurement and must not be presented as the total system-wide cost of a scenario.
-
-## Canonical memory snapshot contract
-
-The canonical contract is:
+Canonical snapshot contract:
 
 ```text
 schemas/memory-snapshot.schema.json
@@ -137,96 +108,173 @@ scripts/Test-MemorySnapshot.ps1
 tests/MemorySnapshot.Tests.ps1
 ```
 
-Every measurement has:
+Native collector:
 
 ```text
-status: measured | unsupported | unavailable | failed | not_assessed
-value:  non-negative integer or null
-unit:   bytes | count
-source: hash-bound collector provenance or null
-reason: null for measured, required text otherwise
+scripts/New-NxbMemorySnapshot.ps1
+tests/MemorySnapshotCollector.Tests.ps1
+scripts/Invoke-NxbMemoryCollectorLocalValidation.ps1
 ```
 
-The schema requires:
+The collector binds the target to PID, process-start UTC and executable SHA-256. It uses `GetPerformanceInfo` for system physical-memory and commit evidence and `GetProcessMemoryInfo` for working set, private usage, pagefile usage and cumulative page-fault count. Hard/soft fault attribution remains explicitly `not_assessed` until ETW evidence exists.
 
-- experiment, machine, boot and target-process identity,
-- captured UTC time,
-- seven system-memory measurements,
-- nine per-process memory/fault measurements,
-- exact measured/failed summary counts,
-- evidence-completeness classification,
-- narrow claim constants.
+Exact head `d49aaef68da1e8be4141ccc55f032c13e211e64a` passed on real elevated Windows:
+
+```text
+profile tests:
+  PowerShell 7:             10/10
+  Windows PowerShell 5.1:  10/10
+
+snapshot-contract tests:
+  PowerShell 7:              9/9
+  Windows PowerShell 5.1:    9/9
+
+native collector tests:
+  PowerShell 7:              7/7
+  Windows PowerShell 5.1:    7/7
+```
+
+Review artifact:
+
+```text
+nxb-memory-collector-d49aaef68da1-20260806T222934Z-review.zip
+sha256: ed8ec6191be105cc78abbe7cccbc180b285ca7864f774d663122b21760647a92
+```
+
+## ETL memory-event adapter foundation
+
+Canonical summary contract:
+
+```text
+schemas/memory-etl-summary.schema.json
+tests/fixtures/memory-etl-summary.valid.json
+tools/validate_memory_etl_summary.py
+scripts/Test-MemoryEtlSummary.ps1
+tests/MemoryEtlSummary.Tests.ps1
+```
+
+Canonical normalized event-export adapter:
+
+```text
+scripts/ConvertFrom-NxbMemoryEventExport.ps1
+tests/fixtures/memory-event-export.valid.csv
+tests/MemoryEventExportAdapter.Tests.ps1
+scripts/Invoke-NxbMemoryEtlAdapterLocalValidation.ps1
+```
+
+The adapter contract keeps these event classes separate:
+
+```text
+hard_fault
+demand_zero_fault
+copy_on_write_fault
+transition_fault
+guard_page_fault
+soft_fault_total
+virtual_allocation
+virtual_free
+mapped_section_create
+mapped_section_delete
+```
+
+The adapter does not infer coverage from absent rows. `CoveredEventType` is mandatory. Only declared classes can become `measured`; undeclared classes remain `not_assessed`. `soft_fault_total` is derived only when all four soft-fault component classes are covered.
+
+Each summary binds:
+
+- experiment-relative identity,
+- machine and boot identity,
+- target PID, start time and image SHA-256,
+- trace, profile, normalized export and adapter SHA-256,
+- trace start/end UTC,
+- trace-loss and circular-overwrite state,
+- aggregate and per-process counts,
+- unattributed counts and attribution quality,
+- narrow non-absence and non-completeness claims.
 
 The semantic validator rejects:
 
-- mismatched experiment-relative paths,
-- process start times after capture,
-- available physical memory greater than total physical memory,
-- commit use greater than commit limit,
+- invalid trace ranges,
 - duplicate process identities,
-- target identity/flag mismatch,
-- current working set greater than peak working set,
-- current virtual size greater than peak virtual size,
-- hard or soft fault counts greater than total page-fault count,
-- summary counts inconsistent with measurement states,
-- non-measured fields that retain numeric values,
-- claims that working set equals total memory cost,
-- claims of memory-pressure absence, page-fault absence or capture completeness.
+- a partial target identity,
+- aggregate/process count mismatches,
+- invalid unattributed counts,
+- soft totals inconsistent with component classes,
+- measured classes marked unsupported,
+- summary counts inconsistent with evidence states,
+- unsupported absence, balance or completeness claims.
+
+This foundation consumes the repository-owned normalized CSV contract. It does **not** yet claim direct raw ETL/xperf-dumper integration or real ETW-derived counts.
 
 ## Validation architecture
 
-Profile-only exact-head validation:
+Profile-only runner:
 
 ```text
 scripts/Invoke-NxbMemoryProfileLocalValidation.ps1
 ```
 
-Combined profile + snapshot-contract validation:
+Profile + snapshot-contract runner:
 
 ```text
-scripts/Invoke-NxbMemoryFoundationLocalValidation.ps1
+scripts/Invoke-NxbMemoryFoundationLocalValidationV2.ps1
 ```
 
-Combined gates:
+Profile + snapshot + native collector runner:
 
-- Python `jsonschema` availability or bootstrap,
-- nested exact-head bounded-profile validation,
-- snapshot PowerShell parser,
-- snapshot PSScriptAnalyzer,
-- schema and semantic contract validation,
-- PowerShell 7 snapshot Pester,
-- Windows PowerShell 5.1 snapshot Pester,
+```text
+scripts/Invoke-NxbMemoryCollectorLocalValidation.ps1
+```
+
+Collector + ETL adapter runner:
+
+```text
+scripts/Invoke-NxbMemoryEtlAdapterLocalValidation.ps1
+```
+
+The ETL runner adds these gates:
+
+- nested exact-head collector validation,
+- Python semantic-validator compile,
+- PowerShell parser,
+- zero-finding PSScriptAnalyzer,
+- canonical schema and semantic contract,
+- PowerShell 7 ETL contract/adapter Pester matrix,
+- Windows PowerShell 5.1 ETL contract/adapter Pester matrix,
 - combined JSON summary and review ZIP.
-
-The current foundation head must pass this combined runner before Slice 2 is considered validated.
 
 ## Planned vertical slices
 
 ### Slice 1 — profile foundation
 
 - [x] Define bounded profile contract.
-- [x] Commit `profiles/Nxb.MemoryWorkingSet.wprp`.
-- [x] Add exact safe-XML contract validator.
-- [x] Add PowerShell 7 / Windows PowerShell 5.1 adversarial tests.
-- [x] Pass native `wpr.exe -profiles` validation.
-- [x] Record exact-head Windows evidence.
+- [x] Commit the WPR profile.
+- [x] Add exact safe-XML validation and adversarial tests.
+- [x] Pass native WPR and two-runtime Windows validation.
+- [x] Record exact-head evidence.
 
-### Slice 2 — memory snapshot contract
+### Slice 2 — snapshot and native collector
 
-- [x] Define Draft 2020-12 memory evidence schema.
-- [ ] Add process and system memory snapshot collector.
-- [x] Distinguish measured, unsupported, unavailable, failed and not-assessed fields.
-- [x] Bind each measured value to collector provenance.
-- [x] Add semantic validator and canonical fixture.
-- [x] Add adversarial snapshot tests.
-- [ ] Pass combined exact-head Windows validation.
+- [x] Define the Draft 2020-12 snapshot schema.
+- [x] Add process/system memory snapshot collector.
+- [x] Preserve measured, unsupported, unavailable, failed and not-assessed states.
+- [x] Bind measured fields to collector provenance.
+- [x] Add semantic validation and adversarial tests.
+- [x] Pass combined exact-head Windows validation.
+- [x] Record exact-head collector evidence.
 
-### Slice 3 — ETL memory event adapter
+### Slice 3 — ETL memory-event adapter
 
-- [ ] Parse hard/soft fault classes without inventing missing counts.
-- [ ] Parse virtual allocation/free and mapped-region lifecycle.
-- [ ] Bind events to process/thread and common timeline identity.
-- [ ] Reconcile ETL SHA-256, profile provenance and trace-loss state.
+- [x] Define the memory ETL summary schema.
+- [x] Add a canonical normalized event-export contract.
+- [x] Separate hard faults and soft-fault component classes.
+- [x] Add virtual allocation/free and mapped-section lifecycle classes.
+- [x] Bind trace, profile, export and adapter provenance.
+- [x] Add coverage-aware aggregate/process reconciliation.
+- [x] Add semantic and adversarial tests.
+- [x] Add exact-head Windows validation runner.
+- [ ] Pass the ETL adapter Windows matrix.
+- [ ] Add a raw ETL/xperf export bridge into the normalized event contract.
+- [ ] Validate real ETW-derived memory-event evidence.
 
 ### Slice 4 — bounded deterministic fixture
 
@@ -239,25 +287,19 @@ The current foundation head must pass this combined runner before Slice 2 is con
 
 - [ ] Reuse paired control/capture overhead calibration.
 - [ ] Reuse trace-loss and circular-overwrite accounting.
-- [ ] Run full PowerShell 7 and Windows PowerShell 5.1 matrices.
-- [ ] Run elevated real-Windows WPR validation.
-- [ ] Inspect review ZIP and write canonical closeout record.
+- [ ] Run elevated real-Windows WPR capture with the bounded fixture.
+- [ ] Inspect the complete review archive.
+- [ ] Write canonical end-to-end closeout evidence.
 
-## Next implementation slice
+## Immediate validation gate
 
-Implement the process and system memory snapshot collector.
+Run the ETL adapter exact-head Windows validator against the current branch head. Do not mark the ETL foundation validated until:
 
-Required behavior:
-
-- target an explicit process identity rather than process name alone,
-- bind target identity to PID, start time and executable hash,
-- gather physical-memory and commit measurements,
-- gather process working-set, peak, private, virtual, paged-memory and page-fault counters,
-- preserve inaccessible metrics as explicit non-measured states,
-- avoid dumps and arbitrary process-memory reads,
-- write schema-valid evidence beneath the experiment root,
-- retain collector and schema SHA-256 provenance,
-- add deterministic fixtures and PS7/PS5.1 adversarial tests.
+- the nested collector matrix passes,
+- both PowerShell runtimes pass all ETL contract and adapter tests,
+- PSScriptAnalyzer reports zero findings,
+- the final summary status is `passed`,
+- the review ZIP is inspected and hashed.
 
 ## Safety and public-repository boundary
 
@@ -270,16 +312,15 @@ Never commit:
 - private keys or credentials,
 - undisclosed findings.
 
-The bounded fixture must not attempt system-wide exhaustion, disable memory protections, manipulate another process, or use reference-set working-set flushing without an explicit focused-mode contract.
+The bounded fixture must not attempt system-wide exhaustion, disable memory protections, manipulate another process or silently flush working sets.
 
 ## Completion gate
 
 This block is complete only when:
 
 - the exact profile passes the native WPR parser,
-- all schema and semantic checks pass,
-- PowerShell 7 and Windows PowerShell 5.1 test matrices pass,
-- real hard/soft fault and memory-pressure evidence is collected on Windows,
+- snapshot, collector and ETL contracts pass in PowerShell 7 and Windows PowerShell 5.1,
+- real hard/soft fault and virtual-memory evidence is collected from a bounded Windows capture,
 - collector overhead and trace loss are measured,
-- all unsupported fields remain explicit,
-- the final evidence retains narrow claims and does not claim total memory-cost completeness.
+- unsupported fields remain explicit,
+- final claims remain narrow and do not claim total-memory-cost or trace completeness.
