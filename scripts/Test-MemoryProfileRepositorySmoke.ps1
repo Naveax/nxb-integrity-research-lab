@@ -6,33 +6,51 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $profilePath = Join-Path $repositoryRoot 'profiles\Nxb.MemoryWorkingSet.wprp'
-$validatorPath = Join-Path $PSScriptRoot 'Test-NxbMemoryWprProfile.ps1'
+$profileValidatorPath = Join-Path $PSScriptRoot 'Test-NxbMemoryWprProfile.ps1'
 $profileTestPath = Join-Path $repositoryRoot 'tests\MemoryWprProfile.Tests.ps1'
 $smokeTestPath = Join-Path `
     $repositoryRoot `
     'tests\MemoryProfileRepositorySmoke.Tests.ps1'
-$validationPath = Join-Path `
+$profileValidationPath = Join-Path `
     $PSScriptRoot `
     'Invoke-NxbMemoryProfileLocalValidation.ps1'
+$memorySchemaPath = Join-Path `
+    $repositoryRoot `
+    'schemas\memory-snapshot.schema.json'
+$memoryFixturePath = Join-Path `
+    $repositoryRoot `
+    'tests\fixtures\memory-snapshot.valid.json'
+$memoryValidatorPath = Join-Path $PSScriptRoot 'Test-MemorySnapshot.ps1'
+$memoryPythonValidatorPath = Join-Path `
+    $repositoryRoot `
+    'tools\validate_memory_snapshot.py'
+$memoryTestPath = Join-Path $repositoryRoot 'tests\MemorySnapshot.Tests.ps1'
 
 $requiredFiles = @(
     $profilePath,
-    $validatorPath,
+    $profileValidatorPath,
     $profileTestPath,
     $smokeTestPath,
-    $validationPath
+    $profileValidationPath,
+    $memorySchemaPath,
+    $memoryFixturePath,
+    $memoryValidatorPath,
+    $memoryPythonValidatorPath,
+    $memoryTestPath
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
-        throw "Memory profile repository smoke girdisi bulunamadı: $requiredFile"
+        throw "Memory foundation repository smoke girdisi bulunamadı: $requiredFile"
     }
 }
 
 $powerShellFiles = @(
-    $validatorPath,
+    $profileValidatorPath,
     $profileTestPath,
     $smokeTestPath,
-    $validationPath
+    $profileValidationPath,
+    $memoryValidatorPath,
+    $memoryTestPath
 )
 foreach ($powerShellFile in $powerShellFiles) {
     $tokens = $null
@@ -51,7 +69,10 @@ foreach ($powerShellFile in $powerShellFiles) {
     }
 }
 
-$result = & $validatorPath -PassThru
+Get-Content -LiteralPath $memorySchemaPath -Raw | ConvertFrom-Json | Out-Null
+Get-Content -LiteralPath $memoryFixturePath -Raw | ConvertFrom-Json | Out-Null
+
+$result = & $profileValidatorPath -PassThru
 if ([string]$result.RelativePath -cne 'profiles/Nxb.MemoryWorkingSet.wprp' -or
     [string]$result.Name -cne 'NxbMemoryWorkingSet' -or
     [int]$result.BufferSizeKiB -ne 1024 -or
@@ -78,4 +99,8 @@ foreach ($requiredKeyword in @(
     }
 }
 
-Write-Host 'Memory profile repository smoke başarılı.'
+& $memoryValidatorPath `
+    -Path $memoryFixturePath `
+    -SchemaPath $memorySchemaPath
+
+Write-Host 'Memory profile and snapshot repository smoke başarılı.'
