@@ -99,8 +99,7 @@ foreach ($requiredKeyword in @(
     }
 }
 
-& $memoryValidatorPath `
-    -Path $memoryFixturePath `
-    -SchemaPath $memorySchemaPath
+# Argümansız çağrı kanonik fixture/schema varsayılanlarını doğrular.
+& $memoryValidatorPath
 
 Write-Host 'Memory profile and snapshot repository smoke başarılı.'
