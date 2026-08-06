@@ -163,47 +163,40 @@ function Add-NxbMemoryCollectorGate {
 }
 
 if ($env:OS -cne 'Windows_NT') {
-    throw 'Memory collector validation yalnız gerçek Windows üzerinde çalışır.'
+    throw 'Memory collector validation requires real Windows.'
 }
 if ($PSVersionTable.PSEdition -cne 'Core') {
-    throw 'Memory collector validation PowerShell 7 içinde çalıştırılmalıdır.'
+    throw 'Memory collector validation requires PowerShell 7.'
 }
 if (-not (Test-NxbMemoryCollectorAdministrator)) {
-    throw 'Memory collector validation için yönetici PowerShell 7 gereklidir.'
+    throw 'Memory collector validation requires elevated PowerShell 7.'
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $gitPath = Resolve-NxbMemoryCollectorExecutable -Candidate @('git.exe', 'git')
 $pwshPath = Resolve-NxbMemoryCollectorExecutable -Candidate @('pwsh.exe', 'pwsh')
+$pythonPath = Resolve-NxbMemoryCollectorExecutable -Candidate @(
+    'python.exe',
+    'python',
+    'py.exe',
+    'py'
+)
+$wprPath = Resolve-NxbMemoryCollectorExecutable -Candidate @('wpr.exe', 'wpr')
 $windowsPowerShellPath = Join-Path `
     $env:SystemRoot `
     'System32\WindowsPowerShell\v1.0\powershell.exe'
-$foundationRunner = Join-Path `
-    $PSScriptRoot `
-    'Invoke-NxbMemoryFoundationLocalValidationV2.ps1'
-$collectorPath = Join-Path $PSScriptRoot 'New-NxbMemorySnapshot.ps1'
-$collectorTestPath = Join-Path `
-    $repositoryRoot `
-    'tests\MemorySnapshotCollector.Tests.ps1'
-$smokePath = Join-Path $PSScriptRoot 'Test-MemoryProfileRepositorySmoke.ps1'
-$settingsPath = Join-Path `
-    $repositoryRoot `
-    '.github\PSScriptAnalyzerSettings.psd1'
 
-$requiredPaths = [ordered]@{
+$requiredExecutables = [ordered]@{
     git = $gitPath
     pwsh = $pwshPath
+    python = $pythonPath
+    wpr = $wprPath
     windows_powershell = $windowsPowerShellPath
-    foundation_runner = $foundationRunner
-    collector = $collectorPath
-    collector_tests = $collectorTestPath
-    repository_smoke = $smokePath
-    analyzer_settings = $settingsPath
 }
-foreach ($entry in $requiredPaths.GetEnumerator()) {
+foreach ($entry in $requiredExecutables.GetEnumerator()) {
     if ([string]::IsNullOrWhiteSpace([string]$entry.Value) -or
         -not (Test-Path -LiteralPath $entry.Value -PathType Leaf)) {
-        throw "Memory collector validation girdisi bulunamadı: $($entry.Key)"
+        throw "Required executable missing: $($entry.Key)"
     }
 }
 
@@ -212,13 +205,10 @@ $currentHead = (
         Out-String
 ).Trim().ToLowerInvariant()
 if ($LASTEXITCODE -ne 0 -or $currentHead -notmatch '^[0-9a-f]{40}$') {
-    throw "Git HEAD çözümlenemedi: $currentHead"
+    throw "Unable to resolve Git HEAD: $currentHead"
 }
 if ($currentHead -cne $ExpectedHead.ToLowerInvariant()) {
-    throw (
-        "Exact-head uyuşmazlığı. Beklenen: $ExpectedHead; " +
-        "mevcut: $currentHead"
-    )
+    throw "Exact-head mismatch. Expected: $ExpectedHead; actual: $currentHead"
 }
 
 $workingTree = @(
@@ -228,8 +218,37 @@ $workingTree = @(
         --porcelain=v1 `
         --untracked-files=all 2>&1
 )
-if ($LASTEXITCODE -ne 0 -or $workingTree.Count -gt 0) {
-    throw 'Memory collector exact-head validation için çalışma ağacı temiz olmalıdır.'
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to inspect Git working tree.'
+}
+if ($workingTree.Count -gt 0) {
+    throw (
+        "Exact-head validation requires a clean working tree:`n" +
+        ($workingTree -join [Environment]::NewLine)
+    )
+}
+
+$foundationRunner = Join-Path `
+    $PSScriptRoot `
+    'Invoke-NxbMemoryFoundationLocalValidationV2.ps1'
+$collectorPath = Join-Path $PSScriptRoot 'New-NxbMemorySnapshot.ps1'
+$smokePath = Join-Path $PSScriptRoot 'Test-MemoryProfileRepositorySmoke.ps1'
+$collectorTestPath = Join-Path `
+    $repositoryRoot `
+    'tests\MemorySnapshotCollector.Tests.ps1'
+$settingsPath = Join-Path `
+    $repositoryRoot `
+    '.github\PSScriptAnalyzerSettings.psd1'
+foreach ($requiredFile in @(
+    $foundationRunner,
+    $collectorPath,
+    $smokePath,
+    $collectorTestPath,
+    $settingsPath
+)) {
+    if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+        throw "Required validation input missing: $requiredFile"
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
@@ -240,7 +259,7 @@ if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
 }
 $resultsFull = [IO.Path]::GetFullPath($ResultsRoot)
 if (Test-Path -LiteralPath $resultsFull) {
-    throw "Validation sonuç dizini zaten var: $resultsFull"
+    throw "Validation results directory already exists: $resultsFull"
 }
 [IO.Directory]::CreateDirectory($resultsFull) | Out-Null
 $logsRoot = Join-Path $resultsFull 'logs'
@@ -255,9 +274,8 @@ $reviewZip = Join-Path $HOME (
     '-review.zip'
 )
 $gates = [Collections.Generic.List[object]]::new()
-$startedUtc = [DateTime]::UtcNow
+$validationStartedUtc = [DateTime]::UtcNow
 $failureMessage = $null
-$foundationSummary = $null
 
 $repositoryLiteral = ConvertTo-NxbMemoryCollectorLiteral -Value $repositoryRoot
 $settingsLiteral = ConvertTo-NxbMemoryCollectorLiteral -Value $settingsPath
@@ -268,34 +286,22 @@ $ps51XmlLiteral = ConvertTo-NxbMemoryCollectorLiteral -Value $ps51XmlPath
 try {
     $foundationLog = Join-Path $logsRoot 'memory-foundation-v2.log'
     try {
-        $foundationSummary = & $foundationRunner `
-            -ExpectedHead $currentHead `
-            -ResultsRoot $foundationResultsRoot `
-            -BootstrapDependencies:$BootstrapDependencies `
-            -PassThru 2>&1
+        $foundationOutput = @(
+            & $foundationRunner `
+                -ExpectedHead $currentHead `
+                -ResultsRoot $foundationResultsRoot `
+                -BootstrapDependencies:$BootstrapDependencies `
+                -PassThru 2>&1
+        )
         Write-NxbMemoryCollectorUtf8NoBom `
             -Path $foundationLog `
-            -Content (@($foundationSummary | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
-        $foundationStatus = if (
-            [string]$foundationSummary.status -ceq 'passed'
-        ) {
-            'passed'
-        }
-        else {
-            'failed'
-        }
+            -Content (@($foundationOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
         Add-NxbMemoryCollectorGate `
             -GateList $gates `
             -Name 'memory-foundation-v2' `
-            -Status $foundationStatus `
-            -ExitCode $(if ($foundationStatus -ceq 'passed') { 0 } else { 1 }) `
-            -LogPath $foundationLog `
-            -Reason $(if ($foundationStatus -ceq 'passed') {
-                $null
-            }
-            else {
-                'Memory foundation V2 summary passed değil.'
-            })
+            -Status passed `
+            -ExitCode 0 `
+            -LogPath $foundationLog
     }
     catch {
         Write-NxbMemoryCollectorUtf8NoBom `
@@ -307,8 +313,47 @@ try {
             -Status failed `
             -ExitCode 1 `
             -LogPath $foundationLog `
-            -Reason 'Memory foundation V2 validation başarısız.'
+            -Reason 'Nested memory foundation V2 validation failed.'
     }
+
+    $parserLog = Join-Path $logsRoot 'memory-collector-parser.log'
+    $parser = Invoke-NxbMemoryCollectorChild `
+        -ExecutablePath $pwshPath `
+        -CommandText @"
+`$ErrorActionPreference = 'Stop'
+`$paths = @(
+    (Join-Path $repositoryLiteral 'scripts\New-NxbMemorySnapshot.ps1'),
+    (Join-Path $repositoryLiteral 'scripts\Test-MemoryProfileRepositorySmoke.ps1'),
+    (Join-Path $repositoryLiteral 'scripts\Invoke-NxbMemoryCollectorLocalValidation.ps1'),
+    (Join-Path $repositoryLiteral 'tests\MemorySnapshotCollector.Tests.ps1')
+)
+foreach (`$path in `$paths) {
+    `$tokens = `$null
+    `$errors = `$null
+    [Management.Automation.Language.Parser]::ParseFile(
+        `$path,
+        [ref]`$tokens,
+        [ref]`$errors
+    ) | Out-Null
+    if (@(`$errors).Count -gt 0) {
+        throw ((@(`$errors | ForEach-Object { `$_.Message })) -join [Environment]::NewLine)
+    }
+}
+Write-Output 'Memory collector parser clean.'
+"@ `
+        -LogPath $parserLog
+    Add-NxbMemoryCollectorGate `
+        -GateList $gates `
+        -Name 'memory-collector-parser' `
+        -Status $(if ($parser.exit_code -eq 0) { 'passed' } else { 'failed' }) `
+        -ExitCode $parser.exit_code `
+        -LogPath $parserLog `
+        -Reason $(if ($parser.exit_code -eq 0) {
+            $null
+        }
+        else {
+            'Memory collector PowerShell parser failed.'
+        })
 
     $analyzerLog = Join-Path $logsRoot 'memory-collector-psscriptanalyzer.log'
     $analyzer = Invoke-NxbMemoryCollectorChild `
@@ -322,10 +367,18 @@ Import-Module PSScriptAnalyzer -Force
     (Join-Path $repositoryLiteral 'scripts\Invoke-NxbMemoryCollectorLocalValidation.ps1'),
     (Join-Path $repositoryLiteral 'tests\MemorySnapshotCollector.Tests.ps1')
 )
-`$findings = @(foreach (`$path in `$paths) { Invoke-ScriptAnalyzer -Path `$path -Settings $settingsLiteral })
+`$findings = @(
+    foreach (`$path in `$paths) {
+        Invoke-ScriptAnalyzer -Path `$path -Settings $settingsLiteral
+    }
+)
 if (`$findings.Count -gt 0) {
-    `$findings | Select-Object Severity, ScriptName, Line, Column, RuleName, Message | Format-Table -Wrap -AutoSize | Out-String | Write-Output
-    throw "PSScriptAnalyzer `$(`$findings.Count) bulgu üretti."
+    `$findings |
+        Select-Object Severity, ScriptName, Line, Column, RuleName, Message |
+        Format-Table -Wrap -AutoSize |
+        Out-String |
+        Write-Output
+    throw "PSScriptAnalyzer produced `$(`$findings.Count) finding(s)."
 }
 Write-Output 'Memory collector PSScriptAnalyzer: 0 findings.'
 "@ `
@@ -340,7 +393,7 @@ Write-Output 'Memory collector PSScriptAnalyzer: 0 findings.'
             $null
         }
         else {
-            'Memory collector PSScriptAnalyzer başarısız.'
+            'Memory collector PSScriptAnalyzer failed.'
         })
 
     $ps7Log = Join-Path $logsRoot 'pester-memory-collector-pwsh.log'
@@ -348,8 +401,11 @@ Write-Output 'Memory collector PSScriptAnalyzer: 0 findings.'
         -ExecutablePath $pwshPath `
         -CommandText @"
 `$ErrorActionPreference = 'Stop'
-`$module = Get-Module -ListAvailable Pester | Where-Object Version -GE ([version]'5.0.0') | Sort-Object Version -Descending | Select-Object -First 1
-if (`$null -eq `$module) { throw 'PowerShell 7 için Pester >= 5 bulunamadı.' }
+`$module = Get-Module -ListAvailable Pester |
+    Where-Object Version -GE ([version]'5.0.0') |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if (`$null -eq `$module) { throw 'Pester >= 5 is missing for PowerShell 7.' }
 Import-Module `$module.Path -Force
 `$configuration = New-PesterConfiguration
 `$configuration.Run.Path = @($collectorTestLiteral)
@@ -371,7 +427,7 @@ Invoke-Pester -Configuration `$configuration
             $null
         }
         else {
-            'PowerShell 7 memory collector Pester başarısız.'
+            'PowerShell 7 memory collector Pester failed.'
         })
 
     $ps51ModulePath = Join-Path `
@@ -383,7 +439,9 @@ Invoke-Pester -Configuration `$configuration
         -ExecutablePath $windowsPowerShellPath `
         -CommandText @"
 `$ErrorActionPreference = 'Stop'
-if (-not (Test-Path -LiteralPath $ps51ModuleLiteral -PathType Leaf)) { throw 'Windows PowerShell Pester 5.7.1 bulunamadı.' }
+if (-not (Test-Path -LiteralPath $ps51ModuleLiteral -PathType Leaf)) {
+    throw 'Pester 5.7.1 is missing for Windows PowerShell 5.1.'
+}
 Import-Module $ps51ModuleLiteral -Force
 `$configuration = New-PesterConfiguration
 `$configuration.Run.Path = @($collectorTestLiteral)
@@ -405,21 +463,23 @@ Invoke-Pester -Configuration `$configuration
             $null
         }
         else {
-            'Windows PowerShell 5.1 memory collector Pester başarısız.'
+            'Windows PowerShell 5.1 memory collector Pester failed.'
         })
 }
 catch {
     $failureMessage = $_.Exception.Message
 }
 finally {
-    $stoppedUtc = [DateTime]::UtcNow
+    $validationStoppedUtc = [DateTime]::UtcNow
     $failedGates = @($gates | Where-Object status -eq 'failed')
-    $status = if ([string]::IsNullOrWhiteSpace($failureMessage) -and $failedGates.Count -eq 0) {
+    $status = if ([string]::IsNullOrWhiteSpace($failureMessage) -and
+        $failedGates.Count -eq 0) {
         'passed'
     }
     else {
         'failed'
     }
+
     $foundationSummaryPath = Join-Path `
         $foundationResultsRoot `
         'memory-foundation-validation-summary.json'
@@ -428,14 +488,16 @@ finally {
         status = $status
         head_sha = $currentHead
         expected_head_sha = $ExpectedHead.ToLowerInvariant()
-        validation_started_utc = $startedUtc.ToUniversalTime().ToString('o')
-        validation_stopped_utc = $stoppedUtc.ToUniversalTime().ToString('o')
+        validation_started_utc = $validationStartedUtc.ToUniversalTime().ToString('o')
+        validation_stopped_utc = $validationStoppedUtc.ToUniversalTime().ToString('o')
         failure_message = $failureMessage
         environment = [ordered]@{
             os = [Environment]::OSVersion.VersionString
             powershell = $PSVersionTable.PSVersion.ToString()
             edition = $PSVersionTable.PSEdition
             elevated = $true
+            python_path = $pythonPath
+            wpr_path = $wprPath
         }
         foundation_validation_summary_path = if (
             Test-Path -LiteralPath $foundationSummaryPath -PathType Leaf
@@ -451,28 +513,17 @@ finally {
         -Path $summaryPath `
         -Content ($summary | ConvertTo-Json -Depth 32)
 
-    $reviewFiles = @(
-        Get-ChildItem `
-            -LiteralPath $resultsFull `
-            -Recurse `
-            -File `
-            -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty FullName
-    )
-    if ($reviewFiles.Count -gt 0) {
-        if (Test-Path -LiteralPath $reviewZip -PathType Leaf) {
-            Remove-Item -LiteralPath $reviewZip -Force
-        }
-        Compress-Archive `
-            -LiteralPath $reviewFiles `
-            -DestinationPath $reviewZip `
-            -CompressionLevel Optimal
+    if (Test-Path -LiteralPath $reviewZip -PathType Leaf) {
+        Remove-Item -LiteralPath $reviewZip -Force
     }
+    $reviewInput = Join-Path $resultsFull '*'
+    Compress-Archive `
+        -Path $reviewInput `
+        -DestinationPath $reviewZip `
+        -CompressionLevel Optimal
 
     Write-Host "Memory collector validation summary: $summaryPath"
-    if (Test-Path -LiteralPath $reviewZip -PathType Leaf) {
-        Write-Host "Review ZIP: $reviewZip"
-    }
+    Write-Host "Review ZIP: $reviewZip"
 }
 
 $finalSummary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
@@ -486,12 +537,12 @@ if ([string]$finalSummary.status -cne 'passed') {
         $reasons += [string]$finalSummary.failure_message
     }
     throw (
-        "Memory collector exact-head validation başarısız:`n" +
+        "Memory collector exact-head validation failed:`n" +
         ($reasons -join [Environment]::NewLine)
     )
 }
 
-Write-Host 'Memory collector exact-head validation tamamlandı.'
+Write-Host 'Memory collector exact-head validation completed.'
 if ($PassThru) {
     $finalSummary
 }
