@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[A-Za-z0-9._:-]+$')]
@@ -43,7 +43,7 @@ function Get-NxbMemoryTextSha256 {
     }
 }
 
-function New-NxbMemorySource {
+function ConvertTo-NxbMemorySource {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -61,7 +61,7 @@ function New-NxbMemorySource {
     }
 }
 
-function New-NxbMemoryMeasured {
+function ConvertTo-NxbMemoryMeasured {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -84,14 +84,14 @@ function New-NxbMemoryMeasured {
         status = 'measured'
         value = $Value
         unit = $Unit
-        source = New-NxbMemorySource `
+        source = ConvertTo-NxbMemorySource `
             -Kind $Kind `
             -ProvenanceSha256 $ProvenanceSha256
         reason = $null
     }
 }
 
-function New-NxbMemoryUnmeasured {
+function ConvertTo-NxbMemoryUnmeasured {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -268,35 +268,35 @@ try {
 
     $pageSize = [long]$performance.PageSize.ToUInt64()
     $system = [ordered]@{
-        physical_memory_total_bytes = New-NxbMemoryMeasured `
+        physical_memory_total_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$performance.PhysicalTotal.ToUInt64() * $pageSize) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        physical_memory_available_bytes = New-NxbMemoryMeasured `
+        physical_memory_available_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$performance.PhysicalAvailable.ToUInt64() * $pageSize) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        commit_limit_bytes = New-NxbMemoryMeasured `
+        commit_limit_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$performance.CommitLimit.ToUInt64() * $pageSize) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        commit_used_bytes = New-NxbMemoryMeasured `
+        commit_used_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$performance.CommitTotal.ToUInt64() * $pageSize) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        standby_cache_bytes = New-NxbMemoryUnmeasured `
+        standby_cache_bytes = ConvertTo-NxbMemoryUnmeasured `
             -Status not_assessed `
             -Unit bytes `
             -Reason 'Standby-list attribution requires a dedicated memory-list counter or ETW adapter.'
-        modified_page_list_bytes = New-NxbMemoryUnmeasured `
+        modified_page_list_bytes = ConvertTo-NxbMemoryUnmeasured `
             -Status not_assessed `
             -Unit bytes `
             -Reason 'Modified-page-list attribution requires a dedicated memory-list counter or ETW adapter.'
-        compression_store_bytes = New-NxbMemoryUnmeasured `
+        compression_store_bytes = ConvertTo-NxbMemoryUnmeasured `
             -Status not_assessed `
             -Unit bytes `
             -Reason 'Memory compression-store size is not exposed by this minimal native snapshot collector.'
@@ -307,46 +307,46 @@ try {
         process_start_utc = $processStartUtc.ToString('o')
         image_sha256 = $imageHash
         is_target = $true
-        working_set_bytes = New-NxbMemoryMeasured `
+        working_set_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$processCounters.WorkingSetSize.ToUInt64()) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        peak_working_set_bytes = New-NxbMemoryMeasured `
+        peak_working_set_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$processCounters.PeakWorkingSetSize.ToUInt64()) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        private_bytes = New-NxbMemoryMeasured `
+        private_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$processCounters.PrivateUsage.ToUInt64()) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        virtual_size_bytes = New-NxbMemoryMeasured `
+        virtual_size_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$process.VirtualMemorySize64) `
             -Unit bytes `
             -Kind process_snapshot `
             -ProvenanceSha256 $collectorHash
-        peak_virtual_size_bytes = New-NxbMemoryMeasured `
+        peak_virtual_size_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$process.PeakVirtualMemorySize64) `
             -Unit bytes `
             -Kind process_snapshot `
             -ProvenanceSha256 $collectorHash
-        paged_memory_bytes = New-NxbMemoryMeasured `
+        paged_memory_bytes = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$processCounters.PagefileUsage.ToUInt64()) `
             -Unit bytes `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        page_fault_count = New-NxbMemoryMeasured `
+        page_fault_count = ConvertTo-NxbMemoryMeasured `
             -Value ([long]$processCounters.PageFaultCount) `
             -Unit count `
             -Kind native_api `
             -ProvenanceSha256 $collectorHash
-        hard_fault_count = New-NxbMemoryUnmeasured `
+        hard_fault_count = ConvertTo-NxbMemoryUnmeasured `
             -Status not_assessed `
             -Unit count `
             -Reason 'Hard-fault attribution requires ETW summary evidence.'
-        soft_fault_count = New-NxbMemoryUnmeasured `
+        soft_fault_count = ConvertTo-NxbMemoryUnmeasured `
             -Status not_assessed `
             -Unit count `
             -Reason 'Soft-fault attribution requires ETW summary evidence.'
