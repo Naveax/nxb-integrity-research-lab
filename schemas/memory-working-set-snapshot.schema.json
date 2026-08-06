@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/memory-working-set-snapshot.schema.json",
+  "title": "NXB Memory Working-Set Snapshot Evidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "experiment_id",
+    "experiment_relative_path",
+    "machine_id",
+    "boot_id",
+    "captured_utc",
+    "capture",
+    "profile",
+    "system",
+    "processes",
+    "summary",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "snapshot_id": { "$ref": "#/$defs/identifier" },
+    "experiment_id": { "type": "string", "minLength": 1 },
+    "experiment_relative_path": { "$ref": "#/$defs/experimentRelativePath" },
+    "machine_id": { "type": "string", "minLength": 1 },
+    "boot_id": { "$ref": "#/$defs/lowerSha256" },
+    "captured_utc": { "type": "string", "format": "date-time" },
+    "capture": { "$ref": "#/$defs/capture" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "system": { "$ref": "#/$defs/systemMetrics" },
+    "processes": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/processSnapshot" }
+    },
+    "summary": { "$ref": "#/$defs/summary" },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "experimentRelativePath": {
+      "type": "string",
+      "pattern": "^experiments/[A-Za-z0-9._-]+$"
+    },
+    "lowerSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "measurement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "source", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "measured" },
+            "value": { "type": "number", "minimum": 0 },
+            "unit": { "enum": ["bytes", "count", "percent", "milliseconds"] },
+            "source": { "type": "string", "minLength": 1 },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "value", "unit", "source", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "enum": ["unavailable", "failed"] },
+            "value": { "type": "null" },
+            "unit": { "enum": ["bytes", "count", "percent", "milliseconds"] },
+            "source": { "type": ["string", "null"] },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "capture": {
+      "type": "object",
+      "required": [
+        "started_utc",
+        "stopped_utc",
+        "duration_ms",
+        "selection_mode",
+        "requested_process_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "started_utc": { "type": "string", "format": "date-time" },
+        "stopped_utc": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "selection_mode": {
+          "enum": [
+            "system_and_explicit_processes",
+            "system_and_target_process_tree",
+            "system_only"
+          ]
+        },
+        "requested_process_ids": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["name", "relative_path", "sha256", "reference_set_enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "const": "NxbMemoryWorkingSet" },
+        "relative_path": { "const": "profiles/Nxb.MemoryWorkingSet.wprp" },
+        "sha256": { "$ref": "#/$defs/lowerSha256" },
+        "reference_set_enabled": { "const": false }
+      }
+    },
+    "systemMetrics": {
+      "type": "object",
+      "required": [
+        "total_physical_bytes",
+        "available_physical_bytes",
+        "committed_bytes",
+        "commit_limit_bytes",
+        "system_cache_resident_bytes",
+        "paged_pool_bytes",
+        "nonpaged_pool_bytes",
+        "memory_load_percent"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total_physical_bytes": { "$ref": "#/$defs/measurement" },
+        "available_physical_bytes": { "$ref": "#/$defs/measurement" },
+        "committed_bytes": { "$ref": "#/$defs/measurement" },
+        "commit_limit_bytes": { "$ref": "#/$defs/measurement" },
+        "system_cache_resident_bytes": { "$ref": "#/$defs/measurement" },
+        "paged_pool_bytes": { "$ref": "#/$defs/measurement" },
+        "nonpaged_pool_bytes": { "$ref": "#/$defs/measurement" },
+        "memory_load_percent": { "$ref": "#/$defs/measurement" }
+      }
+    },
+    "processIdentity": {
+      "type": "object",
+      "required": ["pid", "process_name", "start_time_utc", "executable_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "pid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "process_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 260
+        },
+        "start_time_utc": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "executable_sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/lowerSha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "processMetrics": {
+      "type": "object",
+      "required": [
+        "working_set_bytes",
+        "peak_working_set_bytes",
+        "private_bytes",
+        "paged_memory_bytes",
+        "peak_paged_memory_bytes",
+        "virtual_memory_bytes",
+        "peak_virtual_memory_bytes",
+        "page_fault_count",
+        "hard_fault_count",
+        "handle_count",
+        "thread_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "working_set_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_working_set_bytes": { "$ref": "#/$defs/measurement" },
+        "private_bytes": { "$ref": "#/$defs/measurement" },
+        "paged_memory_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_paged_memory_bytes": { "$ref": "#/$defs/measurement" },
+        "virtual_memory_bytes": { "$ref": "#/$defs/measurement" },
+        "peak_virtual_memory_bytes": { "$ref": "#/$defs/measurement" },
+        "page_fault_count": { "$ref": "#/$defs/measurement" },
+        "hard_fault_count": { "$ref": "#/$defs/measurement" },
+        "handle_count": { "$ref": "#/$defs/measurement" },
+        "thread_count": { "$ref": "#/$defs/measurement" }
+      }
+    },
+    "processSnapshot": {
+      "type": "object",
+      "required": ["identity", "status", "metrics", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "identity": { "$ref": "#/$defs/processIdentity" },
+        "status": { "enum": ["measured", "partial", "failed"] },
+        "metrics": { "$ref": "#/$defs/processMetrics" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "process_count",
+        "measured_process_count",
+        "partial_process_count",
+        "failed_process_count",
+        "system_measurement_count",
+        "measured_system_measurement_count",
+        "process_measurement_count",
+        "measured_process_measurement_count",
+        "evidence_completeness"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "process_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "measured_process_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "partial_process_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "failed_process_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "system_measurement_count": { "type": "integer", "const": 8 },
+        "measured_system_measurement_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "process_measurement_count": { "type": "integer", "minimum": 0 },
+        "measured_process_measurement_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_completeness": {
+          "enum": ["complete", "partial", "unavailable", "failed"]
+        }
+      }
+    },
+    "collectorProvenance": {
+      "type": "object",
+      "required": ["relative_path", "sha256", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "pattern": "^scripts/[A-Za-z0-9._/-]+\\.ps1$"
+        },
+        "sha256": { "$ref": "#/$defs/lowerSha256" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["collector", "schema_sha256", "host_powershell", "elevated"],
+      "additionalProperties": false,
+      "properties": {
+        "collector": { "$ref": "#/$defs/collectorProvenance" },
+        "schema_sha256": { "$ref": "#/$defs/lowerSha256" },
+        "host_powershell": { "type": "string", "minLength": 1 },
+        "elevated": { "type": "boolean" }
+      }
+    }
+  }
+}
