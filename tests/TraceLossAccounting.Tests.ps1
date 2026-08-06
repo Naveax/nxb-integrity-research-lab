@@ -26,6 +26,19 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
         { & $script:Validator -Path $script:DocumentPath } | Should -Not -Throw
     }
 
+    It 'accepts hash-bound ETL header snapshot sources' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $hash = '6' * 64
+        $document.native_counters.events_lost.source =
+            "etl_header_snapshot:$hash;field=events_lost"
+        $document.native_counters.buffers_lost.source =
+            "etl_header_snapshot:$hash;field=buffers_lost"
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } | Should -Not -Throw
+    }
+
     It 'rejects an experiment relative-path substitution' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
         $document.experiment_relative_path = 'experiments/Other-Experiment'

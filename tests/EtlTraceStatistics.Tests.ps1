@@ -4,6 +4,40 @@
     $script:StatisticsScript = Join-Path `
         $script:ScriptsRoot `
         'Get-NxbEtlTraceStatistics.ps1'
+
+    function Get-NxbSyntheticEtlHeaderEvent {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)]
+            [uint64]$EventsLost,
+
+            [Parameter(Mandatory)]
+            [uint64]$BuffersLost,
+
+            [Parameter(Mandatory)]
+            [uint64]$BuffersWritten
+        )
+
+        $values = @([uint64]0) * 21
+        $values[0] = 65536
+        $values[3] = 8
+        $values[6] = 512
+        $values[7] = 2
+        $values[8] = $BuffersWritten
+            $values[10] = 8
+        $values[11] = $EventsLost
+        $values[20] = $BuffersLost
+
+        return [pscustomobject]@{
+            Id = 0
+            ProviderName = 'EventTrace'
+            Properties = @(
+                $values | ForEach-Object {
+                    [pscustomobject]@{ Value = $_ }
+                }
+            )
+        }
+    }
 }
 
 Describe 'NXB post-stop ETL trace statistics adapter' {
@@ -84,6 +118,65 @@ exit /b 7
         $result.buffers_lost.value | Should -Be 1
         $result.buffers_written.value | Should -Be 52
         $result.statistics_sha256 | Should -Match '^[0-9a-f]{64}$'
+    }
+
+    It 'falls back to the native ETL trace logfile header when xperf omits loss counters' {
+        @'
+@echo off
+if /I "%~1"=="-i" (
+  >"%~4" echo Trace Statistics
+  >>"%~4" echo Session Name : Synthetic
+  exit /b 0
+)
+exit /b 7
+'@ | Set-Content -LiteralPath $script:FakeXperf -Encoding ASCII
+
+        $headerReader = {
+            param([string]$Path)
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+                throw "Synthetic ETL input bulunamadı: $Path"
+            }
+
+            $values = @([uint64]0) * 21
+            $values[0] = 65536
+            $values[3] = 8
+            $values[6] = 512
+            $values[7] = 2
+            $values[8] = 57
+            $values[10] = 8
+            $values[11] = 4
+            $values[20] = 2
+
+            [pscustomobject]@{
+                Id = 0
+                ProviderName = 'EventTrace'
+                Properties = @(
+                    $values | ForEach-Object {
+                        [pscustomobject]@{ Value = $_ }
+                    }
+                )
+            }
+        }
+
+        $result = & $script:StatisticsScript `
+            -ExperimentPath $script:ExperimentPath `
+            -XperfExecutablePath $script:FakeXperf `
+            -EtlHeaderRecordProvider $headerReader `
+            -PassThru `
+            -Confirm:$false
+
+        $result.status | Should -Be 'measured'
+        $result.counter_source | Should -Be 'etl_header_snapshot'
+        $result.exit_code | Should -Be 0
+        $result.xperf.exit_code | Should -Be 0
+        $result.etl_header.status | Should -Be 'measured'
+        $result.events_lost.value | Should -Be 4
+        $result.buffers_lost.value | Should -Be 2
+        $result.buffers_written.value | Should -Be 57
+        $result.events_lost.source |
+            Should -Match '^etl_header_snapshot:[0-9a-f]{64};field=events_lost$'
+        $result.buffers_lost.source |
+            Should -Match '^etl_header_snapshot:[0-9a-f]{64};field=buffers_lost$'
     }
 
     It 'marks absent header fields unavailable without inventing zeroes' {

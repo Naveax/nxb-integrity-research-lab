@@ -127,7 +127,7 @@ def validate_counter_sources(document: dict[str, Any]) -> None:
         "realtime_buffers_lost": {"realtime_buffers_lost"},
     }
     source_pattern = re.compile(
-        r"^(wpr_status_snapshot|xperf_tracestats):[0-9a-f]{64};field=([a-z_]+)$"
+        r"^(wpr_status_snapshot|xperf_tracestats|etl_header_snapshot):[0-9a-f]{64};field=([a-z_]+)$"
     )
 
     for counter_name, counter in counters.items():

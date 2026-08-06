@@ -107,7 +107,7 @@ if ($PSVersionTable.PSEdition -cne 'Core') {
     throw 'Trace-loss validation PowerShell 7 içinde çalıştırılmalıdır.'
 }
 if (-not (Test-NxbValidationAdministrator)) {
-    throw 'Native WPR/xperf validation için yönetici PowerShell 7 gereklidir.'
+    throw 'Native WPR/ETL validation için yönetici PowerShell 7 gereklidir.'
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
@@ -117,7 +117,12 @@ $xperfPath = Resolve-NxbValidationExecutable -Candidate @('xperf.exe', 'xperf')
 $requiredExecutables = [ordered]@{
     git = $gitPath
     wpr = $wprPath
-    xperf = $xperfPath
+}
+if ([string]::IsNullOrWhiteSpace($xperfPath)) {
+    Write-Host (
+        'xperf.exe bulunamadı; post-stop native sayaçları ' +
+        'ETL TRACE_LOGFILE_HEADER üzerinden ölçülecek.'
+    ) -ForegroundColor Yellow
 }
 foreach ($required in $requiredExecutables.GetEnumerator()) {
     if ([string]::IsNullOrWhiteSpace([string]$required.Value) -or
@@ -245,7 +250,7 @@ try {
     try {
         if (-not $PSCmdlet.ShouldProcess(
             $nativeLabRoot,
-            'Run real WPR and xperf trace-loss accounting validation'
+            'Run real WPR and native ETL trace-loss accounting validation'
         )) {
             Add-NxbTraceLossGate `
                 -GateList $gates `
@@ -262,7 +267,7 @@ try {
         $nativeExperimentPath = & (Join-Path $PSScriptRoot 'New-Experiment.ps1') `
             -Root $nativeLabRoot `
             -Name 'Native-Trace-Loss-Validation' `
-            -Hypothesis 'Native WPR and xperf loss accounting is explicit and provenance-bound'
+            -Hypothesis 'Native WPR and TRACE_LOGFILE_HEADER loss accounting is explicit and provenance-bound'
 
         [void](& (Join-Path $PSScriptRoot 'Get-SystemCapabilities.ps1') `
             -ExperimentPath $nativeExperimentPath)
@@ -321,7 +326,11 @@ try {
         if ([string]$postStop.events_lost.status -cne 'measured' -or
             [string]$postStop.buffers_lost.status -cne 'measured' -or
             [string]$postStop.buffers_written.status -cne 'measured') {
-            throw 'Post-stop xperf trace-header sayaçları tam ölçülemedi.'
+            throw 'Post-stop native ETL trace-header sayaçları tam ölçülemedi.'
+        }
+        if ([string]::IsNullOrWhiteSpace($xperfPath) -and
+            [string]$postStop.counter_source -cne 'etl_header_snapshot') {
+            throw 'xperf olmadan post-stop sayaç kaynağı etl_header_snapshot değil.'
         }
         if ([string]$postStop.realtime_buffers_lost.status -cne 'not_applicable' -or
             [string]$accounting.native_counters.realtime_buffers_lost.status -cne 'not_applicable') {
@@ -357,6 +366,8 @@ try {
             post_stop_events_lost_status = [string]$postStop.events_lost.status
             post_stop_buffers_lost_status = [string]$postStop.buffers_lost.status
             post_stop_buffers_written_status = [string]$postStop.buffers_written.status
+            post_stop_counter_source = [string]$postStop.counter_source
+            xperf_available = -not [string]::IsNullOrWhiteSpace($xperfPath)
             post_stop_realtime_buffers_lost_status = [string]$postStop.realtime_buffers_lost.status
             etl_sha256 = [string]$accounting.capture.etl.sha256
             etl_length = [int64]$accounting.capture.etl.length

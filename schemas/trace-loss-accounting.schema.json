@@ -51,7 +51,7 @@
     },
     "nativeCounterSource": {
       "type": "string",
-      "pattern": "^(wpr_status_snapshot|xperf_tracestats):[0-9a-f]{64}(;field=[a-z_]+)?$"
+      "pattern": "^(wpr_status_snapshot|xperf_tracestats|etl_header_snapshot):[0-9a-f]{64}(;field=[a-z_]+)?$"
     },
     "counterMeasurement": {
       "oneOf": [
