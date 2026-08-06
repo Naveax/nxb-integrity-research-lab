@@ -2,53 +2,98 @@
 
 ## Status
 
-`IN PROGRESS — FOLLOW-UP EXACT-HEAD WINDOWS RUN REQUIRED`
+`PASSED`
 
 - Tracking issue: `#2`
 - Stacked draft pull request: `#9`
 - Branch: `nxb-irl-004-memory-working-set`
-- First attempted head: `df33920c9b908f90e057d1854e257a9593ef5e2b`
-- Follow-up head: `e7a678d6237cecbc4c9d32940424891c713c6ce4`
-- First attempt started UTC: `2026-08-06T12:13:42.6341966Z`
-- First attempt stopped UTC: `2026-08-06T12:13:48.9970596Z`
+- Validated implementation head: `d494a12fd7dd044ca0abaa83f1a8c6ffcbff6773`
+- Validation started UTC: `2026-08-06T17:14:24.8059409Z`
+- Validation stopped UTC: `2026-08-06T17:14:45.1150111Z`
 
-GitHub Actions remain intentionally disabled. Validation is performed locally on real Windows from an elevated PowerShell 7 shell.
+GitHub Actions remain intentionally disabled. Validation was performed locally on real Windows from an elevated PowerShell 7 shell using a fresh exact-head clone.
 
-## First attempt result
-
-The fresh clone and exact-head checks passed. The runner stopped before any substantive gate because the first call to `Add-NxbMemoryGate` attempted to bind an intentionally empty `List[object]` to a mandatory collection parameter that did not declare `AllowEmptyCollection`.
+## Environment
 
 ```text
-failure_message:
-  Cannot bind argument to parameter 'GateList' because it is an empty collection.
-
-gates: []
+OS:                 Microsoft Windows NT 10.0.22631.0
+PowerShell:         7.6.4 Core
+Windows PowerShell: 5.1 with Pester 5.7.1
+WPR:                C:\Windows\system32\wpr.exe
+Elevated:           true
 ```
 
-This failure does not establish a parser, analyzer, native WPR or Pester result. No validation gate ran.
+## Profile provenance
 
-## Follow-up repair
-
-The follow-up commit adds:
-
-```powershell
-[AllowEmptyCollection()]
-[Collections.Generic.List[object]]$GateList
+```text
+relative_path:          profiles/Nxb.MemoryWorkingSet.wprp
+name:                   NxbMemoryWorkingSet
+sha256:                 bf03c2ec1e138f314f58d31f9e57bdefac3af089974817e0e81645e0ed3d14f5
+length:                 2948 bytes
+buffer_size_kib:        1024
+buffers:                64
+maximum_file_size_mib:  512
+file_mode:              Circular
+keyword_count:          11
+stack_count:            9
+reference_set_enabled:  false
 ```
 
-This permits the first gate record to populate the initially empty gate list while retaining the mandatory, strongly typed collection contract.
+## Exact-head gate results
 
-## Required follow-up gates
+All nine gates passed:
 
-- [ ] dependency bootstrap — PowerShell 7
-- [ ] dependency bootstrap — Windows PowerShell 5.1
-- [ ] PowerShell parser
-- [ ] PSScriptAnalyzer
-- [ ] memory-profile repository smoke
-- [ ] exact structural memory-profile contract
-- [ ] native `wpr.exe -profiles` acceptance
-- [ ] PowerShell 7 focused Pester
-- [ ] Windows PowerShell 5.1 focused Pester
-- [ ] summary and review ZIP inspection
+- [x] dependency bootstrap — PowerShell 7
+- [x] dependency bootstrap — Windows PowerShell 5.1
+- [x] PowerShell parser
+- [x] PSScriptAnalyzer
+- [x] memory-profile repository smoke
+- [x] exact structural memory-profile contract
+- [x] native `wpr.exe -profiles` acceptance
+- [x] PowerShell 7 focused Pester
+- [x] Windows PowerShell 5.1 focused Pester
+- [x] summary and review ZIP inspection
 
-No gate is accepted until the follow-up exact-head summary and review ZIP are inspected.
+Focused test results:
+
+```text
+PowerShell 7 / Pester 6.0.1:             10 passed, 0 failed
+Windows PowerShell 5.1 / Pester 5.7.1:  10 passed, 0 failed
+```
+
+No test was skipped, inconclusive or not run.
+
+## Review artifact
+
+```text
+file:    nxb-memory-profile-d494a12fd7dd-20260806T171424Z-review.zip
+sha256:  da57bd23983f39939681addbcf8469f507cf1a39297ca0f761d67738f8772ef8
+```
+
+The archive contains:
+
+- `memory-profile-validation-summary.json`,
+- PowerShell 7 and Windows PowerShell 5.1 Pester XML,
+- dependency bootstrap logs,
+- PowerShell parser log,
+- PSScriptAnalyzer log,
+- repository-smoke log,
+- profile-contract output,
+- native WPR parser output.
+
+## Earlier failed attempts
+
+Two non-elevated launcher attempts were correctly rejected before cloning or validation. The first elevated implementation attempt reached a fresh exact-head clone but stopped before substantive gates because the gate-recording helper did not accept an initially empty strongly typed list. That binder defect was repaired with `AllowEmptyCollection`; the successful run above supersedes those attempts.
+
+## Scope boundary
+
+This validation closes the bounded memory WPR profile foundation only. It does not yet validate:
+
+- process/system memory snapshot collection,
+- ETL hard/soft fault extraction,
+- deterministic bounded memory-pressure fixtures,
+- paired collector-overhead calibration,
+- trace-loss behavior under memory workload,
+- end-to-end memory evidence finalization.
+
+PR #9 remains draft while those implementation slices are in progress.
