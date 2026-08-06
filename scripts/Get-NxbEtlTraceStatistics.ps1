@@ -27,6 +27,7 @@ function Get-NxbTraceStatisticValue {
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
+        [AllowEmptyString()]
         [string[]]$Lines,
 
         [Parameter(Mandatory)]

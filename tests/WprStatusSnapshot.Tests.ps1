@@ -76,6 +76,32 @@ exit /b 7
         $snapshot.realtime_buffers_lost.status | Should -Be 'not_applicable'
     }
 
+    It 'preserves and ignores empty WPR status lines while parsing counters' {
+        @"
+@echo off
+if /I "%~1"=="-status" (
+  echo.
+  echo Collector Name          : NT Kernel Logger
+  echo Events Lost             : 4
+  echo.
+  exit /b 0
+)
+exit /b 7
+"@ | Set-Content -LiteralPath $script:FakeWpr -Encoding ASCII
+
+        $snapshot = & $script:SnapshotScript `
+            -ExperimentPath $script:ExperimentPath `
+            -WprExecutablePath $script:FakeWpr `
+            -PassThru `
+            -Confirm:$false
+
+        $snapshot.status | Should -Be 'measured'
+        $snapshot.events_lost.status | Should -Be 'measured'
+        $snapshot.events_lost.value | Should -Be 4
+        @($snapshot.raw_output) | Should -Contain ''
+        $snapshot.raw_output_sha256 | Should -Match '^[0-9a-f]{64}$'
+    }
+
     It 'uses Dropped event only when collector Events Lost is absent' {
         @'
 @echo off

@@ -57,6 +57,35 @@ exit /b 7
         $result.realtime_buffers_lost.status | Should -Be 'not_applicable'
     }
 
+    It 'preserves and ignores empty xperf report lines while parsing counters' {
+        @"
+@echo off
+if /I "%~1"=="-i" (
+  >"%~4" echo.
+  >>"%~4" echo Trace Statistics
+  >>"%~4" echo.
+  >>"%~4" echo Events Lost      : 6
+  >>"%~4" echo Buffers Lost     : 1
+  >>"%~4" echo Buffers Written  : 52
+  >>"%~4" echo.
+  exit /b 0
+)
+exit /b 7
+"@ | Set-Content -LiteralPath $script:FakeXperf -Encoding ASCII
+
+        $result = & $script:StatisticsScript `
+            -ExperimentPath $script:ExperimentPath `
+            -XperfExecutablePath $script:FakeXperf `
+            -PassThru `
+            -Confirm:$false
+
+        $result.status | Should -Be 'measured'
+        $result.events_lost.value | Should -Be 6
+        $result.buffers_lost.value | Should -Be 1
+        $result.buffers_written.value | Should -Be 52
+        $result.statistics_sha256 | Should -Match '^[0-9a-f]{64}$'
+    }
+
     It 'marks absent header fields unavailable without inventing zeroes' {
         @'
 @echo off
