@@ -1,8 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
-    [string]$Path,
+    [string]$Path = (Join-Path `
+        (Split-Path -Parent $PSScriptRoot) `
+        'tests\fixtures\memory-snapshot.valid.json'),
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
