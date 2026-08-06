@@ -5,7 +5,7 @@ BeforeAll {
         $script:RepositoryRoot `
         'tests\fixtures\memory-etl-summary.valid.json'
 
-    function Write-MemoryEtlSummaryFixture {
+    function ConvertTo-MemoryEtlSummaryFixture {
         param(
             [Parameter(Mandatory)]
             [object]$Document,
@@ -49,7 +49,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects an experiment-relative path mismatch' {
         $script:Document.experiment_relative_path = 'experiments/other'
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -61,7 +61,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects a trace range with start after end' {
         $script:Document.trace_start_utc = '2026-08-06T22:01:00Z'
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -81,7 +81,7 @@ Describe 'NXB memory ETL summary contract' {
             $duplicate
         )
         $script:Document.summary.process_count = 2
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -93,7 +93,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects a partial target identity' {
         $script:Document.processes[0].identity_status = 'partial'
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -105,7 +105,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects aggregate counts that do not reconcile' {
         $script:Document.events.hard_fault.count = 4
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -116,8 +116,10 @@ Describe 'NXB memory ETL summary contract' {
     }
 
     It 'rejects a soft-fault total that does not match components' {
-        $script:Document.events.soft_fault_total.count = 8
-        Write-MemoryEtlSummaryFixture `
+        $script:Document.events.soft_fault_total.count = 10
+        $script:Document.events.soft_fault_total.unattributed_count = 1
+        $script:Document.events.soft_fault_total.attribution = 'partial'
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -129,7 +131,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects an event class that is both measured and unsupported' {
         $script:Document.quality.unsupported_event_types = @('hard_fault')
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -141,7 +143,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects summary counts that do not match event states' {
         $script:Document.summary.measured_event_class_count = 9
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
@@ -153,7 +155,7 @@ Describe 'NXB memory ETL summary contract' {
 
     It 'rejects a claim of hard-fault absence' {
         $script:Document.claims.hard_fault_absence = $true
-        Write-MemoryEtlSummaryFixture `
+        ConvertTo-MemoryEtlSummaryFixture `
             -Document $script:Document `
             -Path $script:TestManifest
 
