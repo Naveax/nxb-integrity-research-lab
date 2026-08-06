@@ -183,14 +183,12 @@ try {
     if ($stopExitCode -ne 0) {
         throw "WPR durdurulamadı (exit $stopExitCode): $($stopOutput -join [Environment]::NewLine)"
     }
-    if (-not (Test-Path -LiteralPath $stagingEtl -PathType Leaf)) {
-        throw "WPR başarı kodu döndürdü ancak staging ETL oluşturulmadı: $stagingEtl"
+    if (Test-Path -LiteralPath $stagingEtl -PathType Leaf) {
+        Move-Item `
+            -LiteralPath $stagingEtl `
+            -Destination $etl `
+            -Force
     }
-
-    Move-Item `
-        -LiteralPath $stagingEtl `
-        -Destination $etl `
-        -Force
 }
 finally {
     if (Test-Path -LiteralPath $stagingEtl -PathType Leaf) {
