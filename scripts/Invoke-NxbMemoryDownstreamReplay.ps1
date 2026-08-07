@@ -62,7 +62,7 @@ function Assert-NxbNormalFile {
     }
 }
 
-function Get-NxbCanonicalReplayTimeTicks {
+function Get-NxbCanonicalReplayTimeTick {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -192,17 +192,17 @@ if ([int]$sourceSummary.target.process_id -ne [int]$receipt.workload.process_id 
     throw 'Source summary target identity does not match the capture receipt.'
 }
 
-$sourceTraceStartTicks = Get-NxbCanonicalReplayTimeTicks `
+$sourceTraceStartTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$sourceSummary.trace_start_utc)
-$receiptTraceStartTicks = Get-NxbCanonicalReplayTimeTicks `
+$receiptTraceStartTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$receipt.trace_started_utc)
-$sourceTraceEndTicks = Get-NxbCanonicalReplayTimeTicks `
+$sourceTraceEndTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$sourceSummary.trace_end_utc)
-$receiptTraceEndTicks = Get-NxbCanonicalReplayTimeTicks `
+$receiptTraceEndTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$receipt.trace_stopped_utc)
-$sourceTargetStartTicks = Get-NxbCanonicalReplayTimeTicks `
+$sourceTargetStartTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$sourceSummary.target.process_start_utc)
-$receiptTargetStartTicks = Get-NxbCanonicalReplayTimeTicks `
+$receiptTargetStartTicks = Get-NxbCanonicalReplayTimeTick `
     -Value ([datetime]$receipt.workload.process_start_utc)
 if ($sourceTraceStartTicks -ne $receiptTraceStartTicks -or
     $sourceTraceEndTicks -ne $receiptTraceEndTicks) {
@@ -328,11 +328,21 @@ Compress-Archive `
     -DestinationPath $reviewZip `
     -Force
 
-Write-Host "Memory downstream replay source: $sourceFull"
-Write-Host "Memory downstream replay summary: $replaySummaryPath"
-Write-Host "Memory downstream replay result: $resultPath"
-Write-Host "Memory downstream replay review ZIP: $reviewZip"
-Write-Host 'Raw ETL, full dumper text and normalized CSV were not copied into the review ZIP.'
+Write-Information `
+    -MessageData "Memory downstream replay source: $sourceFull" `
+    -InformationAction Continue
+Write-Information `
+    -MessageData "Memory downstream replay summary: $replaySummaryPath" `
+    -InformationAction Continue
+Write-Information `
+    -MessageData "Memory downstream replay result: $resultPath" `
+    -InformationAction Continue
+Write-Information `
+    -MessageData "Memory downstream replay review ZIP: $reviewZip" `
+    -InformationAction Continue
+Write-Information `
+    -MessageData 'Raw ETL, full dumper text and normalized CSV were not copied into the review ZIP.' `
+    -InformationAction Continue
 
 if ($PassThru) {
     $result
