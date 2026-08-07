@@ -39,8 +39,17 @@ EVENT_ALIASES = {
     "pagefilemappedsectiondelete": "mapped_section_delete",
 }
 
+GENERIC_PAGEFAULT_TYPE_ALIASES = {
+    "transition": "transition_fault",
+    "transitionfault": "transition_fault",
+    "demandzero": "demand_zero_fault",
+    "demandzerofault": "demand_zero_fault",
+    "copyonwrite": "copy_on_write_fault",
+    "guardpage": "guard_page_fault",
+    "guardpagefault": "guard_page_fault",
+}
+
 KNOWN_UNMAPPED_MEMORY_EVENTS = {
-    "pagefault",
     "pagefaultav",
     "pagefilebackedimagemapping",
     "mapfile",
@@ -141,10 +150,6 @@ def select_xperf_encoding(path: Path) -> tuple[str, str, str]:
     if inferred_utf16 is not None:
         return inferred_utf16, inferred_utf16 + "-no-bom", "strict"
 
-    # Microsoft documents `xperf -a dumper` as producing ANSI text. On
-    # Windows, `mbcs` follows the active ANSI code page. Replacement fallback
-    # is intentional: process/file display names are not used to derive event
-    # type, timestamp, PID/TID digits, or byte counts, all of which are ASCII.
     if sys.platform == "win32":
         try:
             codecs.lookup("mbcs")
@@ -164,9 +169,6 @@ def select_xperf_encoding(path: Path) -> tuple[str, str, str]:
         except LookupError:
             pass
 
-    # Single-byte fallback preserves every input byte and therefore preserves
-    # ASCII separators and numeric fields even when display-name bytes are from
-    # an unknown ANSI code page.
     return "latin-1", "single-byte-structural-fallback", "strict"
 
 
@@ -176,6 +178,10 @@ def normalize_token(value: str) -> str:
 
 def event_alias(value: str) -> str | None:
     return EVENT_ALIASES.get(normalize_token(value))
+
+
+def generic_pagefault_alias(value: str) -> str | None:
+    return GENERIC_PAGEFAULT_TYPE_ALIASES.get(normalize_token(value))
 
 
 def parse_non_negative_int(value: str, label: str) -> int:
@@ -275,6 +281,25 @@ def derive_size_bytes(
     return None, None
 
 
+def write_normalized_row(
+    writer: csv.DictWriter,
+    normalized_event: str,
+    timestamp: int,
+    process_id: int,
+    thread_id: int,
+    size_bytes: int | None,
+) -> None:
+    writer.writerow(
+        {
+            "event_type": normalized_event,
+            "timestamp_us": timestamp,
+            "process_id": process_id,
+            "thread_id": thread_id,
+            "size_bytes": "" if size_bytes is None else size_bytes,
+        }
+    )
+
+
 def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
     require(args.max_event_count > 0, "MaxEventCount must be positive.")
     require(args.input.is_file(), f"Input file not found: {args.input}")
@@ -291,6 +316,8 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
     hard_fault_raw_aliases_with_data: set[str] = set()
     virtual_region_size_sources: set[str] = set()
     hard_fault_size_sources: set[str] = set()
+    observed_page_fault_type_counts: dict[str, int] = {}
+    mapped_page_fault_type_counts: dict[str, int] = {}
     unmapped_page_fault_type_counts: dict[str, int] = {}
     unmapped_hard_fault_count = 0
     normalized_event_count = 0
@@ -330,16 +357,64 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
                     and "type" in pagefault_indices
                 ):
                     headers[raw_key] = pagefault_indices
-                    unsupported_raw_types.add(raw_event)
+                    observed_raw_types.add(raw_event)
                     continue
-                if raw_key in headers:
-                    raw_type = value_at(fields, headers[raw_key].get("type"))
-                    type_key = raw_type if raw_type else "<empty>"
-                    unmapped_page_fault_type_counts[type_key] = (
-                        unmapped_page_fault_type_counts.get(type_key, 0) + 1
+
+                if raw_key not in headers:
+                    raise BridgeFailure(
+                        "PageFault row appeared before a parseable header at line "
+                        f"{reader.line_num}."
+                    )
+
+                indices = headers[raw_key]
+                raw_type = value_at(fields, indices.get("type"))
+                type_name = raw_type if raw_type else "<empty>"
+                observed_page_fault_type_counts[type_name] = (
+                    observed_page_fault_type_counts.get(type_name, 0) + 1
+                )
+                normalized_pagefault = generic_pagefault_alias(raw_type)
+                if normalized_pagefault is None:
+                    unmapped_page_fault_type_counts[type_name] = (
+                        unmapped_page_fault_type_counts.get(type_name, 0) + 1
                     )
                     unsupported_raw_types.add(raw_event)
                     continue
+
+                timestamp = parse_non_negative_int(
+                    value_at(fields, indices.get("timestamp")),
+                    "timestamp_us",
+                )
+                process_id = parse_process_id(
+                    value_at(fields, indices.get("process"))
+                )
+                thread_id = parse_thread_id(
+                    value_at(fields, indices.get("thread"))
+                )
+
+                normalized_event_count += 1
+                require(
+                    normalized_event_count <= args.max_event_count,
+                    "Normalized event count exceeds MaxEventCount: "
+                    f"{args.max_event_count}",
+                )
+                if process_id == 0:
+                    process_attribution_partial = True
+
+                write_normalized_row(
+                    writer,
+                    normalized_pagefault,
+                    timestamp,
+                    process_id,
+                    thread_id,
+                    None,
+                )
+                row_counts[normalized_pagefault] = (
+                    row_counts.get(normalized_pagefault, 0) + 1
+                )
+                mapped_page_fault_type_counts[type_name] = (
+                    mapped_page_fault_type_counts.get(type_name, 0) + 1
+                )
+                continue
 
             if normalized_event is not None and is_header(
                 fields, normalized_event
@@ -411,14 +486,13 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
             if process_id == 0:
                 process_attribution_partial = True
 
-            writer.writerow(
-                {
-                    "event_type": normalized_event,
-                    "timestamp_us": timestamp,
-                    "process_id": process_id,
-                    "thread_id": thread_id,
-                    "size_bytes": "" if size_bytes is None else size_bytes,
-                }
+            write_normalized_row(
+                writer,
+                normalized_event,
+                timestamp,
+                process_id,
+                thread_id,
+                size_bytes,
             )
             row_counts[normalized_event] = (
                 row_counts.get(normalized_event, 0) + 1
@@ -445,6 +519,12 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
         },
         "observed_memory_headers": sorted(observed_raw_types),
         "known_unmapped_memory_event_names": sorted(unsupported_raw_types),
+        "observed_page_fault_type_counts": dict(
+            sorted(observed_page_fault_type_counts.items())
+        ),
+        "mapped_page_fault_type_counts": dict(
+            sorted(mapped_page_fault_type_counts.items())
+        ),
         "unmapped_page_fault_type_counts": dict(
             sorted(unmapped_page_fault_type_counts.items())
         ),
@@ -466,6 +546,7 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
         "claims": {
             "missing_event_type_means_zero": False,
             "hard_fault_bytes_exact": False,
+            "generic_pagefault_hardfault_normalized": False,
             "parser_completeness": "not_claimed",
         },
     }
