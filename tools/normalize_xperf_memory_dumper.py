@@ -78,6 +78,7 @@ HEADER_SIZE = {
 }
 HEADER_BASE = {"baseaddr", "baseaddress"}
 HEADER_END = {"endaddr", "endaddress"}
+HEADER_TYPE = {"type", "eventtype"}
 
 
 class BridgeFailure(ValueError):
@@ -228,6 +229,8 @@ def header_indices(fields: list[str]) -> dict[str, int]:
             result["base"] = index
         if token in HEADER_END and "end" not in result:
             result["end"] = index
+        if token in HEADER_TYPE and "type" not in result:
+            result["type"] = index
     return result
 
 
@@ -288,6 +291,7 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
     hard_fault_raw_aliases_with_data: set[str] = set()
     virtual_region_size_sources: set[str] = set()
     hard_fault_size_sources: set[str] = set()
+    unmapped_page_fault_type_counts: dict[str, int] = {}
     unmapped_hard_fault_count = 0
     normalized_event_count = 0
     process_attribution_partial = False
@@ -318,6 +322,24 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
             raw_event = fields[0].strip()
             raw_key = normalize_token(raw_event)
             normalized_event = event_alias(raw_event)
+
+            if raw_key == "pagefault":
+                pagefault_indices = header_indices(fields[1:])
+                if (
+                    "timestamp" in pagefault_indices
+                    and "type" in pagefault_indices
+                ):
+                    headers[raw_key] = pagefault_indices
+                    unsupported_raw_types.add(raw_event)
+                    continue
+                if raw_key in headers:
+                    raw_type = value_at(fields, headers[raw_key].get("type"))
+                    type_key = raw_type if raw_type else "<empty>"
+                    unmapped_page_fault_type_counts[type_key] = (
+                        unmapped_page_fault_type_counts.get(type_key, 0) + 1
+                    )
+                    unsupported_raw_types.add(raw_event)
+                    continue
 
             if normalized_event is not None and is_header(
                 fields, normalized_event
@@ -423,6 +445,9 @@ def normalize_stream(args: argparse.Namespace) -> dict[str, object]:
         },
         "observed_memory_headers": sorted(observed_raw_types),
         "known_unmapped_memory_event_names": sorted(unsupported_raw_types),
+        "unmapped_page_fault_type_counts": dict(
+            sorted(unmapped_page_fault_type_counts.items())
+        ),
         "virtual_region_size_sources": sorted(virtual_region_size_sources),
         "hard_fault_bytes_semantics": (
             "header_field"
