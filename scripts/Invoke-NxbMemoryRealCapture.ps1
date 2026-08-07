@@ -64,7 +64,7 @@ function Get-NxbMemoryCaptureTextSha256 {
     }
 }
 
-function Get-NxbMemoryCaptureLostEvents {
+function Get-NxbMemoryCaptureLostEventState {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -184,8 +184,8 @@ foreach ($requiredPath in @(
 $wpr = Get-Command wpr.exe -ErrorAction Stop
 $xperf = Get-Command xperf.exe -ErrorAction Stop
 $pwsh = Get-Command pwsh.exe -ErrorAction Stop
-$profile = & $profileValidator -PassThru
-$profileReference = "$($profile.Path)!NxbMemoryWorkingSet.Verbose"
+$profileMetadata = & $profileValidator -PassThru
+$profileReference = "$($profileMetadata.Path)!NxbMemoryWorkingSet.Verbose"
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
@@ -298,6 +298,10 @@ try {
                 $targetProcess.Kill()
             }
             catch {
+                Write-Warning (
+                    'Bounded memory probe could not be terminated after ' +
+                    "timeout: $($_.Exception.Message)"
+                )
             }
             throw 'Bounded memory probe exceeded the 15 second safety timeout.'
         }
@@ -316,16 +320,16 @@ try {
     $statusOutput = @(& $wpr.Source -status collectors -details 2>&1)
     $statusExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
     $statusLines = @($statusOutput | ForEach-Object { [string]$_ })
-    $lostEvents = Get-NxbMemoryCaptureLostEvents `
+    $lostEventState = Get-NxbMemoryCaptureLostEventState `
         -Lines $statusLines `
         -ExitCode $statusExit
-    $traceLoss = [string]$lostEvents.status
+    $traceLoss = [string]$lostEventState.status
     Write-NxbMemoryCaptureJson -Path $statusPath -InputObject ([ordered]@{
         schema_version = 1
         captured_utc = [DateTime]::UtcNow.ToString('o')
         exit_code = $statusExit
         raw_output = $statusLines
-        events_lost = $lostEvents
+        events_lost = $lostEventState
     })
 
     $stopOutput = @(& $wpr.Source -stop $etlPath 2>&1)
@@ -370,7 +374,7 @@ try {
         -MachineId $machineId `
         -BootId $bootId `
         -TraceSha256 ((Get-FileHash -LiteralPath $etlPath -Algorithm SHA256).Hash.ToLowerInvariant()) `
-        -ProfileSha256 ([string]$profile.Sha256) `
+        -ProfileSha256 ([string]$profileMetadata.Sha256) `
         -TraceStartUtc $traceStartedUtc `
         -TraceEndUtc $traceStoppedUtc `
         -TargetProcessId $targetProcessId `
@@ -394,6 +398,7 @@ catch {
             & $wpr.Source -cancel 2>&1 | Out-Null
         }
         catch {
+            Write-Warning "WPR cleanup cancel failed: $($_.Exception.Message)"
         }
         $wprStarted = $false
     }
@@ -412,10 +417,10 @@ finally {
         machine_id = $machineId
         boot_id = $bootId
         profile = [ordered]@{
-            path = [string]$profile.Path
-            sha256 = [string]$profile.Sha256
-            maximum_file_size_mib = [int]$profile.MaximumFileSizeMiB
-            file_mode = [string]$profile.FileMode
+            path = [string]$profileMetadata.Path
+            sha256 = [string]$profileMetadata.Sha256
+            maximum_file_size_mib = [int]$profileMetadata.MaximumFileSizeMiB
+            file_mode = [string]$profileMetadata.FileMode
         }
         workload = [ordered]@{
             process_id = $targetProcessId
