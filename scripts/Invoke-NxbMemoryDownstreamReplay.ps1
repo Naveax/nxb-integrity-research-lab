@@ -180,6 +180,21 @@ if ([int]$sourceSummary.target.process_id -ne [int]$receipt.workload.process_id 
     [string]$sourceSummary.target.image_sha256 -cne [string]$receipt.workload.image_sha256) {
     throw 'Source summary target identity does not match the capture receipt.'
 }
+
+$sourceTraceStart = ([datetime]$sourceSummary.trace_start_utc).ToUniversalTime()
+$receiptTraceStart = ([datetime]$receipt.trace_started_utc).ToUniversalTime()
+$sourceTraceEnd = ([datetime]$sourceSummary.trace_end_utc).ToUniversalTime()
+$receiptTraceEnd = ([datetime]$receipt.trace_stopped_utc).ToUniversalTime()
+$sourceTargetStart = ([datetime]$sourceSummary.target.process_start_utc).ToUniversalTime()
+$receiptTargetStart = ([datetime]$receipt.workload.process_start_utc).ToUniversalTime()
+if ($sourceTraceStart.Ticks -ne $receiptTraceStart.Ticks -or
+    $sourceTraceEnd.Ticks -ne $receiptTraceEnd.Ticks) {
+    throw 'Source summary trace timing does not match the capture receipt.'
+}
+if ($sourceTargetStart.Ticks -ne $receiptTargetStart.Ticks) {
+    throw 'Source summary target start time does not match the capture receipt.'
+}
+
 if ([string]$sourceSummary.quality.trace_loss -cne
         [string]$receipt.trace_quality.trace_loss -or
     [string]$sourceSummary.quality.circular_overwrite -cne
