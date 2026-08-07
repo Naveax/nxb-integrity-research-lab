@@ -203,7 +203,6 @@ if ([string]$manifest.status -notin @('prepared', 'recording')) {
     throw "Measured memory workload requires prepared or recording experiment state: $($manifest.status)"
 }
 
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
 $workloadPath = Join-Path $PSScriptRoot 'Invoke-NxbMemoryProbeWorkload.ps1'
 if (-not (Test-Path -LiteralPath $workloadPath -PathType Leaf)) {
     throw "Memory probe workload not found: $workloadPath"
