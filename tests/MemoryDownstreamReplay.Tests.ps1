@@ -123,6 +123,7 @@ BeforeAll {
             root = $Root
             csv = $csv
             summary = $summary
+            receipt = Join-Path $Root 'memory-real-capture-receipt.json'
             bridge_manifest = Join-Path `
                 $bridge `
                 'memory-xperf-bridge-manifest.json'
@@ -148,6 +149,27 @@ Describe 'NXB real memory downstream replay' {
         $result.raw_etl_included | Should -BeFalse
         $result.raw_dumper_included | Should -BeFalse
         $result.normalized_csv_included | Should -BeFalse
+    }
+
+    It 'accepts receipt timing below canonical microsecond precision' {
+        $capture = New-TestMemoryCapture -Root (Join-Path $TestDrive 'capture-100ns')
+        $receipt = Get-Content -LiteralPath $capture.receipt -Raw |
+            ConvertFrom-Json
+        $receipt.trace_started_utc = '2026-08-06T22:00:00.0000001Z'
+        $receipt.trace_stopped_utc = '2026-08-06T22:00:10.0000001Z'
+        $receipt.workload.process_start_utc = '2026-08-06T21:59:00.0000001Z'
+        Write-TestJson -Path $capture.receipt -Value $receipt
+        $output = Join-Path $TestDrive 'replay-100ns'
+
+        $result = & $script:ReplayPath `
+            -ExpectedReplayHead $script:ReplayHead `
+            -ExpectedSourceCaptureHead $script:SourceHead `
+            -SourceCaptureDirectory $capture.root `
+            -OutputDirectory $output `
+            -PassThru
+
+        $result.status | Should -Be 'passed'
+        $result.byte_identical_summary | Should -BeTrue
     }
 
     It 'rejects a source capture head mismatch' {
@@ -192,5 +214,22 @@ Describe 'NXB real memory downstream replay' {
                 -SourceCaptureDirectory $capture.root `
                 -OutputDirectory $output
         } | Should -Throw
+    }
+
+    It 'rejects source receipt trace timing drift' {
+        $capture = New-TestMemoryCapture -Root (Join-Path $TestDrive 'capture-time')
+        $receipt = Get-Content -LiteralPath $capture.receipt -Raw |
+            ConvertFrom-Json
+        $receipt.trace_started_utc = '2026-08-06T22:00:01Z'
+        Write-TestJson -Path $capture.receipt -Value $receipt
+        $output = Join-Path $TestDrive 'replay-time'
+
+        {
+            & $script:ReplayPath `
+                -ExpectedReplayHead $script:ReplayHead `
+                -ExpectedSourceCaptureHead $script:SourceHead `
+                -SourceCaptureDirectory $capture.root `
+                -OutputDirectory $output
+        } | Should -Throw '*trace timing does not match*'
     }
 }
