@@ -31,28 +31,39 @@ if ([string]::IsNullOrWhiteSpace($outputParent)) {
 
 $headers = [Collections.Generic.List[object]]::new()
 $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-foreach ($line in Get-Content -LiteralPath $inputFull) {
-    $fields = @([string]$line -split ',' | ForEach-Object { $_.Trim() })
-    if ($fields.Count -lt 2) {
-        continue
-    }
-    if ([string]$fields[1] -cne 'TimeStamp') {
-        continue
-    }
+$reader = [IO.StreamReader]::new($inputFull, $true)
+try {
+    while (-not $reader.EndOfStream) {
+        $line = $reader.ReadLine()
+        if ($null -eq $line) {
+            break
+        }
 
-    $eventName = [string]$fields[0]
-    if ([string]::IsNullOrWhiteSpace($eventName)) {
-        continue
-    }
-    if (-not $seen.Add([string]$line)) {
-        continue
-    }
+        $fields = @([string]$line -split ',' | ForEach-Object { $_.Trim() })
+        if ($fields.Count -lt 2) {
+            continue
+        }
+        if ([string]$fields[1] -cne 'TimeStamp') {
+            continue
+        }
 
-    $headers.Add([pscustomobject][ordered]@{
-        event_name = $eventName
-        columns = @($fields[1..($fields.Count - 1)])
-        header_text = [string]$line
-    })
+        $eventName = [string]$fields[0]
+        if ([string]::IsNullOrWhiteSpace($eventName)) {
+            continue
+        }
+        if (-not $seen.Add([string]$line)) {
+            continue
+        }
+
+        $headers.Add([pscustomobject][ordered]@{
+            event_name = $eventName
+            columns = @($fields[1..($fields.Count - 1)])
+            header_text = [string]$line
+        })
+    }
+}
+finally {
+    $reader.Dispose()
 }
 
 $document = [pscustomobject][ordered]@{
