@@ -29,9 +29,11 @@ $processStartUtc = $process.StartTime.ToUniversalTime()
 $privateBytes = [int64]$PrivateMemoryMiB * 1MB
 $mappedBytes = [int64]$MappedFileMiB * 1MB
 $pageSize = 4096
+$probeId = [guid]::NewGuid().ToString('N')
 $tempFile = Join-Path `
     ([IO.Path]::GetTempPath()) `
-    ('nxb-memory-probe-' + [guid]::NewGuid().ToString('N') + '.bin')
+    ('nxb-memory-probe-' + $probeId + '.bin')
+$mapName = 'nxb-memory-probe-' + $probeId
 
 $buffer = $null
 $fileStream = $null
@@ -56,7 +58,7 @@ try {
     $fileStream.SetLength($mappedBytes)
     $mappedFile = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
         $fileStream,
-        $null,
+        $mapName,
         $mappedBytes,
         [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
         [IO.HandleInheritability]::None,
