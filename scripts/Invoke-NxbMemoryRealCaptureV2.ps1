@@ -61,6 +61,7 @@ function Resolve-NxbMemoryXperfPath {
             }
         }
         catch {
+            continue
         }
     }
 
