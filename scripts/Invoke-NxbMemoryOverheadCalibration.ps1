@@ -328,7 +328,7 @@ function Invoke-NxbMemoryCalibrationCaptureArm {
         [object]$Context,
 
         [Parameter(Mandatory)]
-        [object]$Profile,
+        [object]$MemoryProfile,
 
         [Parameter(Mandatory)]
         [string]$ProfileProvenanceSha256,
@@ -355,7 +355,7 @@ function Invoke-NxbMemoryCalibrationCaptureArm {
         [string]$PowerShellPath
     )
 
-    $profileReference = "$($Profile.Path)!NxbMemoryWorkingSet.Verbose"
+    $profileReference = "$($MemoryProfile.Path)!NxbMemoryWorkingSet.Verbose"
     $captureStarted = $false
     $captureError = $null
     $baseArm = $null
@@ -782,17 +782,17 @@ if (-not (Test-Path -LiteralPath $experimentsRoot -PathType Container)) {
 $wprPath = Resolve-NxbExecutablePath `
     -Name 'wpr.exe' `
     -ExplicitPath $WprExecutablePath
-$profile = & (Join-Path $PSScriptRoot 'Test-NxbMemoryWprProfile.ps1') -PassThru
+$memoryProfile = & (Join-Path $PSScriptRoot 'Test-NxbMemoryWprProfile.ps1') -PassThru
 $profileProvenance = [ordered]@{
-    relative_path = [string]$profile.RelativePath
-    sha256 = [string]$profile.Sha256
-    length = [int64]$profile.Length
-    profile_name = [string]$profile.Name
-    file_profile_id = [string]$profile.FileProfileId
-    buffer_size_kib = [int]$profile.BufferSizeKiB
-    buffers = [int]$profile.Buffers
-    maximum_file_size_mib = [int]$profile.MaximumFileSizeMiB
-    file_mode = [string]$profile.FileMode
+    relative_path = [string]$memoryProfile.RelativePath
+    sha256 = [string]$memoryProfile.Sha256
+    length = [int64]$memoryProfile.Length
+    profile_name = [string]$memoryProfile.Name
+    file_profile_id = [string]$memoryProfile.FileProfileId
+    buffer_size_kib = [int]$memoryProfile.BufferSizeKiB
+    buffers = [int]$memoryProfile.Buffers
+    maximum_file_size_mib = [int]$memoryProfile.MaximumFileSizeMiB
+    file_mode = [string]$memoryProfile.FileMode
 }
 $profileProvenanceSha256 = Get-NxbCanonicalJsonHash -InputObject $profileProvenance
 
@@ -832,8 +832,8 @@ $workload = [ordered]@{
         mapped_file_mib = $MappedFileMiB
         hold_milliseconds = $HoldMilliseconds
         page_stride_bytes = 4096
-        capture_profile_sha256 = [string]$profile.Sha256
-        capture_profile_id = [string]$profile.FileProfileId
+        capture_profile_sha256 = [string]$memoryProfile.Sha256
+        capture_profile_id = [string]$memoryProfile.FileProfileId
     }
     timeout_seconds = $TimeoutSeconds
 }
@@ -967,7 +967,7 @@ try {
             else {
                 $arms.capture = Invoke-NxbMemoryCalibrationCaptureArm `
                     -Context $contexts.capture `
-                    -Profile $profile `
+                    -MemoryProfile $memoryProfile `
                     -ProfileProvenanceSha256 $profileProvenanceSha256 `
                     -WprPath $wprPath `
                     -PrivateMiB $PrivateMemoryMiB `
