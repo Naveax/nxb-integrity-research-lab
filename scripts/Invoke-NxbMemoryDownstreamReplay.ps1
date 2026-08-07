@@ -62,6 +62,17 @@ function Assert-NxbNormalFile {
     }
 }
 
+function Get-NxbCanonicalReplayTimeTicks {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [datetime]$Value
+    )
+
+    $utcTicks = $Value.ToUniversalTime().Ticks
+    return $utcTicks - ($utcTicks % 10)
+}
+
 if ($env:OS -cne 'Windows_NT') {
     throw 'Memory downstream replay requires Windows.'
 }
@@ -181,17 +192,23 @@ if ([int]$sourceSummary.target.process_id -ne [int]$receipt.workload.process_id 
     throw 'Source summary target identity does not match the capture receipt.'
 }
 
-$sourceTraceStart = ([datetime]$sourceSummary.trace_start_utc).ToUniversalTime()
-$receiptTraceStart = ([datetime]$receipt.trace_started_utc).ToUniversalTime()
-$sourceTraceEnd = ([datetime]$sourceSummary.trace_end_utc).ToUniversalTime()
-$receiptTraceEnd = ([datetime]$receipt.trace_stopped_utc).ToUniversalTime()
-$sourceTargetStart = ([datetime]$sourceSummary.target.process_start_utc).ToUniversalTime()
-$receiptTargetStart = ([datetime]$receipt.workload.process_start_utc).ToUniversalTime()
-if ($sourceTraceStart.Ticks -ne $receiptTraceStart.Ticks -or
-    $sourceTraceEnd.Ticks -ne $receiptTraceEnd.Ticks) {
+$sourceTraceStartTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$sourceSummary.trace_start_utc)
+$receiptTraceStartTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$receipt.trace_started_utc)
+$sourceTraceEndTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$sourceSummary.trace_end_utc)
+$receiptTraceEndTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$receipt.trace_stopped_utc)
+$sourceTargetStartTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$sourceSummary.target.process_start_utc)
+$receiptTargetStartTicks = Get-NxbCanonicalReplayTimeTicks `
+    -Value ([datetime]$receipt.workload.process_start_utc)
+if ($sourceTraceStartTicks -ne $receiptTraceStartTicks -or
+    $sourceTraceEndTicks -ne $receiptTraceEndTicks) {
     throw 'Source summary trace timing does not match the capture receipt.'
 }
-if ($sourceTargetStart.Ticks -ne $receiptTargetStart.Ticks) {
+if ($sourceTargetStartTicks -ne $receiptTargetStartTicks) {
     throw 'Source summary target start time does not match the capture receipt.'
 }
 
