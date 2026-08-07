@@ -160,6 +160,7 @@ function Measure-NxbMemoryProcessSample {
         [ref]$PeakPrivateBytes,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [Collections.Generic.List[string]]$Diagnostics
     )
 
