@@ -175,7 +175,7 @@ foreach ($parsePath in @($bridgePath, $exportPath, $testPath, $PSCommandPath)) {
     ) | Out-Null
     foreach ($parseError in @($parseErrors)) {
         $parseFailures.Add(
-            "$parsePath:$($parseError.Extent.StartLineNumber): " +
+            "${parsePath}:$($parseError.Extent.StartLineNumber): " +
             $parseError.Message
         )
     }
