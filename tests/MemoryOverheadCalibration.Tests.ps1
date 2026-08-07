@@ -9,7 +9,7 @@ BeforeAll {
     $script:MeasuredText = Get-Content -LiteralPath $script:MeasuredPath -Raw
     $script:CalibrationText = Get-Content -LiteralPath $script:CalibrationPath -Raw
 
-    function New-MemoryCalibrationTestExperiment {
+    function Get-MemoryCalibrationTestExperimentFixture {
         param(
             [Parameter(Mandatory)]
             [string]$Path,
@@ -100,8 +100,8 @@ Describe 'NXB paired memory overhead calibration' {
     It 'measures deterministic bounded memory workload checksums on Windows' -Skip:($env:OS -cne 'Windows_NT') {
         $first = Join-Path $TestDrive 'measured-first'
         $second = Join-Path $TestDrive 'measured-second'
-        New-MemoryCalibrationTestExperiment -Path $first -Id 'memory-test-first'
-        New-MemoryCalibrationTestExperiment -Path $second -Id 'memory-test-second'
+        Get-MemoryCalibrationTestExperimentFixture -Path $first -Id 'memory-test-first'
+        Get-MemoryCalibrationTestExperimentFixture -Path $second -Id 'memory-test-second'
 
         $firstResult = & $script:MeasuredPath `
             -ExperimentPath $first `
