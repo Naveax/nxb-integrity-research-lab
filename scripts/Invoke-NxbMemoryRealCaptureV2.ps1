@@ -142,7 +142,36 @@ try {
         $arguments.OutputDirectory = $OutputDirectory
     }
 
-    & $baseCapture @arguments
+    try {
+        & $baseCapture @arguments
+    }
+    catch {
+        $baseException = $_.Exception
+        if (-not [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+            $receiptPath = Join-Path `
+                ([IO.Path]::GetFullPath($OutputDirectory)) `
+                'memory-real-capture-receipt.json'
+            if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
+                try {
+                    $receipt = Get-Content -LiteralPath $receiptPath -Raw |
+                        ConvertFrom-Json
+                    if (-not [string]::IsNullOrWhiteSpace([string]$receipt.failure)) {
+                        throw "Real memory capture failed: $($receipt.failure)"
+                    }
+                }
+                catch {
+                    if ($_.Exception.Message -like 'Real memory capture failed:*') {
+                        throw
+                    }
+                    Write-Warning (
+                        'Real-capture receipt could not be used to recover ' +
+                        "the primary failure: $($_.Exception.Message)"
+                    )
+                }
+            }
+        }
+        throw $baseException
+    }
 }
 finally {
     $env:PATH = $originalPath
