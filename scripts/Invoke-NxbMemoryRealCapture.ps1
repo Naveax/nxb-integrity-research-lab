@@ -69,6 +69,7 @@ function Get-NxbMemoryCaptureLostEventState {
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
+        [AllowEmptyString()]
         [string[]]$Lines,
 
         [Parameter(Mandatory)]
@@ -475,7 +476,7 @@ finally {
         (Join-Path $HOME 'Downloads') `
         ('nxb-memory-real-capture-' + $currentHead.Substring(0, 12) + '-' +
             [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-review.zip')
-    if ((Get-ChildItem -LiteralPath $reviewDirectory -File).Count -gt 0) {
+    if (@(Get-ChildItem -LiteralPath $reviewDirectory -File).Count -gt 0) {
         Compress-Archive `
             -Path (Join-Path $reviewDirectory '*') `
             -DestinationPath $reviewZip `
