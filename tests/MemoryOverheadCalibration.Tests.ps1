@@ -65,7 +65,7 @@ Describe 'NXB paired memory overhead calibration' {
     It 'uses one warmup and three paired repetitions by default' {
         $script:CalibrationText | Should -Match '\[int\]\$RepetitionCount = 3'
         $script:CalibrationText | Should -Match '\[int\]\$WarmupCount = 1'
-        $script:CalibrationText | Should -Match "\$Ordering = 'alternating_control_first'"
+        $script:CalibrationText | Should -Match '\$Ordering = ''alternating_control_first'''
     }
 
     It 'binds calibration to an exact clean repository head' {
@@ -107,7 +107,7 @@ Describe 'NXB paired memory overhead calibration' {
             -ExperimentPath $first `
             -PrivateMemoryMiB 4 `
             -MappedFileMiB 1 `
-            -HoldMilliseconds 0 `
+            -HoldMilliseconds 200 `
             -TimeoutSeconds 10 `
             -SampleIntervalMilliseconds 20 `
             -PassThru
@@ -115,7 +115,7 @@ Describe 'NXB paired memory overhead calibration' {
             -ExperimentPath $second `
             -PrivateMemoryMiB 4 `
             -MappedFileMiB 1 `
-            -HoldMilliseconds 0 `
+            -HoldMilliseconds 200 `
             -TimeoutSeconds 10 `
             -SampleIntervalMilliseconds 20 `
             -PassThru
