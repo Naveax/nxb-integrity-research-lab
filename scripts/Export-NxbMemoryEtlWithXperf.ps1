@@ -23,7 +23,6 @@ if ($env:OS -cne 'Windows_NT') {
     throw 'Raw memory ETL export requires real Windows.'
 }
 
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
 $bridgePath = Join-Path `
     $PSScriptRoot `
     'ConvertFrom-NxbXperfMemoryDumper.ps1'
