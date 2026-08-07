@@ -86,11 +86,11 @@ function Get-NxbMemoryEtlV3Gate {
         [string]$Name
     )
 
-    $matches = @($Summary.gates | Where-Object name -CEQ $Name)
-    if ($matches.Count -ne 1) {
-        throw "Expected exactly one gate named '$Name'; found $($matches.Count)."
+    $gateMatches = @($Summary.gates | Where-Object name -CEQ $Name)
+    if ($gateMatches.Count -ne 1) {
+        throw "Expected exactly one gate named '$Name'; found $($gateMatches.Count)."
     }
-    return $matches[0]
+    return $gateMatches[0]
 }
 
 if ($env:OS -cne 'Windows_NT') {
