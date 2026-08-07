@@ -26,8 +26,8 @@ if ($env:OS -cne 'Windows_NT') {
 $startedUtc = [DateTime]::UtcNow
 $process = [Diagnostics.Process]::GetCurrentProcess()
 $processStartUtc = $process.StartTime.ToUniversalTime()
-$privateBytes = [checked]($PrivateMemoryMiB * 1MB)
-$mappedBytes = [checked]($MappedFileMiB * 1MB)
+$privateBytes = [int64]$PrivateMemoryMiB * 1MB
+$mappedBytes = [int64]$MappedFileMiB * 1MB
 $pageSize = 4096
 $tempFile = Join-Path `
     ([IO.Path]::GetTempPath()) `
