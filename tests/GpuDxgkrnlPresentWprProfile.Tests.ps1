@@ -2,8 +2,11 @@ BeforeAll {
     $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
     $script:ProfilePath = Join-Path $script:RepositoryRoot 'profiles\Nxb.GpuDxgkrnlPresent.wprp'
     $script:ValidatorPath = Join-Path $script:RepositoryRoot 'scripts\Test-NxbGpuDxgkrnlPresentWprProfile.ps1'
+    $script:RunnerPath = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbGpuDxgkrnlPresentProfileLocalValidation.ps1'
     $script:ProfileSource = Get-Content -LiteralPath $script:ProfilePath -Raw
     $script:ValidatorSource = Get-Content -LiteralPath $script:ValidatorPath -Raw
+    $script:RunnerSource = Get-Content -LiteralPath $script:RunnerPath -Raw
+    $script:TestSource = Get-Content -LiteralPath $PSCommandPath -Raw
     [xml]$script:Xml = $script:ProfileSource
 }
 
@@ -51,12 +54,12 @@ Describe 'NXB GPU DXGKRNL present WPR profile contract' {
     }
 
     It 'provides matched File and Memory profile variants referencing both providers' {
-        foreach ($profile in @($script:Xml.WindowsPerformanceRecorder.Profiles.Profile)) {
-            $profile.Name | Should -Be 'NxbGpuDxgkrnlPresent'
-            $profile.DetailLevel | Should -Be 'Verbose'
-            @($profile.Collectors.EventCollectorId.EventProviders.EventProviderId.Value).Count | Should -Be 2
-            @($profile.Collectors.EventCollectorId.EventProviders.EventProviderId.Value) | Should -Contain 'NxbGpuDxgKrnlEventProvider'
-            @($profile.Collectors.EventCollectorId.EventProviders.EventProviderId.Value) | Should -Contain 'NxbGpuDxgiEventProvider'
+        foreach ($profileVariant in @($script:Xml.WindowsPerformanceRecorder.Profiles.Profile)) {
+            $profileVariant.Name | Should -Be 'NxbGpuDxgkrnlPresent'
+            $profileVariant.DetailLevel | Should -Be 'Verbose'
+            @($profileVariant.Collectors.EventCollectorId.EventProviders.EventProviderId.Value).Count | Should -Be 2
+            @($profileVariant.Collectors.EventCollectorId.EventProviders.EventProviderId.Value) | Should -Contain 'NxbGpuDxgKrnlEventProvider'
+            @($profileVariant.Collectors.EventCollectorId.EventProviders.EventProviderId.Value) | Should -Contain 'NxbGpuDxgiEventProvider'
         }
     }
 
@@ -75,5 +78,8 @@ Describe 'NXB GPU DXGKRNL present WPR profile contract' {
         $script:ValidatorSource | Should -Match 'submission_semantics = \$false'
         $script:ValidatorSource | Should -Match 'gpu_execution_duration_semantics = \$false'
         $script:ValidatorSource | Should -Match "trace_completeness = 'not_claimed'"
+        $script:ValidatorSource | Should -Not -Match '(?im)^\s*\$profile\s*='
+        $script:RunnerSource | Should -Not -Match '(?im)^\s*\$profile\s*='
+        $script:TestSource | Should -Not -Match '(?im)foreach\s*\(\s*\$profile\s+in'
     }
 }
