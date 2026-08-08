@@ -50,7 +50,7 @@ Describe 'NXB bounded storage IO queue WPR profile' {
         $result.Keywords.Count | Should -Be 8
         $result.Stacks.Count | Should -Be 11
         $result.KernelQueueEnabled | Should -BeFalse
-        $result.Keywords | Should -Contain 'DiskIOInitialization'
+        $result.Keywords | Should -Contain 'DiskIOInit'
         $result.Keywords | Should -Contain 'FileIOInit'
         $result.Keywords | Should -Contain 'Filename'
         $result.Stacks | Should -Contain 'DiskReadInit'
@@ -100,7 +100,7 @@ Describe 'NXB bounded storage IO queue WPR profile' {
     It 'rejects removal of disk IO initialization coverage' {
         $content = Get-Content -LiteralPath $script:CommittedProfile -Raw
         $content = $content.Replace(
-            '<Keyword Value="DiskIOInitialization" />',
+            '<Keyword Value="DiskIOInit" />',
             '<Keyword Value="CpuConfig" />'
         )
         Set-Content -LiteralPath $script:TemporaryProfile -Value $content -Encoding UTF8
@@ -108,7 +108,7 @@ Describe 'NXB bounded storage IO queue WPR profile' {
         {
             & (Join-Path $script:ScriptsRoot 'Test-NxbStorageWprProfile.ps1') `
                 -Path $script:TemporaryProfile
-        } | Should -Throw '*zorunlu değeri içermiyor: DiskIOInitialization*'
+        } | Should -Throw '*zorunlu değeri içermiyor: DiskIOInit*'
     }
 
     It 'rejects scheduler KernelQueue from the minimal storage profile' {

@@ -25,7 +25,7 @@
     <SystemProvider Id="NxbStorageIOQueueSystemProvider">
       <Keywords>
         <Keyword Value="DiskIO" />
-        <Keyword Value="DiskIOInitialization" />
+        <Keyword Value="DiskIOInit" />
         <Keyword Value="FileIO" />
         <Keyword Value="FileIOInit" />
         <Keyword Value="Filename" />

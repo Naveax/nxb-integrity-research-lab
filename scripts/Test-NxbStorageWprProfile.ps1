@@ -363,7 +363,7 @@ $provider = [System.Xml.XmlElement](Get-NxbStorageSingleXmlNode `
 
 $expectedKeywords = @(
     'DiskIO',
-    'DiskIOInitialization',
+    'DiskIOInit',
     'FileIO',
     'FileIOInit',
     'Filename',
