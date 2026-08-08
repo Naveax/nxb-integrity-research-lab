@@ -102,6 +102,35 @@ function Resolve-NxbStorageEventPython {
     return $null
 }
 
+function Get-NxbStorageSummaryAdapterSha256 {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$WrapperPath,
+
+        [Parameter(Mandatory)]
+        [string]$ConverterPath
+    )
+
+    $wrapperHash = (
+        Get-FileHash -LiteralPath $WrapperPath -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+    $converterHash = (
+        Get-FileHash -LiteralPath $ConverterPath -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+    $payload = "wrapper=$wrapperHash`nconverter=$converterHash"
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+        return -join @($algorithm.ComputeHash($bytes) | ForEach-Object {
+            $_.ToString('x2')
+        })
+    }
+    finally {
+        $algorithm.Dispose()
+    }
+}
+
 if ($env:OS -cne 'Windows_NT') {
     throw 'Storage event export conversion is supported only on Windows.'
 }
@@ -149,9 +178,9 @@ if (Test-Path -LiteralPath $outputFull) {
     }
 }
 
-$adapterHash = (
-    Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256
-).Hash.ToLowerInvariant()
+$adapterHash = Get-NxbStorageSummaryAdapterSha256 `
+    -WrapperPath $PSCommandPath `
+    -ConverterPath $pythonConverter
 $temporaryPath = Join-Path `
     $outputParent `
     ('.' + [IO.Path]::GetFileName($outputFull) + '.' +
@@ -250,9 +279,18 @@ finally {
     }
 }
 
+$finalDocument = Get-Content -LiteralPath $outputFull -Raw | ConvertFrom-Json
+if ([string]$finalDocument.adapter_sha256 -cne $adapterHash) {
+    Remove-Item -LiteralPath $outputFull -Force
+    throw 'Storage summary adapter provenance mismatch after finalization.'
+}
+
 Write-Information `
     -MessageData "Storage ETL summary written: $outputFull" `
     -InformationAction Continue
+Write-Information `
+    -MessageData "Storage summary adapter SHA-256: $adapterHash" `
+    -InformationAction Continue
 if ($PassThru) {
-    Get-Content -LiteralPath $outputFull -Raw | ConvertFrom-Json
+    return $finalDocument
 }
