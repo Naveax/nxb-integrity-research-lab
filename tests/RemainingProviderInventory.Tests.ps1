@@ -26,6 +26,10 @@ Describe 'NXB remaining provider inventory contract' {
     }
 
     It 'keeps provider and channel inventories bounded' {
+        $script:Source | Should -Match 'Get-NxbRemainingProviderCandidate'
+        $script:Source | Should -Match 'Get-NxbRemainingChannelCandidate'
+        $script:Source | Should -Not -Match 'Get-NxbRemainingProviderCandidates'
+        $script:Source | Should -Not -Match 'Get-NxbRemainingChannelCandidates'
         $script:Source | Should -Match '\[ValidateRange\(16, 1024\)\]'
         $script:Source | Should -Match 'RecordLimit = 256'
         $script:Source | Should -Match 'Select-Object -First \$Limit'
