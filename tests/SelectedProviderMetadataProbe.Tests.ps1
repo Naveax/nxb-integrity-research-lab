@@ -29,7 +29,7 @@ Describe 'NXB selected network/kernel provider metadata contract' {
             'Microsoft-Windows-Winsock-AFD',
             'Microsoft-Windows-DNS-Client'
         )) {
-            $script:Source | Should -Match [regex]::Escape($name)
+            $script:Source | Should -Match ([regex]::Escape($name))
         }
         $script:Source | Should -Match '7dd42a49-5329-4832-8dfd-43d979153a88'
         $script:Source | Should -Match 'e53c6823-7bb8-44bb-90dc-3f86090d48a6'
@@ -42,7 +42,7 @@ Describe 'NXB selected network/kernel provider metadata contract' {
             'Microsoft-Windows-Kernel-Registry',
             'Microsoft-Windows-Kernel-PnP'
         )) {
-            $script:Source | Should -Match [regex]::Escape($name)
+            $script:Source | Should -Match ([regex]::Escape($name))
         }
         $script:Source | Should -Match '22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716'
         $script:Source | Should -Match '70eb4f03-c1de-4f73-a051-33d13d5413bd'
