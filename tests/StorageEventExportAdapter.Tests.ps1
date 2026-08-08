@@ -4,7 +4,7 @@ BeforeAll {
         $script:RepositoryRoot `
         'scripts\ConvertFrom-NxbStorageEventExport.ps1'
 
-    function New-NxbStorageAdapterFixture {
+    function Write-NxbStorageAdapterFixture {
         param(
             [Parameter(Mandatory)]
             [string]$Path,
@@ -55,7 +55,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'aggregates observed event counts and verified byte totals' {
         $csvPath = Join-Path $TestDrive 'happy.csv'
         $summaryPath = Join-Path $TestDrive 'happy.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,',
             'disk_read,1.1,4242,10,0,0x1,C:\fixture.bin,4096,8192,0.1,0.05,',
             'file_write,1.2,4242,10,,0x1,C:\fixture.bin,0,1024,,,',
@@ -79,7 +79,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'keeps uncovered event classes not assessed instead of inventing zero' {
         $csvPath = Join-Path $TestDrive 'uncovered.csv'
         $summaryPath = Join-Path $TestDrive 'uncovered.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,'
         )
 
@@ -96,7 +96,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'keeps a covered but unobserved class not assessed instead of inferring zero' {
         $csvPath = Join-Path $TestDrive 'covered-unobserved.csv'
         $summaryPath = Join-Path $TestDrive 'covered-unobserved.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,'
         )
 
@@ -115,7 +115,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'does not synthesize a partial byte total when a byte row lacks transfer size' {
         $csvPath = Join-Path $TestDrive 'missing-bytes.csv'
         $summaryPath = Join-Path $TestDrive 'missing-bytes.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_write,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,',
             'disk_write,1.1,4242,10,0,0x1,C:\fixture.bin,4096,,0.1,0.05,'
         )
@@ -132,7 +132,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'tracks missing process attribution without creating process zero' {
         $csvPath = Join-Path $TestDrive 'attribution.csv'
         $summaryPath = Join-Path $TestDrive 'attribution.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,',
             'disk_read,1.1,,11,0,0x1,C:\fixture.bin,4096,4096,0.1,0.05,'
         )
@@ -151,7 +151,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'keeps only the target process identity complete' {
         $csvPath = Join-Path $TestDrive 'identity.csv'
         $summaryPath = Join-Path $TestDrive 'identity.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'file_read,1.0,4242,10,,0x1,C:\fixture.bin,0,4096,,,',
             'file_read,1.1,5252,11,,0x1,C:\fixture.bin,4096,4096,,,'
         )
@@ -175,7 +175,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'keeps latency and all higher-level metrics unassessed' {
         $csvPath = Join-Path $TestDrive 'timing.csv'
         $summaryPath = Join-Path $TestDrive 'timing.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,123.456,4242,10,0,0x1,C:\fixture.bin,0,4096,7.25,3.50,'
         )
 
@@ -205,7 +205,7 @@ Describe 'NXB storage event export summary adapter' {
     It 'rejects an event row not declared in CoveredEventType' {
         $csvPath = Join-Path $TestDrive 'coverage-mismatch.csv'
         $summaryPath = Join-Path $TestDrive 'coverage-mismatch.json'
-        New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
+        Write-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,',
             'file_write,1.1,4242,10,,0x1,C:\fixture.bin,0,4096,,,'
         )
