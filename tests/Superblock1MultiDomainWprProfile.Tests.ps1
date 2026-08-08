@@ -33,7 +33,7 @@ Describe 'NXB SUPERBLOCK 1 multi-domain WPR profile' {
                 ForEach-Object { [string]$_.Value } |
                 Sort-Object
         )
-        $values | Should -Be @('Loader','NetworkTrace','ProcessThread','Registry')
+        ($values -join '|') | Should -BeExactly 'Loader|NetworkTrace|ProcessThread|Registry'
     }
 
     It 'binds the exact eight certified event-provider identities' {
@@ -42,29 +42,23 @@ Describe 'NXB SUPERBLOCK 1 multi-domain WPR profile' {
                 ForEach-Object { [string]$_.Name } |
                 Sort-Object
         )
-        $names | Should -Be @(
-            'Microsoft-Windows-DNS-Client',
-            'Microsoft-Windows-DXGI',
-            'Microsoft-Windows-DxgKrnl',
-            'Microsoft-Windows-Kernel-Network',
-            'Microsoft-Windows-Kernel-PnP',
-            'Microsoft-Windows-Kernel-Process',
-            'Microsoft-Windows-Kernel-Registry',
-            'Microsoft-Windows-Winsock-AFD'
+        ($names -join '|') | Should -BeExactly (
+            'Microsoft-Windows-DNS-Client|Microsoft-Windows-DXGI|' +
+            'Microsoft-Windows-DxgKrnl|Microsoft-Windows-Kernel-Network|' +
+            'Microsoft-Windows-Kernel-PnP|Microsoft-Windows-Kernel-Process|' +
+            'Microsoft-Windows-Kernel-Registry|Microsoft-Windows-Winsock-AFD'
         )
     }
 
     It 'preserves the native-certified GPU keyword identities' {
         $dxg = $script:ProfileXml.SelectSingleNode("//EventProvider[@Name='Microsoft-Windows-DxgKrnl']")
         $dxgi = $script:ProfileXml.SelectSingleNode("//EventProvider[@Name='Microsoft-Windows-DXGI']")
-        @($dxg.Keywords.Keyword | ForEach-Object { [string]$_.Value } | Sort-Object) |
-            Should -Be @(
-                '0x0000000000008000',
-                '0x0000000000010000',
-                '0x0000000008000000'
-            )
-        @($dxgi.Keywords.Keyword | ForEach-Object { [string]$_.Value }) |
-            Should -Be @('0x0000000000000002')
+        $dxgValues = @($dxg.Keywords.Keyword | ForEach-Object { [string]$_.Value } | Sort-Object)
+        ($dxgValues -join '|') | Should -BeExactly (
+            '0x0000000000008000|0x0000000000010000|0x0000000008000000'
+        )
+        $dxgiValues = @($dxgi.Keywords.Keyword | ForEach-Object { [string]$_.Value })
+        ($dxgiValues -join '|') | Should -BeExactly '0x0000000000000002'
     }
 
     It 'does not invent network or kernel manifest-provider keyword filters' {
