@@ -1,0 +1,19 @@
+PagefaultHard, TimeStamp, ThreadID, VirtualAddress, ProgramCounter
+PagefaultHard, 1000, 101, 0x1000, 0x2000
+PagefaultDemandZero, TimeStamp, ThreadID, VirtualAddress, ProgramCounter
+PagefaultDemandZero, 2000, 101, 0x3000, 0x4000
+PagefaultCopyOnWrite, TimeStamp, ThreadID, VirtualAddress, ProgramCounter
+PagefaultCopyOnWrite, 3000, 101, 0x5000, 0x6000
+PagefaultTransition, TimeStamp, ThreadID, VirtualAddress, ProgramCounter
+PagefaultTransition, 4000, 101, 0x7000, 0x8000
+PagefaultGuard, TimeStamp, ThreadID, VirtualAddress, ProgramCounter
+PagefaultGuard, 5000, 101, 0x9000, 0xA000
+VirtualAlloc, TimeStamp, Process Name ( PID), ThreadID, BaseAddress, Size, Flags
+VirtualAlloc, 6000, target.exe (4242), 101, 0x100000, 4096, 0x3000
+VirtualFree, TimeStamp, Process Name ( PID), ThreadID, BaseAddress, Size, Flags
+VirtualFree, 7000, target.exe (4242), 101, 0x100000, 4096, 0x8000
+PagefileMappedSectionCreate, TimeStamp, Process Name ( PID), ThreadID, Section
+PagefileMappedSectionCreate, 8000, target.exe (4242), 101, 0xABC
+PagefileMappedSectionDelete, TimeStamp, Process Name ( PID), ThreadID, Section
+PagefileMappedSectionDelete, 9000, target.exe (4242), 101, 0xABC
+Stack, 9000, 101, 1, kernel32.dll!Whatever

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder
+  Version="1.0"
+  Author="NXB Integrity Research Lab"
+  Team="Observability"
+  Company="NXB Integrity Research Lab"
+  Comments="Bounded RAM, page-fault, working-set and virtual-memory capture profile for authorized research experiments."
+  Tag="NXB-IRL-004">
+  <Profiles>
+    <SystemCollector
+      Id="NxbMemoryWorkingSetSystemCollectorFile"
+      Name="NT Kernel Logger">
+      <BufferSize Value="1024" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="512" FileMode="Circular" />
+    </SystemCollector>
+
+    <SystemCollector
+      Id="NxbMemoryWorkingSetSystemCollectorMemory"
+      Name="NT Kernel Logger">
+      <BufferSize Value="1024" />
+      <Buffers Value="64" />
+    </SystemCollector>
+
+    <SystemProvider Id="NxbMemoryWorkingSetSystemProvider">
+      <Keywords>
+        <Keyword Value="AllFaults" />
+        <Keyword Value="CpuConfig" />
+        <Keyword Value="HardFaults" />
+        <Keyword Value="Loader" />
+        <Keyword Value="Memory" />
+        <Keyword Value="MemoryInfo" />
+        <Keyword Value="MemoryInfoWS" />
+        <Keyword Value="ProcessCounter" />
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="VAMap" />
+        <Keyword Value="VirtualAllocation" />
+      </Keywords>
+      <Stacks>
+        <Stack Value="HardFault" />
+        <Stack Value="ImageLoad" />
+        <Stack Value="PagefaultHard" />
+        <Stack Value="PagefileMappedSectionCreate" />
+        <Stack Value="PagefileMappedSectionDelete" />
+        <Stack Value="ProcessCreate" />
+        <Stack Value="UnMapFile" />
+        <Stack Value="VirtualAllocation" />
+        <Stack Value="VirtualFree" />
+      </Stacks>
+    </SystemProvider>
+
+    <Profile
+      Id="NxbMemoryWorkingSet.Verbose.File"
+      Name="NxbMemoryWorkingSet"
+      DetailLevel="Verbose"
+      LoggingMode="File"
+      Description="Bounded RAM, page-fault, working-set and virtual-memory analysis profile">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbMemoryWorkingSetSystemCollectorFile">
+          <SystemProviderId Value="NxbMemoryWorkingSetSystemProvider" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile
+      Id="NxbMemoryWorkingSet.Verbose.Memory"
+      Name="NxbMemoryWorkingSet"
+      DetailLevel="Verbose"
+      LoggingMode="Memory"
+      Description="RAM, page-fault, working-set and virtual-memory analysis profile for memory capture">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbMemoryWorkingSetSystemCollectorMemory">
+          <SystemProviderId Value="NxbMemoryWorkingSetSystemProvider" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
