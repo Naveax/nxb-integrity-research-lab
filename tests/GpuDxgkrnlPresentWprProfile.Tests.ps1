@@ -39,7 +39,8 @@ Describe 'NXB GPU DXGKRNL present WPR profile contract' {
 
         $dxgi = @($script:Xml.WindowsPerformanceRecorder.Profiles.EventProvider) |
             Where-Object Name -eq 'Microsoft-Windows-DXGI'
-        @($dxgi.Keywords.Keyword.Value) | Should -Be @('0x0000000000000002')
+        @($dxgi.Keywords.Keyword.Value).Count | Should -Be 1
+        @($dxgi.Keywords.Keyword.Value) | Should -Contain '0x0000000000000002'
     }
 
     It 'fails closed on provider absence and avoids provider-wide stacks' {
