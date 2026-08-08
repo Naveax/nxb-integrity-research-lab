@@ -15,6 +15,66 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-NxbLogmanKeywordRows {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$Lines
+    )
+
+    $rows = [Collections.Generic.List[object]]::new()
+    $inKeywordSection = $false
+    $keywordSectionDetected = $false
+
+    foreach ($line in $Lines) {
+        $text = [string]$line
+        $trimmed = $text.Trim()
+
+        if (-not $inKeywordSection) {
+            if (
+                $trimmed -match '(?i)\bValue\b' -and
+                $trimmed -match '(?i)\bKeyword\b'
+            ) {
+                $inKeywordSection = $true
+                $keywordSectionDetected = $true
+            }
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace($trimmed)) {
+            continue
+        }
+
+        if ($trimmed -match '^-{2,}(\s+-{2,})+') {
+            continue
+        }
+
+        $match = [regex]::Match(
+            $text,
+            '^\s*(0x[0-9a-fA-F]+)\s+(.+?)\s*$'
+        )
+
+        if ($match.Success) {
+            $rows.Add([pscustomobject][ordered]@{
+                value = $match.Groups[1].Value.ToLowerInvariant()
+                text = $match.Groups[2].Value.Trim()
+            })
+            continue
+        }
+
+        if ($rows.Count -gt 0) {
+            $inKeywordSection = $false
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        section_detected = $keywordSectionDetected
+        rows = @($rows)
+        row_count = $rows.Count
+    }
+}
+
 if ($env:OS -cne 'Windows_NT') {
     throw 'GPU provider metadata probe requires Windows.'
 }
@@ -81,16 +141,12 @@ foreach ($providerSpec in $providerSpecs) {
     $expectedGuidLower = ([string]$providerSpec.expected_guid).ToLowerInvariant()
     $guidMatch = $observedGuids -contains $expectedGuidLower
 
-    $keywordRows = [Collections.Generic.List[object]]::new()
-    foreach ($line in $logmanLines) {
-        $text = [string]$line
-        $match = [regex]::Match($text, '^\s*(0x[0-9a-fA-F]+)\s+(.+?)\s*$')
-        if (-not $match.Success) { continue }
-
-        $keywordRows.Add([pscustomobject][ordered]@{
-            value = $match.Groups[1].Value.ToLowerInvariant()
-            text = $match.Groups[2].Value.Trim()
-        })
+    $keywordTable = Get-NxbLogmanKeywordRows -Lines $logmanLines
+    if (-not [bool]$keywordTable.section_detected) {
+        throw "Keyword section was not observed for $providerName."
+    }
+    if ([int]$keywordTable.row_count -lt 1) {
+        throw "Keyword section contained no rows for $providerName."
     }
 
     $publisherLines = @(& $wevtutil.Source gp $providerName /ge:true /gm:false 2>&1)
@@ -114,8 +170,10 @@ foreach ($providerSpec in $providerSpecs) {
             status = 'measured'
             output_sha256 = $logmanSha256
             output_line_count = @($logmanLines).Count
-            keyword_rows = @($keywordRows)
-            keyword_row_count = $keywordRows.Count
+            keyword_parser = 'section-v1'
+            keyword_section_detected = [bool]$keywordTable.section_detected
+            keyword_rows = @($keywordTable.rows)
+            keyword_row_count = [int]$keywordTable.row_count
         }
         publisher_metadata = [ordered]@{
             status = if ($publisherExit -eq 0) { 'measured' } else { 'unavailable' }
