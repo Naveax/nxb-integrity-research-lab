@@ -13,7 +13,7 @@ BeforeAll {
 
 Describe 'NXB storage xperf header inventory and bounded probe workload' {
     It 'extracts unique headers without treating event rows as headers' {
-        $input = Join-Path $TestDrive 'dumper.txt'
+        $inputPath = Join-Path $TestDrive 'dumper.txt'
         $output = Join-Path $TestDrive 'inventory.json'
         @(
             'DiskRead, TimeStamp, Process Name ( PID), ThreadID, DiskNum, TransferSize',
@@ -21,10 +21,10 @@ Describe 'NXB storage xperf header inventory and bounded probe workload' {
             'FileIoRead, TimeStamp, Process Name ( PID), ThreadID, FileObject, FileName',
             'FileIoRead, 1.100000, pwsh.exe ( 4242), 99, 0x1234, C:\fixture.bin',
             'DiskRead, TimeStamp, Process Name ( PID), ThreadID, DiskNum, TransferSize'
-        ) | Set-Content -LiteralPath $input -Encoding UTF8
+        ) | Set-Content -LiteralPath $inputPath -Encoding UTF8
 
         $result = & $script:Inventory `
-            -InputPath $input `
+            -InputPath $inputPath `
             -OutputPath $output `
             -PassThru
 
@@ -38,13 +38,13 @@ Describe 'NXB storage xperf header inventory and bounded probe workload' {
     }
 
     It 'keeps queue and performance semantics unclaimed in header inventory' {
-        $input = Join-Path $TestDrive 'claims-dumper.txt'
+        $inputPath = Join-Path $TestDrive 'claims-dumper.txt'
         $output = Join-Path $TestDrive 'claims-inventory.json'
         'DiskWrite, TimeStamp, Process Name ( PID), ThreadID, DiskNum' |
-            Set-Content -LiteralPath $input -Encoding UTF8
+            Set-Content -LiteralPath $inputPath -Encoding UTF8
 
         $result = & $script:Inventory `
-            -InputPath $input `
+            -InputPath $inputPath `
             -OutputPath $output `
             -PassThru
 
