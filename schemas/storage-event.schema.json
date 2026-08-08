@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/storage-event.schema.json",
+  "title": "NXB Normalized Storage Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "machine_id",
+    "boot_id",
+    "event_id",
+    "timestamp_utc",
+    "domain",
+    "event_type",
+    "source",
+    "identity",
+    "operation",
+    "semantics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "experiment_id": { "$ref": "#/$defs/identifier" },
+    "machine_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "boot_id": { "$ref": "#/$defs/sha256" },
+    "event_id": { "type": "integer", "minimum": 0 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "domain": { "enum": ["storage", "filesystem"] },
+    "event_type": {
+      "enum": [
+        "disk_read",
+        "disk_write",
+        "disk_flush",
+        "file_read",
+        "file_write",
+        "file_flush",
+        "file_create",
+        "file_close",
+        "file_delete",
+        "file_rename",
+        "split_io"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["collector", "kind", "provenance_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "collector": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["etw_event", "synthetic_fixture"] },
+        "provenance_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["process_id", "thread_id", "disk_number", "file_key", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "type": ["integer", "null"], "minimum": 0 },
+        "thread_id": { "type": ["integer", "null"], "minimum": 0 },
+        "disk_number": { "type": ["integer", "null"], "minimum": 0 },
+        "file_key": { "type": ["string", "null"], "maxLength": 256 },
+        "path": { "type": ["string", "null"], "maxLength": 32768 }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["offset_bytes", "transfer_bytes", "duration_us", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "offset_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "transfer_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "duration_us": { "type": ["number", "null"], "minimum": 0 },
+        "result": { "type": ["string", "null"], "maxLength": 512 }
+      }
+    },
+    "semantics": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "duration",
+        "transfer_size",
+        "process_attribution",
+        "thread_attribution",
+        "disk_attribution",
+        "file_attribution",
+        "queue_semantics"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "timestamp": { "$ref": "#/$defs/semanticState" },
+        "duration": { "$ref": "#/$defs/semanticState" },
+        "transfer_size": { "$ref": "#/$defs/semanticState" },
+        "process_attribution": { "$ref": "#/$defs/semanticState" },
+        "thread_attribution": { "$ref": "#/$defs/semanticState" },
+        "disk_attribution": { "$ref": "#/$defs/semanticState" },
+        "file_attribution": { "$ref": "#/$defs/semanticState" },
+        "queue_semantics": { "$ref": "#/$defs/semanticState" }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "semanticState": {
+      "enum": ["measured", "unsupported", "unavailable", "failed", "not_assessed"]
+    }
+  }
+}

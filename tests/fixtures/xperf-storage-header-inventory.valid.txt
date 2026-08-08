@@ -1,0 +1,9 @@
+DiskRead, TimeStamp, Process Name ( PID), ThreadID, Disk Number, IRP, Transfer Size, Byte Offset
+DiskRead, 1000, fixture.exe (4242), 5252, 0, 0x1, 4096, 8192
+DiskWrite, TimeStamp, Process Name ( PID), ThreadID, Disk Number, IRP, Transfer Size, Byte Offset
+DiskWrite, 1010, fixture.exe (4242), 5252, 0, 0x2, 4096, 12288
+FileIo/Read, TimeStamp, Process Name ( PID), ThreadID, FileObject, FileName, IoSize, Offset
+FileIo/Read, 1020, fixture.exe (4242), 5252, 0x1234, C:\fixture\storage.bin, 4096, 0
+OtherEvent, TimeStamp, Value
+OtherEvent, 1030, 1
+DiskRead, TimeStamp, Process Name ( PID), ThreadID, Disk Number, IRP, Transfer Size, Byte Offset
