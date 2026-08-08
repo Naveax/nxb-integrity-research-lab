@@ -102,4 +102,15 @@ Describe 'NXB normalized storage event contract' {
         { & $script:Validator -Path $script:TemporaryEvent } |
             Should -Throw '*timestamp semantics must be measured*'
     }
+
+    It 'rejects premature measured queue semantics' {
+        $document = Get-Content -LiteralPath $script:Fixture -Raw |
+            ConvertFrom-Json
+        $document.semantics.queue_semantics = 'measured'
+        $document | ConvertTo-Json -Depth 32 |
+            Set-Content -LiteralPath $script:TemporaryEvent -Encoding UTF8
+
+        { & $script:Validator -Path $script:TemporaryEvent } |
+            Should -Throw '*queue semantics cannot be measured*'
+    }
 }
