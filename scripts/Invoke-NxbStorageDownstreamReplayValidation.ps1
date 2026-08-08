@@ -126,6 +126,9 @@ if ([string]$sourceSummary.quality.trace_loss -cne [string]$capture.trace_qualit
 if ([int]$bridge.normalized_event_count -le 0) {
     throw 'Bridge manifest normalized_event_count must be positive.'
 }
+if ([string]::IsNullOrWhiteSpace([string]$sourceSummary.experiment_id)) {
+    throw 'Source summary experiment_id is required for byte-identical replay.'
+}
 
 $realSummaryRunner = Join-Path $PSScriptRoot 'Invoke-NxbStorageRealSummaryValidation.ps1'
 if (-not (Test-Path -LiteralPath $realSummaryRunner -PathType Leaf)) {
@@ -139,6 +142,7 @@ $replayValidation = & $realSummaryRunner `
     -EventExportPath $eventExportFull `
     -EtlPath $etlFull `
     -OutputPath $replayOutputFull `
+    -ExperimentId ([string]$sourceSummary.experiment_id) `
     -MaxEventCount $MaxEventCount `
     -PassThru
 
