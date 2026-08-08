@@ -2,14 +2,16 @@
 
 ## Status
 
-`IN PROGRESS — PROFILE FOUNDATION`
+`IN PROGRESS — PROFILE VALIDATED — EVIDENCE CONTRACT ACTIVE`
 
 - Tracking issue: `#2`
 - Base: `main`
 - Branch: `nxb-irl-004-storage-io-queue`
 - Parent memory block: merged PR `#9`
+- Validated storage profile head: `d88cf5c8c28e4bc63598ca28f221d66896daadc2`
+- Profile validation record: `docs/NXB-IRL-004-STORAGE-PROFILE-VALIDATION.md`
 
-GitHub Actions remain intentionally disabled repository-wide. Native validation will run locally on real Windows.
+GitHub Actions remain intentionally disabled repository-wide. Native validation runs locally on real Windows.
 
 ## Objective
 
@@ -17,7 +19,7 @@ Add a bounded storage-observability domain that can correlate disk and file-syst
 
 The domain must distinguish what was actually measured from what is unavailable, unsupported or not yet assessed.
 
-## Initial WPR profile contract
+## Validated WPR profile contract
 
 Profile name:
 
@@ -25,11 +27,11 @@ Profile name:
 NxbStorageIOQueue
 ```
 
-Minimal system keywords:
+Validated system keywords:
 
 ```text
 DiskIO
-DiskIOInitialization
+DiskIOInit
 FileIO
 FileIOInit
 Filename
@@ -38,7 +40,7 @@ ProcessThread
 SplitIO
 ```
 
-Initial stackwalk set:
+Validated stackwalk set:
 
 ```text
 DiskReadInit
@@ -54,36 +56,53 @@ FileClose
 SplitIO
 ```
 
-The profile will expose File and Memory logging variants. The File variant remains bounded with an explicit circular maximum size; the Memory variant exists for native profile compatibility/testing and is not the canonical long-running capture path.
+The profile exposes File and Memory logging variants. The File variant is bounded to 512 MiB circular output with 1024 KiB buffers and 64 buffers. `KernelQueue` is deliberately excluded because scheduler queue semantics are not storage-device queue semantics.
 
-## Evidence boundary
+The native Windows parser corrected the draft keyword name `DiskIOInitialization` to the accepted WPR keyword `DiskIOInit` before canonical validation.
 
-The first normalized storage contract is expected to represent, only when supported by real captured events:
+## Storage evidence contract
+
+The first storage summary schema separates event evidence from higher-level performance metrics.
+
+Event classes:
 
 ```text
-storage_read
-storage_write
-storage_flush
+disk_read
+disk_write
+disk_flush
 file_read
 file_write
+file_flush
 file_create
+file_close
 file_delete
 file_rename
-file_flush
 split_io
 ```
 
-Candidate fields include:
+Performance metrics are separate evidence objects:
 
-- timestamp and duration when directly derivable,
-- process/thread attribution,
-- disk/volume/device identity when exposed,
-- file identity/path only from captured kernel evidence,
-- offset and transfer size when exposed,
-- operation/result state when exposed,
-- queue/dispatch/service timing only after real event-header semantics are verified.
+```text
+queue_depth
+queue_latency_us
+service_time_us
+throughput_bytes_per_second
+iops
+```
 
-No queue depth, queue latency, service time, throughput or IOPS value is synthesized from incomplete event coverage.
+Every event/metric uses an explicit status model:
+
+```text
+measured
+unsupported
+unavailable
+failed
+not_assessed
+```
+
+No queue depth, queue latency, service time, throughput or IOPS value is synthesized from event presence alone. In schema version 1, semantic claims for those metrics remain false until real ETL field semantics are established in a later validated slice.
+
+The summary binds experiment, machine/boot, target process identity, trace/profile/export/adapter hashes, trace time range, trace-loss/circular-overwrite state, aggregate/per-process events, metric evidence and conservative claims.
 
 ## Bounded fixture
 
@@ -120,19 +139,25 @@ Required principles:
 
 ### Slice 1 — profile foundation
 
-- [ ] Add bounded `NxbStorageIOQueue` WPR profile.
-- [ ] Add safe XML/profile semantic validator.
-- [ ] Add adversarial profile tests.
-- [ ] Pass PowerShell 7 validation.
-- [ ] Pass Windows PowerShell 5.1 validation.
-- [ ] Pass native `wpr.exe -profiles` parsing.
+- [x] Add bounded `NxbStorageIOQueue` WPR profile.
+- [x] Add safe XML/profile semantic validator.
+- [x] Add adversarial profile tests.
+- [x] Pass PowerShell 7 validation — 10/10.
+- [x] Pass Windows PowerShell 5.1 validation — 10/10.
+- [x] Pass native `wpr.exe -profiles` parsing.
+- [x] Record canonical exact-head profile validation.
 
 ### Slice 2 — storage evidence contract
 
-- [ ] Define normalized storage event contract.
-- [ ] Define aggregate/per-process storage summary schema.
-- [ ] Preserve explicit measured/unsupported/unavailable/failed/not-assessed states.
-- [ ] Bind summary to experiment/machine/boot/profile/ETL/adapter identity.
+- [x] Define aggregate/per-process storage summary schema.
+- [x] Separate storage event classes from higher-level queue/performance metrics.
+- [x] Preserve explicit measured/unsupported/unavailable/failed/not-assessed states.
+- [x] Bind summary to experiment/machine/boot/profile/ETL/export/adapter identity.
+- [x] Add fail-closed semantic validator.
+- [x] Add canonical synthetic fixture.
+- [x] Add adversarial Pester contract tests.
+- [ ] Pass exact-head PowerShell/Python/schema validation on real Windows.
+- [ ] Record canonical evidence-contract validation.
 
 ### Slice 3 — ETL/xperf adapter
 
@@ -168,7 +193,9 @@ Required principles:
 
 ## Immediate next gate
 
-The next mandatory gate is the **bounded storage WPR profile plus strict repository validator**. Do not build the ETL parser before native WPR profile parsing succeeds.
+The next mandatory gate is exact-head validation of the **storage ETL evidence contract**: JSON Schema, Python semantic validator, PowerShell wrapper, canonical fixture and adversarial Pester suite.
+
+Do not build the real ETL parser until that contract passes. Do not upgrade queue/performance metrics from `not_assessed` before real Windows ETL headers establish their semantics.
 
 ## Completion gate
 
