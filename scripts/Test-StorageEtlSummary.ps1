@@ -86,4 +86,6 @@ if ($exitCode -ne 0) {
     )
 }
 
-$outputText | ForEach-Object { Write-Host $_ }
+$outputText | ForEach-Object {
+    Write-Information -MessageData $_ -InformationAction Continue
+}
