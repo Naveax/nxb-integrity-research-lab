@@ -2,7 +2,7 @@
 
 ## Status
 
-`IN PROGRESS — PROFILE VALIDATED — EVIDENCE CONTRACT ACTIVE`
+`IN PROGRESS — PROFILE + EVIDENCE CONTRACT VALIDATED — REAL ETL HEADER INSPECTION NEXT`
 
 - Tracking issue: `#2`
 - Base: `main`
@@ -10,6 +10,8 @@
 - Parent memory block: merged PR `#9`
 - Validated storage profile head: `d88cf5c8c28e4bc63598ca28f221d66896daadc2`
 - Profile validation record: `docs/NXB-IRL-004-STORAGE-PROFILE-VALIDATION.md`
+- Validated storage evidence-contract head: `4e72e2fdb132f06741575a83da526b6c4875e896`
+- Evidence-contract validation record: `docs/NXB-IRL-004-STORAGE-EVIDENCE-CONTRACT-VALIDATION.md`
 
 GitHub Actions remain intentionally disabled repository-wide. Native validation runs locally on real Windows.
 
@@ -60,9 +62,9 @@ The profile exposes File and Memory logging variants. The File variant is bounde
 
 The native Windows parser corrected the draft keyword name `DiskIOInitialization` to the accepted WPR keyword `DiskIOInit` before canonical validation.
 
-## Storage evidence contract
+## Validated storage evidence contract
 
-The first storage summary schema separates event evidence from higher-level performance metrics.
+The storage summary schema separates event evidence from higher-level performance metrics.
 
 Event classes:
 
@@ -103,6 +105,22 @@ not_assessed
 No queue depth, queue latency, service time, throughput or IOPS value is synthesized from event presence alone. In schema version 1, semantic claims for those metrics remain false until real ETL field semantics are established in a later validated slice.
 
 The summary binds experiment, machine/boot, target process identity, trace/profile/export/adapter hashes, trace time range, trace-loss/circular-overwrite state, aggregate/per-process events, metric evidence and conservative claims.
+
+Canonical exact-head validation at `4e72e2fdb132f06741575a83da526b6c4875e896` passed:
+
+```text
+PowerShell 7 summary Pester:      8/8
+PowerShell 7 event Pester:        9/9
+Windows PowerShell 5.1 summary:   8/8
+Windows PowerShell 5.1 event:     9/9
+PSScriptAnalyzer:                 0 findings
+Python semantic validators:       PASS
+JSON Schema self-validation:      PASS
+Canonical summary fixture:        PASS
+Canonical event fixture:          PASS
+queue semantics claimed:          false
+trace completeness claimed:       false
+```
 
 ## Bounded fixture
 
@@ -149,23 +167,26 @@ Required principles:
 
 ### Slice 2 — storage evidence contract
 
+- [x] Define normalized storage event schema.
 - [x] Define aggregate/per-process storage summary schema.
 - [x] Separate storage event classes from higher-level queue/performance metrics.
 - [x] Preserve explicit measured/unsupported/unavailable/failed/not-assessed states.
 - [x] Bind summary to experiment/machine/boot/profile/ETL/export/adapter identity.
-- [x] Add fail-closed semantic validator.
-- [x] Add canonical synthetic fixture.
-- [x] Add adversarial Pester contract tests.
-- [ ] Pass exact-head PowerShell/Python/schema validation on real Windows.
-- [ ] Record canonical evidence-contract validation.
+- [x] Add fail-closed semantic validators.
+- [x] Add canonical synthetic fixtures.
+- [x] Add adversarial event + summary Pester contract tests.
+- [x] Pass exact-head PowerShell/Python/schema validation on real Windows.
+- [x] Record canonical evidence-contract validation.
 
 ### Slice 3 — ETL/xperf adapter
 
 - [ ] Capture real disk/file event headers.
+- [ ] Identify exact event names, columns and aliases emitted on the validated Windows/WPR stack.
 - [ ] Add streaming normalization for observed headers.
 - [ ] Add read/write/flush byte and duration semantics only when directly supported.
 - [ ] Add disk/file attribution quality accounting.
 - [ ] Add fail-closed duplicate/alias handling.
+- [ ] Preserve queue/performance semantics as `not_assessed` unless native fields directly support them.
 
 ### Slice 4 — bounded real workload and capture
 
@@ -193,9 +214,11 @@ Required principles:
 
 ## Immediate next gate
 
-The next mandatory gate is exact-head validation of the **storage ETL evidence contract**: JSON Schema, Python semantic validator, PowerShell wrapper, canonical fixture and adversarial Pester suite.
+The next mandatory gate is **real Windows storage ETL/xperf header inspection**.
 
-Do not build the real ETL parser until that contract passes. Do not upgrade queue/performance metrics from `not_assessed` before real Windows ETL headers establish their semantics.
+The inspection run must remain bounded and must not yet claim normalized queue depth, queue latency, service time, representative throughput or representative IOPS. It should capture a short trace around an owned temporary-file workload, export/inspect only the event/header information needed to establish native field semantics, and keep raw ETL local.
+
+Only field semantics observed directly in the native trace may advance from `not_assessed` to `measured` in the adapter.
 
 ## Completion gate
 
