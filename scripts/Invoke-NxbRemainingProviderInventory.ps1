@@ -19,7 +19,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-NxbRemainingProviderCandidates {
+function Get-NxbRemainingProviderCandidate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -57,7 +57,7 @@ function Get-NxbRemainingProviderCandidates {
     }
 }
 
-function Get-NxbRemainingChannelCandidates {
+function Get-NxbRemainingChannelCandidate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -144,23 +144,23 @@ $result = [pscustomobject][ordered]@{
     captured_utc = [DateTime]::UtcNow.ToString('o')
     record_limit = $RecordLimit
     providers = [ordered]@{
-        network = Get-NxbRemainingProviderCandidates `
+        network = Get-NxbRemainingProviderCandidate `
             -Lines $providerLines -Pattern $networkPattern -Limit $RecordLimit
-        kernel_lifecycle = Get-NxbRemainingProviderCandidates `
+        kernel_lifecycle = Get-NxbRemainingProviderCandidate `
             -Lines $providerLines -Pattern $kernelPattern -Limit $RecordLimit
-        device_driver = Get-NxbRemainingProviderCandidates `
+        device_driver = Get-NxbRemainingProviderCandidate `
             -Lines $providerLines -Pattern $devicePattern -Limit $RecordLimit
-        power_thermal = Get-NxbRemainingProviderCandidates `
+        power_thermal = Get-NxbRemainingProviderCandidate `
             -Lines $providerLines -Pattern $powerPattern -Limit $RecordLimit
     }
     event_channels = [ordered]@{
-        network = Get-NxbRemainingChannelCandidates `
+        network = Get-NxbRemainingChannelCandidate `
             -Lines $channelLines -Pattern $networkPattern -Limit $RecordLimit
-        kernel_lifecycle = Get-NxbRemainingChannelCandidates `
+        kernel_lifecycle = Get-NxbRemainingChannelCandidate `
             -Lines $channelLines -Pattern $kernelPattern -Limit $RecordLimit
-        device_driver = Get-NxbRemainingChannelCandidates `
+        device_driver = Get-NxbRemainingChannelCandidate `
             -Lines $channelLines -Pattern $devicePattern -Limit $RecordLimit
-        power_thermal = Get-NxbRemainingChannelCandidates `
+        power_thermal = Get-NxbRemainingChannelCandidate `
             -Lines $channelLines -Pattern $powerPattern -Limit $RecordLimit
     }
     capability_contract = [ordered]@{
