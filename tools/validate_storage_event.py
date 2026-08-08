@@ -106,6 +106,10 @@ def validate_document(document: dict[str, Any]) -> None:
         semantics["timestamp"] == "measured",
         "timestamp semantics must be measured because timestamp_utc is required",
     )
+    require(
+        semantics["queue_semantics"] != "measured",
+        "queue semantics cannot be measured before real ETL field validation",
+    )
 
     validate_value_state(
         operation["duration_us"],
