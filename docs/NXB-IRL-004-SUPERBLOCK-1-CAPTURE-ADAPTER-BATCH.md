@@ -4,12 +4,6 @@
 
 `IMPLEMENTED — NATIVE CERTIFICATION REQUIRED`
 
-Current repaired candidate head:
-
-```text
-6249cda4c93cfbe5f82d8a7d7808fddea522cf0e
-```
-
 This batch follows the certified SUPERBLOCK foundation and the certified bounded GPU WPR profile.
 
 ## Certified GPU profile input
