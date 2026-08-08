@@ -186,17 +186,17 @@ foreach ($variant in @(
     @{ Id='NxbGpuDxgkrnlPresent.Verbose.File'; Mode='File'; Collector='NxbGpuDxgkrnlPresentEventCollectorFile' },
     @{ Id='NxbGpuDxgkrnlPresent.Verbose.Memory'; Mode='Memory'; Collector='NxbGpuDxgkrnlPresentEventCollectorMemory' }
 )) {
-    $profile = [System.Xml.XmlElement](Get-NxbGpuProfileNode -Context $profiles -XPath ("./Profile[@Id='{0}']" -f $variant.Id) -Label $variant.Id)
-    if ((Get-NxbGpuProfileAttribute -Element $profile -Name Name -Label $variant.Id) -cne 'NxbGpuDxgkrnlPresent') {
+    $profileNode = [System.Xml.XmlElement](Get-NxbGpuProfileNode -Context $profiles -XPath ("./Profile[@Id='{0}']" -f $variant.Id) -Label $variant.Id)
+    if ((Get-NxbGpuProfileAttribute -Element $profileNode -Name Name -Label $variant.Id) -cne 'NxbGpuDxgkrnlPresent') {
         throw "$($variant.Id) unexpected profile Name."
     }
-    if ((Get-NxbGpuProfileAttribute -Element $profile -Name DetailLevel -Label $variant.Id) -cne 'Verbose') {
+    if ((Get-NxbGpuProfileAttribute -Element $profileNode -Name DetailLevel -Label $variant.Id) -cne 'Verbose') {
         throw "$($variant.Id) must be Verbose."
     }
-    if ((Get-NxbGpuProfileAttribute -Element $profile -Name LoggingMode -Label $variant.Id) -cne $variant.Mode) {
+    if ((Get-NxbGpuProfileAttribute -Element $profileNode -Name LoggingMode -Label $variant.Id) -cne $variant.Mode) {
         throw "$($variant.Id) logging mode mismatch."
     }
-    $collectorRef = [System.Xml.XmlElement](Get-NxbGpuProfileNode -Context $profile -XPath './Collectors/EventCollectorId' -Label "$($variant.Id) collector")
+    $collectorRef = [System.Xml.XmlElement](Get-NxbGpuProfileNode -Context $profileNode -XPath './Collectors/EventCollectorId' -Label "$($variant.Id) collector")
     if ($collectorRef.GetAttribute('Value') -cne $variant.Collector) {
         throw "$($variant.Id) collector reference mismatch."
     }
