@@ -200,15 +200,12 @@ function Write-NxbStorageAccountingJson {
     [IO.File]::WriteAllText(
         $Path,
         (($InputObject | ConvertTo-Json -Depth 32) + [Environment]::NewLine),
-        [Text.UTF8Encoding]::new($false)
+        (New-Object Text.UTF8Encoding($false))
     )
 }
 
 if ($env:OS -cne 'Windows_NT') {
     throw 'Storage ETL header accounting requires Windows.'
-}
-if ($PSVersionTable.PSEdition -cne 'Core') {
-    throw 'Storage ETL header accounting must run in PowerShell 7.'
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
