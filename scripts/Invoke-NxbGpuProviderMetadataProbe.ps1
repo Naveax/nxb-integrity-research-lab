@@ -52,7 +52,7 @@ $providerResults = [Collections.Generic.List[object]]::new()
 foreach ($providerSpec in $providerSpecs) {
     $providerName = [string]$providerSpec.name
 
-    $logmanLines = @(& $logman.Source query providers $providerName 2>&1)
+    $logmanLines = @(& $logman.Source query providers -n $providerName 2>&1)
     $logmanExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
     if ($logmanExit -ne 0) {
         throw "logman provider query failed for $providerName: exit=$logmanExit"
