@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a normalized NXB storage event export into conservative summary evidence."""
+"""Convert normalized NXB storage rows into conservative summary evidence."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -53,6 +54,8 @@ EXPECTED_HEADER = [
     "disk_service_time_raw",
     "result_raw",
 ]
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 
 
 class ConversionFailure(ValueError):
@@ -141,14 +144,6 @@ def source(adapter_sha256: str) -> dict[str, str]:
     }
 
 
-def attribution(count: int, unattributed_count: int) -> str:
-    if count == 0 or unattributed_count == 0:
-        return "complete"
-    if unattributed_count == count:
-        return "none"
-    return "partial"
-
-
 def measured_process(
     count: int,
     byte_count: int | None,
@@ -179,6 +174,7 @@ def measured_aggregate(
     count: int,
     byte_count: int | None,
     unattributed_count: int,
+    attribution: str,
     adapter_sha256: str,
 ) -> dict[str, Any]:
     return {
@@ -187,7 +183,7 @@ def measured_aggregate(
         "bytes": byte_count,
         "latency_us": None,
         "unattributed_count": unattributed_count,
-        "attribution": attribution(count, unattributed_count),
+        "attribution": attribution,
         "source": source(adapter_sha256),
         "reason": None,
     }
@@ -245,38 +241,27 @@ def load_rows(
             timestamp_raw = str(source_row["timestamp_raw"] or "").strip()
             require(bool(timestamp_raw), "timestamp_raw is required for every normalized row")
 
-            process_id = parse_optional_non_negative_int(
-                str(source_row["process_id"] or ""),
-                "process_id",
-            )
-            thread_id = parse_optional_non_negative_int(
-                str(source_row["thread_id"] or ""),
-                "thread_id",
-            )
-            disk_number = parse_optional_non_negative_int(
-                str(source_row["disk_number"] or ""),
-                "disk_number",
-            )
-            offset_bytes = parse_optional_non_negative_int(
-                str(source_row["offset_bytes"] or ""),
-                "offset_bytes",
-            )
-            transfer_bytes = parse_optional_non_negative_int(
-                str(source_row["transfer_bytes"] or ""),
-                "transfer_bytes",
-            )
-
             rows.append(
                 {
                     "event_type": event_type,
                     "timestamp_raw": timestamp_raw,
-                    "process_id": process_id,
-                    "thread_id": thread_id,
-                    "disk_number": disk_number,
+                    "process_id": parse_optional_non_negative_int(
+                        str(source_row["process_id"] or ""), "process_id"
+                    ),
+                    "thread_id": parse_optional_non_negative_int(
+                        str(source_row["thread_id"] or ""), "thread_id"
+                    ),
+                    "disk_number": parse_optional_non_negative_int(
+                        str(source_row["disk_number"] or ""), "disk_number"
+                    ),
                     "file_key": str(source_row["file_key"] or "").strip() or None,
                     "path": str(source_row["path"] or "").strip() or None,
-                    "offset_bytes": offset_bytes,
-                    "transfer_bytes": transfer_bytes,
+                    "offset_bytes": parse_optional_non_negative_int(
+                        str(source_row["offset_bytes"] or ""), "offset_bytes"
+                    ),
+                    "transfer_bytes": parse_optional_non_negative_int(
+                        str(source_row["transfer_bytes"] or ""), "transfer_bytes"
+                    ),
                 }
             )
     return rows
@@ -285,38 +270,53 @@ def load_rows(
 def byte_total_or_none(rows: list[dict[str, Any]], event_type: str) -> int | None:
     if event_type not in BYTE_EVENT_TYPES:
         return None
-    if not rows:
-        return 0
+    require(rows, "byte_total_or_none requires at least one observed row")
     if any(row["transfer_bytes"] is None for row in rows):
         return None
     return sum(int(row["transfer_bytes"]) for row in rows)
 
 
+def unobserved_reason(event_type: str, covered: set[str]) -> str:
+    if event_type in covered:
+        return (
+            "The parser covers this event class, but no normalized rows were observed; "
+            "absence is not interpreted as count zero."
+        )
+    return "Event class was not established as covered by the real storage bridge."
+
+
 def build_document(args: argparse.Namespace) -> dict[str, Any]:
+    require(IDENTIFIER_RE.fullmatch(args.experiment_id) is not None, "ExperimentId is invalid")
+    require(1 <= len(args.experiment_id) <= 128, "ExperimentId length is invalid")
+    require(bool(args.machine_id.strip()), "MachineId cannot be empty")
+    for label, value in (
+        ("BootId", args.boot_id),
+        ("TraceSha256", args.trace_sha256),
+        ("ProfileSha256", args.profile_sha256),
+        ("AdapterSha256", args.adapter_sha256),
+        ("TargetImageSha256", args.target_image_sha256),
+    ):
+        require(SHA256_RE.fullmatch(value) is not None, f"{label} must be lowercase SHA-256")
+
     trace_start = parse_utc(args.trace_start_utc, "trace_start_utc")
     trace_end = parse_utc(args.trace_end_utc, "trace_end_utc")
-    target_start = parse_utc(
-        args.target_process_start_utc,
-        "target_process_start_utc",
-    )
+    target_start = parse_utc(args.target_process_start_utc, "target_process_start_utc")
     require(trace_start <= trace_end, "TraceStartUtc cannot be after TraceEndUtc")
     require(target_start <= trace_end, "TargetProcessStartUtc cannot be after TraceEndUtc")
     require(args.target_process_id > 0, "TargetProcessId must be positive")
 
     covered = set(args.covered_event_type)
     require(covered, "CoveredEventType cannot be empty")
-    require(
-        covered.issubset(EVENT_TYPES),
-        "CoveredEventType contains an unsupported storage event type",
-    )
+    require(covered.issubset(EVENT_TYPES), "CoveredEventType contains an unsupported storage event type")
 
     rows = load_rows(args.input, covered, args.max_event_count)
     rows_by_event: dict[str, list[dict[str, Any]]] = defaultdict(list)
     rows_by_process: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         rows_by_event[str(row["event_type"])].append(row)
-        if row["process_id"] is not None and int(row["process_id"]) > 0:
-            rows_by_process[int(row["process_id"])].append(row)
+        process_id = row["process_id"]
+        if process_id is not None and int(process_id) > 0:
+            rows_by_process[int(process_id)].append(row)
 
     process_ids = sorted(set(rows_by_process) | {args.target_process_id})
     require(len(process_ids) <= 4096, "Process count exceeds storage summary schema limit")
@@ -326,8 +326,8 @@ def build_document(args: argparse.Namespace) -> dict[str, Any]:
         process_rows = rows_by_process.get(process_id, [])
         process_events: dict[str, dict[str, Any]] = {}
         for event_type in EVENT_TYPES:
-            if event_type in covered:
-                matches = [row for row in process_rows if row["event_type"] == event_type]
+            matches = [row for row in process_rows if row["event_type"] == event_type]
+            if matches:
                 process_events[event_type] = measured_process(
                     len(matches),
                     byte_total_or_none(matches, event_type),
@@ -335,7 +335,7 @@ def build_document(args: argparse.Namespace) -> dict[str, Any]:
                 )
             else:
                 process_events[event_type] = unmeasured_process(
-                    "Event class was not established as covered by the real storage bridge."
+                    unobserved_reason(event_type, covered)
                 )
 
         is_target = process_id == args.target_process_id
@@ -352,19 +352,37 @@ def build_document(args: argparse.Namespace) -> dict[str, Any]:
 
     aggregate_events: dict[str, dict[str, Any]] = {}
     for event_type in EVENT_TYPES:
-        if event_type in covered:
-            matches = rows_by_event.get(event_type, [])
-            unattributed = sum(1 for row in matches if row["process_id"] is None)
-            aggregate_events[event_type] = measured_aggregate(
-                len(matches),
-                byte_total_or_none(matches, event_type),
-                unattributed,
-                args.adapter_sha256,
-            )
-        else:
+        matches = rows_by_event.get(event_type, [])
+        if not matches:
             aggregate_events[event_type] = unmeasured_aggregate(
-                "Event class was not established as covered by the real storage bridge."
+                unobserved_reason(event_type, covered)
             )
+            continue
+
+        unattributed = sum(
+            1
+            for row in matches
+            if row["process_id"] is None or int(row["process_id"]) == 0
+        )
+        process_matches = sum(
+            1
+            for process_id in process_ids
+            if any(row["event_type"] == event_type for row in rows_by_process.get(process_id, []))
+        )
+        if process_matches == 0:
+            attribution = "none"
+        elif unattributed > 0 or process_matches != len(process_ids):
+            attribution = "partial"
+        else:
+            attribution = "complete"
+
+        aggregate_events[event_type] = measured_aggregate(
+            len(matches),
+            byte_total_or_none(matches, event_type),
+            unattributed,
+            attribution,
+            args.adapter_sha256,
+        )
 
     metrics = {
         name: unmeasured_metric(
@@ -376,19 +394,7 @@ def build_document(args: argparse.Namespace) -> dict[str, Any]:
     measured_event_count = sum(
         1 for name in EVENT_TYPES if aggregate_events[name]["status"] == "measured"
     )
-    failed_event_count = sum(
-        1 for name in EVENT_TYPES if aggregate_events[name]["status"] == "failed"
-    )
-    measured_metric_count = 0
-    failed_metric_count = 0
-
-    if failed_event_count > 0:
-        evidence_completeness = "failed"
-    elif measured_event_count > 0:
-        evidence_completeness = "partial"
-    else:
-        evidence_completeness = "unavailable"
-
+    evidence_completeness = "partial" if measured_event_count > 0 else "unavailable"
     event_export_sha256 = sha256_file(args.input)
     summary_seed = (
         args.experiment_id
@@ -430,9 +436,9 @@ def build_document(args: argparse.Namespace) -> dict[str, Any]:
         "summary": {
             "process_count": len(processes),
             "measured_event_class_count": measured_event_count,
-            "failed_event_class_count": failed_event_count,
-            "measured_metric_count": measured_metric_count,
-            "failed_metric_count": failed_metric_count,
+            "failed_event_class_count": 0,
+            "measured_metric_count": 0,
+            "failed_metric_count": 0,
             "evidence_completeness": evidence_completeness,
         },
         "claims": {
@@ -451,14 +457,17 @@ def main() -> int:
     try:
         document = build_document(args)
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open("w", encoding="utf-8", newline="") as handle:
+        with args.output.open("x", encoding="utf-8", newline="") as handle:
             json.dump(document, handle, indent=2, sort_keys=False)
             handle.write("\n")
     except ConversionFailure as exc:
         print(f"storage event export conversion failed: {exc}", file=sys.stderr)
         return 1
+    except FileExistsError:
+        print(f"storage event export conversion failed: output already exists: {args.output}", file=sys.stderr)
+        return 1
     except Exception as exc:
-        print(f"storage event export converter error: {exc}", file=sys.stderr)
+        print(f"storage event export adapter error: {exc}", file=sys.stderr)
         return 2
     return 0
 
