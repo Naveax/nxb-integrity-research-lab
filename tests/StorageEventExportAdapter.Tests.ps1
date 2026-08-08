@@ -52,7 +52,7 @@ BeforeAll {
 }
 
 Describe 'NXB storage event export summary adapter' {
-    It 'aggregates covered event counts and verified byte totals' {
+    It 'aggregates observed event counts and verified byte totals' {
         $csvPath = Join-Path $TestDrive 'happy.csv'
         $summaryPath = Join-Path $TestDrive 'happy.json'
         New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
@@ -93,9 +93,9 @@ Describe 'NXB storage event export summary adapter' {
         $result.processes[0].events.split_io.status | Should -Be 'not_assessed'
     }
 
-    It 'allows a covered but unobserved class to be measured as zero only when explicitly covered' {
-        $csvPath = Join-Path $TestDrive 'covered-zero.csv'
-        $summaryPath = Join-Path $TestDrive 'covered-zero.json'
+    It 'keeps a covered but unobserved class not assessed instead of inferring zero' {
+        $csvPath = Join-Path $TestDrive 'covered-unobserved.csv'
+        $summaryPath = Join-Path $TestDrive 'covered-unobserved.json'
         New-NxbStorageAdapterFixture -Path $csvPath -Rows @(
             'disk_read,1.0,4242,10,0,0x1,C:\fixture.bin,0,4096,0.1,0.05,'
         )
@@ -105,9 +105,11 @@ Describe 'NXB storage event export summary adapter' {
             -OutputPath $summaryPath `
             -CoveredEventType @('disk_read','disk_flush')
 
-        $result.events.disk_flush.status | Should -Be 'measured'
-        $result.events.disk_flush.count | Should -Be 0
+        $result.events.disk_flush.status | Should -Be 'not_assessed'
+        $result.events.disk_flush.count | Should -BeNullOrEmpty
         $result.events.disk_flush.bytes | Should -BeNullOrEmpty
+        $result.processes[0].events.disk_flush.status | Should -Be 'not_assessed'
+        $result.summary.measured_event_class_count | Should -Be 1
     }
 
     It 'does not synthesize a partial byte total when a byte row lacks transfer size' {
