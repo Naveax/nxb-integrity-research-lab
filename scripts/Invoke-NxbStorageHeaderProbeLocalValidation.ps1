@@ -33,7 +33,11 @@ $inventoryPath = Join-Path $PSScriptRoot 'Get-NxbXperfStorageHeaderInventory.ps1
 $workloadPath = Join-Path $PSScriptRoot 'Invoke-NxbStorageHeaderProbeWorkload.ps1'
 $capturePath = Join-Path $PSScriptRoot 'Invoke-NxbStorageHeaderProbe.ps1'
 $profileValidatorPath = Join-Path $PSScriptRoot 'Test-NxbStorageWprProfile.ps1'
-$testPath = Join-Path $repositoryRoot 'tests\StorageHeaderProbe.Tests.ps1'
+$probeTestPath = Join-Path $repositoryRoot 'tests\StorageHeaderProbe.Tests.ps1'
+$inventoryTestPath = Join-Path $repositoryRoot 'tests\XperfStorageHeaderInventory.Tests.ps1'
+$inventoryFixturePath = Join-Path `
+    $repositoryRoot `
+    'tests\fixtures\xperf-storage-header-inventory.valid.txt'
 $profilePath = Join-Path $repositoryRoot 'profiles\Nxb.StorageIOQueue.wprp'
 $runnerPath = $PSCommandPath
 
@@ -42,7 +46,9 @@ foreach ($requiredPath in @(
     $workloadPath,
     $capturePath,
     $profileValidatorPath,
-    $testPath,
+    $probeTestPath,
+    $inventoryTestPath,
+    $inventoryFixturePath,
     $profilePath,
     $runnerPath
 )) {
@@ -55,7 +61,8 @@ foreach ($scriptPath in @(
     $inventoryPath,
     $workloadPath,
     $capturePath,
-    $testPath,
+    $probeTestPath,
+    $inventoryTestPath,
     $runnerPath
 )) {
     $tokens = $null
@@ -79,7 +86,8 @@ $findings = @(
         $inventoryPath,
         $workloadPath,
         $capturePath,
-        $testPath,
+        $probeTestPath,
+        $inventoryTestPath,
         $runnerPath
     )) {
         Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error
@@ -95,11 +103,11 @@ if ($findings.Count -gt 0) {
 }
 
 Import-Module Pester -ErrorAction Stop
-$pesterResult = Invoke-Pester -Path $testPath -PassThru
+$pesterResult = Invoke-Pester -Path @($probeTestPath, $inventoryTestPath) -PassThru
 if ([int]$pesterResult.FailedCount -ne 0 -or
     [int]$pesterResult.SkippedCount -ne 0 -or
     [int]$pesterResult.PassedCount -ne [int]$pesterResult.TotalCount -or
-    [int]$pesterResult.TotalCount -ne 6) {
+    [int]$pesterResult.TotalCount -ne 11) {
     throw (
         'Storage header probe Pester result is not clean: ' +
         "passed=$($pesterResult.PassedCount) failed=$($pesterResult.FailedCount) " +
