@@ -72,6 +72,10 @@ BeforeAll {
             [uint64]$BuffersWritten = 10
         )
 
+        $eventsLostValue = [uint64]$EventsLost
+        $buffersLostValue = [uint64]$BuffersLost
+        $buffersWrittenValue = [uint64]$BuffersWritten
+
         $provider = {
             param($Path)
             $null = $Path
@@ -80,10 +84,10 @@ BeforeAll {
                 NumberOfProcessors = [uint64]16
                 MaximumFileSize = [uint64]512
                 LogFileMode = [uint64]0
-                BuffersWritten = [uint64]$BuffersWritten
+                BuffersWritten = $buffersWrittenValue
                 PointerSize = [uint64]8
-                EventsLost = [uint64]$EventsLost
-                BuffersLost = [uint64]$BuffersLost
+                EventsLost = $eventsLostValue
+                BuffersLost = $buffersLostValue
             }
         }.GetNewClosure()
 
