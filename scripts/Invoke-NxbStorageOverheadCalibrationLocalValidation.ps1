@@ -173,12 +173,12 @@ if ($findings.Count -gt 0) {
     )
 }
 
-$profile = & $profileValidatorPath -PassThru
-if ([bool]$profile.KernelQueueEnabled) {
+$storageProfile = & $profileValidatorPath -PassThru
+if ([bool]$storageProfile.KernelQueueEnabled) {
     throw 'Storage overhead validation found KernelQueue enabled.'
 }
-if ([int]$profile.MaximumFileSizeMiB -ne 512 -or
-    [string]$profile.FileMode -cne 'Circular') {
+if ([int]$storageProfile.MaximumFileSizeMiB -ne 512 -or
+    [string]$storageProfile.FileMode -cne 'Circular') {
     throw 'Storage overhead validation profile bound mismatch.'
 }
 
@@ -219,8 +219,8 @@ $result = [pscustomobject][ordered]@{
     windows_powershell_51 = $ps51
     analyzer_findings = 0
     native_wpr_profile_parse = 'passed'
-    profile_sha256 = [string]$profile.Sha256
-    kernel_queue_enabled = [bool]$profile.KernelQueueEnabled
+    profile_sha256 = [string]$storageProfile.Sha256
+    kernel_queue_enabled = [bool]$storageProfile.KernelQueueEnabled
     default_warmup_count = 1
     default_repetition_count = 3
     default_ordering = 'alternating_control_first'
