@@ -36,13 +36,15 @@ Describe 'NXB GPU provider metadata probe contract' {
         $script:Source | Should -Match 'publisher_metadata'
     }
 
-    It 'bounds keyword parsing to the logman Keyword section' {
+    It 'bounds keyword parsing and rejects process-path contamination' {
         $script:Source | Should -Match 'Get-NxbLogmanKeywordRows'
         $script:Source | Should -Match '\\bValue\\b'
         $script:Source | Should -Match '\\bKeyword\\b'
         $script:Source | Should -Match 'inKeywordSection'
         $script:Source | Should -Match "keyword_parser = 'section-v1'"
         $script:Source | Should -Match 'keyword_section_detected'
+        $script:Source | Should -Match 'Keyword metadata contamination detected'
+        $script:Source | Should -Match 'keyword_contamination_detected = \$false'
     }
 
     It 'fails closed when provider or keyword evidence is absent' {
