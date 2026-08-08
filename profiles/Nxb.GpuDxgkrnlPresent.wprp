@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder
+  Version="1.0"
+  Author="NXB Integrity Research Lab"
+  Team="Observability"
+  Company="NXB Integrity Research Lab"
+  Comments="Bounded GPU DXGKRNL/DXGI foundation capture using exact keyword identities observed on the certified Windows host. Event and timing semantics remain unpromoted."
+  Tag="NXB-IRL-004">
+  <Profiles>
+    <EventCollector
+      Id="NxbGpuDxgkrnlPresentEventCollectorFile"
+      Name="NXB GPU DXGKRNL Present Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="256" FileMode="Circular" />
+    </EventCollector>
+
+    <EventCollector
+      Id="NxbGpuDxgkrnlPresentEventCollectorMemory"
+      Name="NXB GPU DXGKRNL Present Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+    </EventCollector>
+
+    <EventProvider
+      Id="NxbGpuDxgKrnlEventProvider"
+      Name="Microsoft-Windows-DxgKrnl"
+      Strict="true">
+      <Keywords>
+        <Keyword Value="0x0000000000008000" />
+        <Keyword Value="0x0000000000010000" />
+        <Keyword Value="0x0000000008000000" />
+      </Keywords>
+    </EventProvider>
+
+    <EventProvider
+      Id="NxbGpuDxgiEventProvider"
+      Name="Microsoft-Windows-DXGI"
+      Strict="true">
+      <Keywords>
+        <Keyword Value="0x0000000000000002" />
+      </Keywords>
+    </EventProvider>
+
+    <Profile
+      Id="NxbGpuDxgkrnlPresent.Verbose.File"
+      Name="NxbGpuDxgkrnlPresent"
+      DetailLevel="Verbose"
+      LoggingMode="File"
+      Description="Bounded DXGKRNL/DXGI foundation capture using certified host keyword identities">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <EventCollectorId Value="NxbGpuDxgkrnlPresentEventCollectorFile">
+          <EventProviders>
+            <EventProviderId Value="NxbGpuDxgKrnlEventProvider" />
+            <EventProviderId Value="NxbGpuDxgiEventProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile
+      Id="NxbGpuDxgkrnlPresent.Verbose.Memory"
+      Name="NxbGpuDxgkrnlPresent"
+      DetailLevel="Verbose"
+      LoggingMode="Memory"
+      Description="DXGKRNL/DXGI foundation capture using certified host keyword identities">
+      <ProblemCategories>
+        <ProblemCategory Value="First Level Triage" />
+      </ProblemCategories>
+      <Collectors>
+        <EventCollectorId Value="NxbGpuDxgkrnlPresentEventCollectorMemory">
+          <EventProviders>
+            <EventProviderId Value="NxbGpuDxgKrnlEventProvider" />
+            <EventProviderId Value="NxbGpuDxgiEventProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
