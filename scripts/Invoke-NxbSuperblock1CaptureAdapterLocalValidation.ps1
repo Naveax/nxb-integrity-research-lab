@@ -24,7 +24,11 @@ function Invoke-NxbSuperblockBatchPesterRun {
 
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string]$Label
+        [string]$Label,
+
+        [Parameter(Mandatory)]
+        [ValidateRange(1, 1000)]
+        [int]$ExpectedTotal
     )
 
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('nxb-superblock-batch-' + [guid]::NewGuid().ToString('N'))
@@ -37,7 +41,9 @@ param(
     [Parameter(Mandatory)]
     [string]$TestPath,
     [Parameter(Mandatory)]
-    [string]$ResultPath
+    [string]$ResultPath,
+    [Parameter(Mandatory)]
+    [int]$ExpectedTotal
 )
 $ErrorActionPreference = 'Stop'
 Import-Module Pester -ErrorAction Stop
@@ -49,14 +55,14 @@ $summary = [pscustomobject]@{
     total = [int]$result.TotalCount
 }
 $summary | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ResultPath -Encoding UTF8
-if ($summary.passed -ne 8 -or $summary.total -ne 8 -or $summary.failed -ne 0 -or $summary.skipped -ne 0) {
+if ($summary.passed -ne $ExpectedTotal -or $summary.total -ne $ExpectedTotal -or $summary.failed -ne 0 -or $summary.skipped -ne 0) {
     exit 1
 }
 '@ | Set-Content -LiteralPath $childPath -Encoding UTF8
 
     try {
         $childOutput = @(
-            & $Executable -NoLogo -NoProfile -ExecutionPolicy Bypass -File $childPath -TestPath $TestPath -ResultPath $resultPath 2>&1
+            & $Executable -NoLogo -NoProfile -ExecutionPolicy Bypass -File $childPath -TestPath $TestPath -ResultPath $resultPath -ExpectedTotal $ExpectedTotal 2>&1
         )
         $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
         foreach ($line in $childOutput) {
@@ -72,6 +78,7 @@ if ($summary.passed -ne 8 -or $summary.total -ne 8 -or $summary.failed -ne 0 -or
             failed = [int]$summary.failed
             skipped = [int]$summary.skipped
             total = [int]$summary.total
+            expected_total = $ExpectedTotal
         }
     }
     finally {
@@ -166,10 +173,15 @@ if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
     throw "Windows PowerShell 5.1 executable missing: $windowsPowerShellPath"
 }
 
-$ps7Probe = Invoke-NxbSuperblockBatchPesterRun -Executable $pwshPath -TestPath $probeTestPath -Label 'PowerShell 7 selected provider metadata'
-$ps7Adapter = Invoke-NxbSuperblockBatchPesterRun -Executable $pwshPath -TestPath $adapterTestPath -Label 'PowerShell 7 capability adapter'
-$ps51Probe = Invoke-NxbSuperblockBatchPesterRun -Executable $windowsPowerShellPath -TestPath $probeTestPath -Label 'Windows PowerShell 5.1 selected provider metadata'
-$ps51Adapter = Invoke-NxbSuperblockBatchPesterRun -Executable $windowsPowerShellPath -TestPath $adapterTestPath -Label 'Windows PowerShell 5.1 capability adapter'
+$ps7Probe = Invoke-NxbSuperblockBatchPesterRun -Executable $pwshPath -TestPath $probeTestPath -Label 'PowerShell 7 selected provider metadata' -ExpectedTotal 9
+$ps7Adapter = Invoke-NxbSuperblockBatchPesterRun -Executable $pwshPath -TestPath $adapterTestPath -Label 'PowerShell 7 capability adapter' -ExpectedTotal 8
+$ps51Probe = Invoke-NxbSuperblockBatchPesterRun -Executable $windowsPowerShellPath -TestPath $probeTestPath -Label 'Windows PowerShell 5.1 selected provider metadata' -ExpectedTotal 9
+$ps51Adapter = Invoke-NxbSuperblockBatchPesterRun -Executable $windowsPowerShellPath -TestPath $adapterTestPath -Label 'Windows PowerShell 5.1 capability adapter' -ExpectedTotal 8
+
+$ps7Passed = [int]$ps7Probe.passed + [int]$ps7Adapter.passed
+$ps7Total = [int]$ps7Probe.total + [int]$ps7Adapter.total
+$ps51Passed = [int]$ps51Probe.passed + [int]$ps51Adapter.passed
+$ps51Total = [int]$ps51Probe.total + [int]$ps51Adapter.total
 
 $postDirty = @(& $git.Source -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
@@ -182,14 +194,14 @@ $result = [pscustomobject][ordered]@{
     powershell7 = [ordered]@{
         selected_provider_metadata = $ps7Probe
         capability_adapter = $ps7Adapter
-        passed = 16
-        total = 16
+        passed = $ps7Passed
+        total = $ps7Total
     }
     windows_powershell_51 = [ordered]@{
         selected_provider_metadata = $ps51Probe
         capability_adapter = $ps51Adapter
-        passed = 16
-        total = 16
+        passed = $ps51Passed
+        total = $ps51Total
     }
     analyzer_findings = 0
     certification_runner_parser = 'passed'
@@ -201,8 +213,8 @@ $result = [pscustomobject][ordered]@{
 }
 
 Write-Information -MessageData "SUPERBLOCK capture/adapter local validation passed: $currentHead" -InformationAction Continue
-Write-Information -MessageData 'PowerShell 7 Pester: 16/16' -InformationAction Continue
-Write-Information -MessageData 'Windows PowerShell 5.1 Pester: 16/16' -InformationAction Continue
+Write-Information -MessageData "PowerShell 7 Pester: $ps7Passed/$ps7Total" -InformationAction Continue
+Write-Information -MessageData "Windows PowerShell 5.1 Pester: $ps51Passed/$ps51Total" -InformationAction Continue
 Write-Information -MessageData 'PSScriptAnalyzer: 0 findings' -InformationAction Continue
 Write-Information -MessageData 'Certification runner parser/analyzer: PASS' -InformationAction Continue
 Write-Information -MessageData 'Real selected-provider metadata executed: False' -InformationAction Continue
