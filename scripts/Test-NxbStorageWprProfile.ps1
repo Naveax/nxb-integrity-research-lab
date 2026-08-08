@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter()]
     [string]$Path = (Join-Path (Split-Path -Parent $PSScriptRoot) 'profiles\Nxb.StorageIOQueue.wprp'),

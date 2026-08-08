@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
     $script:ScriptsRoot = Join-Path $script:RepositoryRoot 'scripts'
     $script:ProfilesRoot = Join-Path $script:RepositoryRoot 'profiles'
