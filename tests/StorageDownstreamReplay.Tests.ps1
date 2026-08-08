@@ -26,6 +26,8 @@ Describe 'NXB storage downstream replay validation contract' {
 
     It 'replays through the validated real-summary runner instead of a second implementation' {
         $script:Source | Should -Match 'Invoke-NxbStorageRealSummaryValidation\.ps1'
+        $script:Source | Should -Match '-ExperimentId \(\[string\]\$sourceSummary\.experiment_id\)'
+        $script:Source | Should -Match 'Source summary experiment_id is required for byte-identical replay'
         $script:Source | Should -Not -Match 'summarize_storage_event_export\.py'
     }
 
