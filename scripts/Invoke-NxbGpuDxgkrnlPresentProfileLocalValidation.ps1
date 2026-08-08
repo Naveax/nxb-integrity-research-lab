@@ -132,7 +132,7 @@ if ($findings.Count -gt 0) {
     )
 }
 
-$profile = & $validatorPath -PassThru
+$profileContract = & $validatorPath -PassThru
 $pwshPath = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $windowsPowerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
@@ -171,7 +171,7 @@ if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
 $result = [pscustomobject][ordered]@{
     status = 'passed'
     head_sha = $currentHead
-    profile = $profile
+    profile = $profileContract
     powershell7 = $ps7
     windows_powershell_51 = $ps51
     analyzer_findings = 0
