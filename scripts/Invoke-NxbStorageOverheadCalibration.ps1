@@ -79,7 +79,12 @@ function Invoke-NxbStorageCalibrationWorkload {
     $process = Start-Process -FilePath $PwshPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
     try {
         if (-not $process.WaitForExit(15000)) {
-            try { $process.Kill() } catch { }
+            try {
+                $process.Kill()
+            }
+            catch {
+                Write-Warning "Timed-out calibration workload could not be killed: $($_.Exception.Message)"
+            }
             throw 'Bounded storage calibration workload exceeded the 15 second timeout.'
         }
         $wall.Stop()
@@ -89,8 +94,18 @@ function Invoke-NxbStorageCalibrationWorkload {
 
         $cpuMs = $null
         $peakWorkingSet = $null
-        try { $cpuMs = [Math]::Round($process.TotalProcessorTime.TotalMilliseconds, 3) } catch { }
-        try { $peakWorkingSet = [int64]$process.PeakWorkingSet64 } catch { }
+        try {
+            $cpuMs = [Math]::Round($process.TotalProcessorTime.TotalMilliseconds, 3)
+        }
+        catch {
+            Write-Verbose "Process CPU time unavailable: $($_.Exception.Message)"
+        }
+        try {
+            $peakWorkingSet = [int64]$process.PeakWorkingSet64
+        }
+        catch {
+            Write-Verbose "Peak working set unavailable: $($_.Exception.Message)"
+        }
     }
     finally {
         if ($wall.IsRunning) { $wall.Stop() }
@@ -148,9 +163,9 @@ foreach ($required in @($workloadPath,$profileValidator,$etlAccounting,$PSComman
 
 $wpr = Get-Command wpr.exe -ErrorAction Stop
 $pwsh = Get-Command pwsh.exe -ErrorAction Stop
-$profile = & $profileValidator -PassThru
-if ([bool]$profile.KernelQueueEnabled) { throw 'KernelQueue must remain disabled for storage calibration.' }
-$profileReference = "$($profile.Path)!NxbStorageIOQueue.Verbose"
+$storageProfile = & $profileValidator -PassThru
+if ([bool]$storageProfile.KernelQueueEnabled) { throw 'KernelQueue must remain disabled for storage calibration.' }
+$profileReference = "$($storageProfile.Path)!NxbStorageIOQueue.Verbose"
 
 $trials = [Collections.Generic.List[object]]::new()
 $startedUtc = [DateTime]::UtcNow
@@ -200,9 +215,9 @@ function Invoke-NxbCalibrationTrial {
                 status = 'passed'
                 head_sha = $currentHead
                 profile = [ordered]@{
-                    sha256 = [string]$profile.Sha256
-                    file_mode = [string]$profile.FileMode
-                    maximum_file_size_mib = [int]$profile.MaximumFileSizeMiB
+                    sha256 = [string]$storageProfile.Sha256
+                    file_mode = [string]$storageProfile.FileMode
+                    maximum_file_size_mib = [int]$storageProfile.MaximumFileSizeMiB
                 }
                 evidence = [ordered]@{ etl_sha256 = $etlSha }
             })
@@ -243,7 +258,12 @@ function Invoke-NxbCalibrationTrial {
     }
     catch {
         if ($script:wprStarted) {
-            try { & $wpr.Source -cancel 2>&1 | Out-Null } catch { }
+            try {
+                & $wpr.Source -cancel 2>&1 | Out-Null
+            }
+            catch {
+                Write-Warning "WPR cleanup cancel failed after calibration trial error: $($_.Exception.Message)"
+            }
             $script:wprStarted = $false
         }
         throw
@@ -268,7 +288,12 @@ try {
 }
 finally {
     if ($wprStarted) {
-        try { & $wpr.Source -cancel 2>&1 | Out-Null } catch { }
+        try {
+            & $wpr.Source -cancel 2>&1 | Out-Null
+        }
+        catch {
+            Write-Warning "WPR final cleanup cancel failed: $($_.Exception.Message)"
+        }
         $wprStarted = $false
     }
 }
