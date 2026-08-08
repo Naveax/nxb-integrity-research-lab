@@ -71,8 +71,10 @@ Write-Information -MessageData '=== SUPERBLOCK 1 CAPTURE/ADAPTER CERTIFICATION =
 Write-Information -MessageData '[1/5] Combined dual-runtime static gate' -InformationAction Continue
 $local = & $localValidator -ExpectedHead $ExpectedHead -PassThru
 if ([string]$local.status -cne 'passed' -or
-    [int]$local.powershell7.passed -ne 16 -or
-    [int]$local.windows_powershell_51.passed -ne 16 -or
+    [int]$local.powershell7.passed -ne 17 -or
+    [int]$local.powershell7.total -ne 17 -or
+    [int]$local.windows_powershell_51.passed -ne 17 -or
+    [int]$local.windows_powershell_51.total -ne 17 -or
     [int]$local.analyzer_findings -ne 0) {
     throw 'Combined capture/adapter local validation did not pass cleanly.'
 }
@@ -138,8 +140,14 @@ $receipt = [pscustomobject][ordered]@{
     head_sha = $currentHead
     certified_utc = [DateTime]::UtcNow.ToString('o')
     static_gate = [ordered]@{
-        powershell7 = 16
-        windows_powershell_51 = 16
+        powershell7 = [ordered]@{
+            passed = [int]$local.powershell7.passed
+            total = [int]$local.powershell7.total
+        }
+        windows_powershell_51 = [ordered]@{
+            passed = [int]$local.windows_powershell_51.passed
+            total = [int]$local.windows_powershell_51.total
+        }
         analyzer_findings = 0
     }
     selected_provider_metadata = $providerReceipt
