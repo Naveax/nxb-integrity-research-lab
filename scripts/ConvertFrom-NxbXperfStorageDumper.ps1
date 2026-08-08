@@ -80,8 +80,40 @@ $arguments = @(
     '--max-event-count', [string]$MaxEventCount
 )
 
-$nativeOutput = @(& $pythonPath @arguments 2>&1)
-$exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+$previousErrorActionPreference = $ErrorActionPreference
+$nativePreferenceVariable = Get-Variable `
+    -Name PSNativeCommandUseErrorActionPreference `
+    -ErrorAction SilentlyContinue
+$nativePreferenceAvailable = $null -ne $nativePreferenceVariable
+$previousNativePreference = if ($nativePreferenceAvailable) {
+    [bool]$nativePreferenceVariable.Value
+}
+else {
+    $null
+}
+
+$nativeOutput = @()
+$exitCode = 1
+try {
+    $ErrorActionPreference = 'Continue'
+    if ($nativePreferenceAvailable) {
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $false `
+            -Scope Local
+    }
+    $nativeOutput = @(& $pythonPath @arguments 2>&1)
+    $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($nativePreferenceAvailable) {
+        Set-Variable `
+            -Name PSNativeCommandUseErrorActionPreference `
+            -Value $previousNativePreference `
+            -Scope Local
+    }
+}
 
 try {
     if ($exitCode -ne 0) {
@@ -130,7 +162,7 @@ try {
         [string]$manifest.normalizer_sha256 -cne $normalizerHash -or
         [string]$manifest.normalized_csv_sha256 -cne $expectedCsvHash -or
         [int]$manifest.normalized_event_count -le 0 -or
-        [string]$manifest.timing.normalized_duration_us_available -cne 'False') {
+        [bool]$manifest.timing.normalized_duration_us_available) {
         throw 'Xperf storage bridge manifest validation failed.'
     }
 
