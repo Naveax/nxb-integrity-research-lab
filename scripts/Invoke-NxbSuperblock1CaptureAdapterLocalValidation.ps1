@@ -103,15 +103,30 @@ $probePath = Join-Path $PSScriptRoot 'Invoke-NxbSelectedProviderMetadataProbe.ps
 $adapterPath = Join-Path $PSScriptRoot 'ConvertTo-NxbSuperblock1CapabilityAdapter.ps1'
 $probeTestPath = Join-Path $repositoryRoot 'tests\SelectedProviderMetadataProbe.Tests.ps1'
 $adapterTestPath = Join-Path $repositoryRoot 'tests\Superblock1CapabilityAdapter.Tests.ps1'
+$certificationPath = Join-Path $PSScriptRoot 'Invoke-NxbSuperblock1CaptureAdapterCertification.ps1'
 $runnerPath = $PSCommandPath
 
-foreach ($requiredPath in @($probePath,$adapterPath,$probeTestPath,$adapterTestPath,$runnerPath)) {
+foreach ($requiredPath in @(
+    $probePath,
+    $adapterPath,
+    $probeTestPath,
+    $adapterTestPath,
+    $certificationPath,
+    $runnerPath
+)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required SUPERBLOCK capture/adapter validation file missing: $requiredPath"
     }
 }
 
-foreach ($scriptPath in @($probePath,$adapterPath,$probeTestPath,$adapterTestPath,$runnerPath)) {
+foreach ($scriptPath in @(
+    $probePath,
+    $adapterPath,
+    $probeTestPath,
+    $adapterTestPath,
+    $certificationPath,
+    $runnerPath
+)) {
     $tokens = $null
     $errors = $null
     [void][Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors)
@@ -125,7 +140,14 @@ foreach ($scriptPath in @($probePath,$adapterPath,$probeTestPath,$adapterTestPat
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $findings = @(
-    foreach ($scriptPath in @($probePath,$adapterPath,$probeTestPath,$adapterTestPath,$runnerPath)) {
+    foreach ($scriptPath in @(
+        $probePath,
+        $adapterPath,
+        $probeTestPath,
+        $adapterTestPath,
+        $certificationPath,
+        $runnerPath
+    )) {
         Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error
     }
 )
@@ -170,6 +192,8 @@ $result = [pscustomobject][ordered]@{
         total = 16
     }
     analyzer_findings = 0
+    certification_runner_parser = 'passed'
+    certification_runner_analyzer = 'passed'
     real_provider_metadata_executed = $false
     real_capability_adapter_executed = $false
     semantic_claims_enabled = $false
@@ -180,6 +204,7 @@ Write-Information -MessageData "SUPERBLOCK capture/adapter local validation pass
 Write-Information -MessageData 'PowerShell 7 Pester: 16/16' -InformationAction Continue
 Write-Information -MessageData 'Windows PowerShell 5.1 Pester: 16/16' -InformationAction Continue
 Write-Information -MessageData 'PSScriptAnalyzer: 0 findings' -InformationAction Continue
+Write-Information -MessageData 'Certification runner parser/analyzer: PASS' -InformationAction Continue
 Write-Information -MessageData 'Real selected-provider metadata executed: False' -InformationAction Continue
 Write-Information -MessageData 'Real capability adapter executed: False' -InformationAction Continue
 
