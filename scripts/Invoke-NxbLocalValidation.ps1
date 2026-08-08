@@ -341,24 +341,19 @@ $ErrorActionPreference = 'Stop'
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 $targetRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
 [IO.Directory]::CreateDirectory($targetRoot) | Out-Null
-$env:PSModulePath = $targetRoot + [IO.Path]::PathSeparator + $env:PSModulePath
-$required = [version]'5.7.1'
-$selected = Get-Module -ListAvailable Pester |
-    Where-Object Version -GE $required |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-if ($null -eq $selected) {
+$modulePath = Join-Path $targetRoot 'Pester\5.7.1\Pester.psd1'
+if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
     Save-Module Pester -RequiredVersion 5.7.1 -Path $targetRoot -Force -Repository PSGallery
 }
-$selected = Get-Module -ListAvailable Pester |
-    Where-Object Version -GE $required |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-if ($null -eq $selected) {
-    throw 'Pester 5.7.1 kurulamadı.'
+if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+    throw "Pester 5.7.1 kurulamadı: $modulePath"
 }
-Write-Output ('PesterPath=' + $selected.Path)
-Write-Output ('PesterVersion=' + $selected.Version)
+$manifest = Test-ModuleManifest -Path $modulePath
+if ($manifest.Version -ne ([version]'5.7.1')) {
+    throw "Beklenmeyen Pester sürümü: $($manifest.Version)"
+}
+Write-Output ('PesterPath=' + $modulePath)
+Write-Output ('PesterVersion=' + $manifest.Version)
 '@ `
             -LogPath $bootstrapPs51Log
         Add-NxbGate `
@@ -549,16 +544,13 @@ Invoke-Pester -Configuration `$configuration
         -ExecutablePath $windowsPowerShellPath `
         -CommandText @"
 `$ErrorActionPreference = 'Stop'
-`$module = Get-Module -ListAvailable Pester |
-    Where-Object Version -GE ([version]'5.0.0') |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-if (`$null -eq `$module) {
-    throw 'Windows PowerShell 5.1 için Pester >= 5 bulunamadı.'
+`$modulePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules\Pester\5.7.1\Pester.psd1'
+if (-not (Test-Path -LiteralPath `$modulePath -PathType Leaf)) {
+    throw ('Windows PowerShell 5.1 Pester manifesti bulunamadı: ' + `$modulePath)
 }
-Import-Module `$module.Path -Force
+Import-Module `$modulePath -Force
 `$loaded = Get-Module Pester
-if (`$loaded.Version -lt ([version]'5.0.0')) {
+if (`$loaded.Version -ne ([version]'5.7.1')) {
     throw ('Yanlış Pester sürümü yüklendi: ' + `$loaded.Version)
 }
 Write-Output ('PesterPath=' + `$loaded.Path)

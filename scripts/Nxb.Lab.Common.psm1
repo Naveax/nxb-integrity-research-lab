@@ -168,7 +168,16 @@ function Read-NxbJson {
         [string]$Path
     )
 
-    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $json = Get-Content -LiteralPath $Path -Raw
+    $convertFromJson = Get-Command `
+        -Name ConvertFrom-Json `
+        -CommandType Cmdlet `
+        -ErrorAction Stop
+    if ($convertFromJson.Parameters.ContainsKey('DateKind')) {
+        return $json | ConvertFrom-Json -DateKind String
+    }
+
+    return $json | ConvertFrom-Json
 }
 
 function Write-NxbJsonAtomic {

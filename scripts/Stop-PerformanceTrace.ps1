@@ -168,10 +168,32 @@ $traces = Join-Path $experimentFull 'traces'
 New-Item -ItemType Directory -Path $traces -Force | Out-Null
 $etl = Join-Path $traces 'performance.etl'
 
-$stopOutput = & $wprPath -stop $etl 2>&1
-$stopExitCode = $LASTEXITCODE
-if ($stopExitCode -ne 0) {
-    throw "WPR durdurulamadı (exit $stopExitCode): $($stopOutput -join [Environment]::NewLine)"
+$stagingRoot = [IO.Path]::GetTempPath()
+if ([string]::IsNullOrWhiteSpace($stagingRoot) -or
+    -not (Test-Path -LiteralPath $stagingRoot -PathType Container)) {
+    throw "WPR staging dizini bulunamadı: $stagingRoot"
+}
+$stagingEtl = Join-Path `
+    $stagingRoot `
+    ("nxb-wpr-stop-{0}.etl" -f [guid]::NewGuid().ToString('N'))
+
+try {
+    $stopOutput = & $wprPath -stop $stagingEtl 2>&1
+    $stopExitCode = $LASTEXITCODE
+    if ($stopExitCode -ne 0) {
+        throw "WPR durdurulamadı (exit $stopExitCode): $($stopOutput -join [Environment]::NewLine)"
+    }
+    if (Test-Path -LiteralPath $stagingEtl -PathType Leaf) {
+        Move-Item `
+            -LiteralPath $stagingEtl `
+            -Destination $etl `
+            -Force
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $stagingEtl -PathType Leaf) {
+        Remove-Item -LiteralPath $stagingEtl -Force
+    }
 }
 
 if (-not (Test-Path -LiteralPath $etl -PathType Leaf)) {

@@ -12,7 +12,7 @@ Tam sistem gözlem mimarisi: [`FULL_SYSTEM_OBSERVABILITY.md`](FULL_SYSTEM_OBSERV
 
 ### NXB-IRL-004 — Full-system observability fabric
 
-Durum: `NEXT — START AFTER NXB-IRL-003 MERGE`
+Durum: `IN PROGRESS — TRACE-LOSS BLOCK VALIDATED — RAM PROFILE NEXT`
 
 GitHub takip kaydı: issue `#2`.
 
@@ -28,78 +28,72 @@ Hazır temel:
 - [x] Canonical cross-domain event schema
 - [x] Machine/boot/clock identity contract
 - [x] Deterministic evidence integrity store
+- [x] Minimal bounded CPU + scheduler profile
+- [x] Paired collector overhead calibration mechanism
+- [x] Trace-loss and circular-overwrite accounting
+- [x] Native ETL `OpenTraceW` header fallback independent of xperf
+- [x] Exact-head Windows trace-loss validation
 
 Sıradaki alt görevler:
 
-- [ ] Minimal CPU + scheduler profile
 - [ ] RAM/page-fault/working-set profile
 - [ ] Disk/file-system/storage queue profile
 - [ ] GPU/DXGKRNL/present profile
 - [ ] Network/NDIS/connection profile
 - [ ] Device/driver/PCIe provider inventory
 - [ ] Power/frequency/thermal snapshot
-- [ ] Trace-loss ve overhead accounting
+- [ ] Expanded cross-provider capture-completeness classification
 - [ ] Cross-domain correlation engine
 - [ ] Controlled CPU/RAM/disk/GPU/network fixtures
+- [ ] Representative production overhead thresholds
 
-## PR closeout
+## Active PR closeout
 
-### NXB-IRL-003 — Evidence integrity store
+### NXB-IRL-004 — Trace-loss and circular-overwrite accounting
 
-Durum: `IMPLEMENTATION COMPLETE — PR #5 CLOSEOUT`
+Durum: `IMPLEMENTATION COMPLETE — EXACT-HEAD WINDOWS VALIDATION PASSED — DRAFT PR #8 CLOSEOUT`
 
-GitHub takip kaydı: issue `#4`
+GitHub takip kaydı: issue `#2`
 
-Draft PR: `#5`
+Draft PR: `#8`
 
-Canonical validation: [`NXB-IRL-003-VALIDATION.md`](NXB-IRL-003-VALIDATION.md)
+Validated implementation head:
 
-Tamamlananlar:
+```text
+e5a7e0cf2f7c1a4c5f50b3c460e0c859d74db258
+```
 
-- [x] Version-1 evidence-store contract
-- [x] Record, chain-head ve bundle-manifest Draft 2020-12 şemaları
-- [x] Canonical JSON serializer
-- [x] UTF-8 BOM'suz deterministic SHA-256
-- [x] Root-only self-hash exclusion
-- [x] Atomik canonical JSON writer
-- [x] Append-only record zinciri
-- [x] Staged schema validation before append
-- [x] Previous-record hash linkage
-- [x] Experiment/machine/boot/session identity binding
-- [x] Deterministic chain-head ve chain verifier
-- [x] Tool provenance record helper ve executable verifier
-- [x] Hassas argümanları saklamayan redacted argument digest
-- [x] Four-timestamp clock-offset record helper
-- [x] Clock arithmetic verifier
-- [x] Deterministic offline bundle oluşturma
-- [x] Offline bundle doğrulama
-- [x] Evidence-store/bundle karşılaştırma
-- [x] Optional detached local signing
-- [x] Bundle truncation ve case-collision testleri
-- [x] Reparse/path traversal bundle testleri
-- [x] Unsigned/invalid-signature durum testleri
-- [x] Exact one-byte record mutation test
-- [x] Record deletion ve reordering tests
-- [x] Previous-record mismatch test
-- [x] Cross-experiment record substitution test
-- [x] Machine/boot/session identity mismatch tests
-- [x] Tool binary ve clock-offset tamper tests
-- [x] Repository smoke bundle integration
-- [x] PR/ref concurrency ile superseded Actions run cancellation
-- [x] PowerShell 7 validation: 63 passed, 0 failed
-- [x] Windows PowerShell 5.1 validation: 63 passed, 0 failed
-- [x] PSScriptAnalyzer: zero Error/Warning findings
-- [x] Public repository guard and full smoke validation
-- [x] Final validation report
+Canonical validation:
+
+[`NXB-IRL-004-TRACE-LOSS-VALIDATION.md`](NXB-IRL-004-TRACE-LOSS-VALIDATION.md)
+
+Tamamlanan kapılar:
+
+- [x] Public repository guard — 108 candidate files
+- [x] Native WPR profile parser
+- [x] PSScriptAnalyzer — 0 Error/Warning findings
+- [x] Repository smoke
+- [x] PowerShell 7 Pester — 136/136
+- [x] Windows PowerShell 5.1 Pester — 136/136
+- [x] Native paired WPR regression calibration — 1/1 pair
+- [x] Base exact-head validation
+- [x] Real elevated WPR capture
+- [x] Native ETL `TRACE_LOGFILE_HEADER` accounting
+- [x] Measured pre-stop and post-stop applicable loss counters
+- [x] ETL SHA-256/length reconciliation
+- [x] Evidence finalization and integrity verification
+- [x] Safe review bundles inspected
+- [x] Canonical validation record
+- [x] Handoff and roadmap closeout update
 
 Kalan closeout işlemleri:
 
-- [ ] Final documentation-only head CI
-- [ ] PR `#5` exact-head evidence update
-- [ ] Issue `#4` acceptance checklist and evidence update
-- [ ] Mark PR ready
-- [ ] Exact-head squash merge
-- [ ] Close issue `#4`
+- [ ] Compare final PR head with validated implementation head and confirm documentation-only delta
+- [ ] Update PR `#8` body with exact validation evidence
+- [ ] Mark PR ready only with explicit instruction
+- [ ] Exact-head squash merge only with explicit instruction
+
+PR `#8` tracks issue `#2` without closing it. The broader observability fabric continues with RAM/page-fault/working-set capture.
 
 ## Completed
 
@@ -121,6 +115,20 @@ Kalan closeout işlemleri:
 - [x] PowerShell 5.1 and PowerShell 7 Windows CI
 - [x] PSScriptAnalyzer and repository smoke validation
 - [x] PR #3 merge and issue #1 closure
+
+### NXB-IRL-003 — Evidence integrity store
+
+- [x] Version-1 evidence-store contract
+- [x] Record, chain-head and bundle-manifest Draft 2020-12 schemas
+- [x] Canonical JSON serializer and deterministic SHA-256 identity
+- [x] Append-only record chain and independent verification
+- [x] Tool provenance and clock-offset evidence
+- [x] Deterministic offline bundles
+- [x] Optional detached local signatures
+- [x] Adversarial tamper, traversal, reparse and signature coverage
+- [x] PowerShell 7 and Windows PowerShell 5.1 validation
+- [x] PSScriptAnalyzer and public repository guard
+- [x] PR #5 merge and issue #4 closure
 
 ## Upcoming blocks
 

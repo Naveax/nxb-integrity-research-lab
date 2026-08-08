@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "accounting_id": "trace-loss-fixture-v1",
+  "experiment_id": "Trace-Loss-Fixture-001",
+  "experiment_relative_path": "experiments/Trace-Loss-Fixture-001",
+  "machine_id": "fixture-machine",
+  "boot_id": "1111111111111111111111111111111111111111111111111111111111111111",
+  "captured_utc": "2026-08-05T13:45:00+00:00",
+  "capture": {
+    "started_utc": "2026-08-05T13:44:00+00:00",
+    "stopped_utc": "2026-08-05T13:45:00+00:00",
+    "profile": {
+      "name": "NxbMinimalCpuScheduler",
+      "provenance_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "bounded": true,
+      "logging_mode": "File",
+      "file_mode": "Circular",
+      "buffer_size_kib": 1024,
+      "buffers": 64,
+      "maximum_file_size_mib": 512
+    },
+    "etl": {
+      "status": "measured",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "length": 104857600,
+      "reason": null
+    }
+  },
+  "native_counters": {
+    "events_lost": {
+      "status": "measured",
+      "value": 0,
+      "unit": "count",
+      "source": "wpr_status_snapshot:4444444444444444444444444444444444444444444444444444444444444444;field=collector_events_lost",
+      "reason": null
+    },
+    "buffers_lost": {
+      "status": "measured",
+      "value": 0,
+      "unit": "count",
+      "source": "xperf_tracestats:5555555555555555555555555555555555555555555555555555555555555555;field=buffers_lost",
+      "reason": null
+    },
+    "realtime_buffers_lost": {
+      "status": "not_applicable",
+      "value": null,
+      "unit": "count",
+      "source": null,
+      "reason": "File-mode ETL gerçek zamanlı consumer teslimatı kullanmıyor."
+    }
+  },
+  "trace_loss": {
+    "classification": "no_native_loss_reported",
+    "measured_counter_count": 2,
+    "total_reported_loss": 0,
+    "reason": null
+  },
+  "circular_overwrite": {
+    "classification": "no_risk_observed",
+    "capacity_bytes": 536870912,
+    "final_etl_length": 104857600,
+    "utilization_ratio": 0.1953125,
+    "risk_threshold_ratio": 0.9,
+    "risk_reasons": [],
+    "reason": null
+  },
+  "summary": {
+    "evidence_completeness": "complete",
+    "trace_loss_assessed": true,
+    "circular_overwrite_assessed": true
+  },
+  "claims": {
+    "trace_loss_absence": false,
+    "circular_overwrite_absence": false,
+    "capture_completeness": "not_claimed"
+  }
+}
