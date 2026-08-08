@@ -80,22 +80,48 @@ Unavailable/missing counts remain `null`, never synthesized as zero.
 
 ## Static gate
 
-Two 8-test contracts execute under both PowerShell runtimes:
+The selected-provider contract contains 9 tests and the capability-adapter contract contains 8 tests. Both execute under PowerShell 7 and Windows PowerShell 5.1:
 
 ```text
-selected provider metadata:  8/8
+selected provider metadata:  9/9
 capability adapter:           8/8
 ```
 
 Aggregate target:
 
 ```text
-PowerShell 7:               16/16
-Windows PowerShell 5.1:     16/16
+PowerShell 7:               17/17
+Windows PowerShell 5.1:     17/17
 PSScriptAnalyzer:           0
 certification runner parse: PASS
 certification analyzer:     PASS
 ```
+
+The local runner requires an explicit expected count for each suite and derives aggregate totals from the actual returned summaries. This prevents a stale hard-coded aggregate from masking future test-count changes.
+
+## Native certification history
+
+First exact-head attempt:
+
+```text
+4009663f3ea17b4d49a30952ffa88fee7190a0d9
+```
+
+The gate stopped in the PowerShell 7 selected-provider Pester suite before any real provider metadata collection. Two identity assertions used:
+
+```powershell
+Should -Match [regex]::Escape($name)
+```
+
+Pester treated `[regex]::Escape` as the match pattern. The repaired contract evaluates the expression first:
+
+```powershell
+Should -Match ([regex]::Escape($name))
+```
+
+That run also exposed that the selected-provider suite contains 9 tests rather than 8. The runner and certification receipt contract were repaired to use 9 + 8 = 17 tests per runtime.
+
+No real `logman`/`wevtutil` provider probe, capability snapshot, adapter output or ETL capture was promoted from the failed attempt.
 
 ## Native certification
 
