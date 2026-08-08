@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "experiment_id": "storage-fixture-001",
+  "machine_id": "fixture-machine",
+  "boot_id": "1111111111111111111111111111111111111111111111111111111111111111",
+  "event_id": 1,
+  "timestamp_utc": "2026-08-08T14:00:01Z",
+  "domain": "storage",
+  "event_type": "disk_read",
+  "source": {
+    "collector": "ConvertFrom-NxbStorageEventExport.ps1",
+    "kind": "synthetic_fixture",
+    "provenance_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "identity": {
+    "process_id": 4242,
+    "thread_id": 5252,
+    "disk_number": 0,
+    "file_key": null,
+    "path": null
+  },
+  "operation": {
+    "offset_bytes": 4096,
+    "transfer_bytes": 4096,
+    "duration_us": null,
+    "result": null
+  },
+  "semantics": {
+    "timestamp": "measured",
+    "duration": "not_assessed",
+    "transfer_size": "measured",
+    "process_attribution": "measured",
+    "thread_attribution": "measured",
+    "disk_attribution": "measured",
+    "file_attribution": "not_assessed",
+    "queue_semantics": "not_assessed"
+  }
+}
