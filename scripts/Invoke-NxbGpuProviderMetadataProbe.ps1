@@ -55,7 +55,7 @@ foreach ($providerSpec in $providerSpecs) {
     $logmanLines = @(& $logman.Source query providers -n $providerName 2>&1)
     $logmanExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
     if ($logmanExit -ne 0) {
-        throw "logman provider query failed for $providerName: exit=$logmanExit"
+        throw "logman provider query failed for ${providerName}: exit=$logmanExit"
     }
 
     $logmanText = ($logmanLines -join [Environment]::NewLine)
