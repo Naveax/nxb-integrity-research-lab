@@ -122,19 +122,29 @@ if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
     throw 'Storage evidence validation requires a clean exact-head worktree.'
 }
 
-$schemaPath = Join-Path $repositoryRoot 'schemas\storage-etl-summary.schema.json'
-$pythonValidatorPath = Join-Path $repositoryRoot 'tools\validate_storage_etl_summary.py'
-$wrapperPath = Join-Path $PSScriptRoot 'Test-StorageEtlSummary.ps1'
-$testPath = Join-Path $repositoryRoot 'tests\StorageEtlSummary.Tests.ps1'
-$fixturePath = Join-Path $repositoryRoot 'tests\fixtures\storage-etl-summary.valid.json'
+$summarySchemaPath = Join-Path $repositoryRoot 'schemas\storage-etl-summary.schema.json'
+$eventSchemaPath = Join-Path $repositoryRoot 'schemas\storage-event.schema.json'
+$summaryPythonValidatorPath = Join-Path $repositoryRoot 'tools\validate_storage_etl_summary.py'
+$eventPythonValidatorPath = Join-Path $repositoryRoot 'tools\validate_storage_event.py'
+$summaryWrapperPath = Join-Path $PSScriptRoot 'Test-StorageEtlSummary.ps1'
+$eventWrapperPath = Join-Path $PSScriptRoot 'Test-StorageEvent.ps1'
+$summaryTestPath = Join-Path $repositoryRoot 'tests\StorageEtlSummary.Tests.ps1'
+$eventTestPath = Join-Path $repositoryRoot 'tests\StorageEvent.Tests.ps1'
+$summaryFixturePath = Join-Path $repositoryRoot 'tests\fixtures\storage-etl-summary.valid.json'
+$eventFixturePath = Join-Path $repositoryRoot 'tests\fixtures\storage-event.valid.json'
 $runnerPath = $PSCommandPath
 
 foreach ($requiredPath in @(
-    $schemaPath,
-    $pythonValidatorPath,
-    $wrapperPath,
-    $testPath,
-    $fixturePath,
+    $summarySchemaPath,
+    $eventSchemaPath,
+    $summaryPythonValidatorPath,
+    $eventPythonValidatorPath,
+    $summaryWrapperPath,
+    $eventWrapperPath,
+    $summaryTestPath,
+    $eventTestPath,
+    $summaryFixturePath,
+    $eventFixturePath,
     $runnerPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -142,7 +152,13 @@ foreach ($requiredPath in @(
     }
 }
 
-foreach ($scriptPath in @($wrapperPath, $testPath, $runnerPath)) {
+foreach ($scriptPath in @(
+    $summaryWrapperPath,
+    $eventWrapperPath,
+    $summaryTestPath,
+    $eventTestPath,
+    $runnerPath
+)) {
     $tokens = $null
     $errors = $null
     [void][Management.Automation.Language.Parser]::ParseFile(
@@ -160,7 +176,13 @@ foreach ($scriptPath in @($wrapperPath, $testPath, $runnerPath)) {
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $findings = @(
-    foreach ($scriptPath in @($wrapperPath, $testPath, $runnerPath)) {
+    foreach ($scriptPath in @(
+        $summaryWrapperPath,
+        $eventWrapperPath,
+        $summaryTestPath,
+        $eventTestPath,
+        $runnerPath
+    )) {
         Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error
     }
 )
@@ -181,7 +203,13 @@ if (-not $pythonCommand) {
     throw 'Python was not found for storage evidence validation.'
 }
 
-$compileOutput = @(& $pythonCommand.Source -m py_compile $pythonValidatorPath 2>&1)
+$compileOutput = @(
+    & $pythonCommand.Source `
+        -m py_compile `
+        $summaryPythonValidatorPath `
+        $eventPythonValidatorPath `
+        2>&1
+)
 $compileExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
 if ($compileExit -ne 0) {
     throw (
@@ -193,11 +221,18 @@ if ($compileExit -ne 0) {
 $schemaCheckCode = @'
 import json, sys
 from jsonschema import Draft202012Validator
-with open(sys.argv[1], 'r', encoding='utf-8-sig') as handle:
-    schema = json.load(handle)
-Draft202012Validator.check_schema(schema)
+for path in sys.argv[1:]:
+    with open(path, 'r', encoding='utf-8-sig') as handle:
+        schema = json.load(handle)
+    Draft202012Validator.check_schema(schema)
 '@
-$schemaOutput = @(& $pythonCommand.Source -c $schemaCheckCode $schemaPath 2>&1)
+$schemaOutput = @(
+    & $pythonCommand.Source `
+        -c $schemaCheckCode `
+        $summarySchemaPath `
+        $eventSchemaPath `
+        2>&1
+)
 $schemaExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
 if ($schemaExit -ne 0) {
     throw (
@@ -206,8 +241,12 @@ if ($schemaExit -ne 0) {
     )
 }
 
-$fixtureOutput = @(& $wrapperPath -Path $fixturePath 2>&1)
-foreach ($line in $fixtureOutput) {
+$summaryFixtureOutput = @(& $summaryWrapperPath -Path $summaryFixturePath 2>&1)
+foreach ($line in $summaryFixtureOutput) {
+    Write-Information -MessageData ([string]$line) -InformationAction Continue
+}
+$eventFixtureOutput = @(& $eventWrapperPath -Path $eventFixturePath 2>&1)
+foreach ($line in $eventFixtureOutput) {
     Write-Information -MessageData ([string]$line) -InformationAction Continue
 }
 
@@ -217,14 +256,22 @@ if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
     throw "Windows PowerShell 5.1 executable missing: $windowsPowerShellPath"
 }
 
-$ps7 = Invoke-NxbStorageContractPesterRun `
+$ps7Summary = Invoke-NxbStorageContractPesterRun `
     -Executable $pwshPath `
-    -TestPath $testPath `
-    -Label 'PowerShell 7'
-$ps51 = Invoke-NxbStorageContractPesterRun `
+    -TestPath $summaryTestPath `
+    -Label 'PowerShell 7 summary'
+$ps7Event = Invoke-NxbStorageContractPesterRun `
+    -Executable $pwshPath `
+    -TestPath $eventTestPath `
+    -Label 'PowerShell 7 event'
+$ps51Summary = Invoke-NxbStorageContractPesterRun `
     -Executable $windowsPowerShellPath `
-    -TestPath $testPath `
-    -Label 'Windows PowerShell 5.1'
+    -TestPath $summaryTestPath `
+    -Label 'Windows PowerShell 5.1 summary'
+$ps51Event = Invoke-NxbStorageContractPesterRun `
+    -Executable $windowsPowerShellPath `
+    -TestPath $eventTestPath `
+    -Label 'Windows PowerShell 5.1 event'
 
 $postDirty = @(& $git.Source -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
@@ -234,26 +281,37 @@ if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
 $result = [pscustomobject]@{
     status = 'passed'
     head_sha = $currentHead
-    schema_path = 'schemas/storage-etl-summary.schema.json'
-    python_validator_path = 'tools/validate_storage_etl_summary.py'
-    fixture_path = 'tests/fixtures/storage-etl-summary.valid.json'
-    powershell7 = $ps7
-    windows_powershell_51 = $ps51
+    summary_schema_path = 'schemas/storage-etl-summary.schema.json'
+    event_schema_path = 'schemas/storage-event.schema.json'
+    summary_python_validator_path = 'tools/validate_storage_etl_summary.py'
+    event_python_validator_path = 'tools/validate_storage_event.py'
+    summary_fixture_path = 'tests/fixtures/storage-etl-summary.valid.json'
+    event_fixture_path = 'tests/fixtures/storage-event.valid.json'
+    powershell7_summary = $ps7Summary
+    powershell7_event = $ps7Event
+    windows_powershell_51_summary = $ps51Summary
+    windows_powershell_51_event = $ps51Event
     analyzer_findings = 0
     python_compile = 'passed'
     schema_self_validation = 'passed'
-    canonical_fixture_validation = 'passed'
+    canonical_summary_fixture_validation = 'passed'
+    canonical_event_fixture_validation = 'passed'
     queue_semantics_claimed = $false
+    trace_completeness_claimed = $false
 }
 
 Write-Information -MessageData "Storage evidence exact-head validation passed: $currentHead" -InformationAction Continue
-Write-Information -MessageData "PowerShell 7 Pester: $($ps7.Passed)/$($ps7.Total)" -InformationAction Continue
-Write-Information -MessageData "Windows PowerShell 5.1 Pester: $($ps51.Passed)/$($ps51.Total)" -InformationAction Continue
+Write-Information -MessageData "PowerShell 7 summary Pester: $($ps7Summary.Passed)/$($ps7Summary.Total)" -InformationAction Continue
+Write-Information -MessageData "PowerShell 7 event Pester: $($ps7Event.Passed)/$($ps7Event.Total)" -InformationAction Continue
+Write-Information -MessageData "Windows PowerShell 5.1 summary Pester: $($ps51Summary.Passed)/$($ps51Summary.Total)" -InformationAction Continue
+Write-Information -MessageData "Windows PowerShell 5.1 event Pester: $($ps51Event.Passed)/$($ps51Event.Total)" -InformationAction Continue
 Write-Information -MessageData 'PSScriptAnalyzer: 0 findings' -InformationAction Continue
-Write-Information -MessageData 'Python semantic validator py_compile: PASS' -InformationAction Continue
+Write-Information -MessageData 'Python semantic validators py_compile: PASS' -InformationAction Continue
 Write-Information -MessageData 'JSON Schema self-validation: PASS' -InformationAction Continue
-Write-Information -MessageData 'Canonical storage fixture: PASS' -InformationAction Continue
+Write-Information -MessageData 'Canonical storage summary fixture: PASS' -InformationAction Continue
+Write-Information -MessageData 'Canonical storage event fixture: PASS' -InformationAction Continue
 Write-Information -MessageData 'Storage queue semantics claimed: False' -InformationAction Continue
+Write-Information -MessageData 'Trace completeness claimed: False' -InformationAction Continue
 
 if ($PassThru) {
     return $result
