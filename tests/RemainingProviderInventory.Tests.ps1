@@ -30,6 +30,10 @@ Describe 'NXB remaining provider inventory contract' {
         $script:Source | Should -Match 'Get-NxbRemainingChannelCandidate'
         $script:Source | Should -Not -Match 'Get-NxbRemainingProviderCandidates'
         $script:Source | Should -Not -Match 'Get-NxbRemainingChannelCandidates'
+        ([regex]::Matches($script:Source, '\[AllowEmptyString\(\)\]').Count) |
+            Should -BeGreaterOrEqual 2
+        ([regex]::Matches($script:Source, '\[AllowEmptyCollection\(\)\]').Count) |
+            Should -BeGreaterOrEqual 2
         $script:Source | Should -Match '\[ValidateRange\(16, 1024\)\]'
         $script:Source | Should -Match 'RecordLimit = 256'
         $script:Source | Should -Match 'Select-Object -First \$Limit'
