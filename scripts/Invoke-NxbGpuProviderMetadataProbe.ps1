@@ -15,7 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-NxbLogmanKeywordRows {
+function Get-NxbLogmanKeywordRow {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -141,7 +141,7 @@ foreach ($providerSpec in $providerSpecs) {
     $expectedGuidLower = ([string]$providerSpec.expected_guid).ToLowerInvariant()
     $guidMatch = $observedGuids -contains $expectedGuidLower
 
-    $keywordTable = Get-NxbLogmanKeywordRows -Lines $logmanLines
+    $keywordTable = Get-NxbLogmanKeywordRow -Lines $logmanLines
     if (-not [bool]$keywordTable.section_detected) {
         throw "Keyword section was not observed for $providerName."
     }
