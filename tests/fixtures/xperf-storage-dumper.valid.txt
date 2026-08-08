@@ -1,0 +1,22 @@
+DiskRead, TimeStamp, Process Name ( PID), ThreadID, CPU, IrpPtr, ByteOffset, IOSize, ElapsedTime, DiskNum, IrpFlags, DiskSvcTime, I/O Pri, VolSnap, FileObject, FileName
+DiskRead, 100.125000, pwsh.exe ( 4242), 99, 3, 0xabc1, 4096, 8192, 0.250000, 0, 0, 0.200000, 2, 0, 0x1000, C:\fixture.bin
+DiskWrite, TimeStamp, Process Name ( PID), ThreadID, CPU, IrpPtr, ByteOffset, IOSize, ElapsedTime, DiskNum, IrpFlags, DiskSvcTime, I/O Pri, VolSnap, FileObject, FileName
+DiskWrite, 101.125000, pwsh.exe ( 4242), 100, 3, 0xabc2, 12288, 4096, 0.300000, 0, 0, 0.250000, 2, 0, 0x1000, C:\fixture.bin
+DiskFlush, TimeStamp, Process Name ( PID), ThreadID, CPU, IrpPtr, ElapsedTime, DiskNum, IrpFlags, DiskSvcTime, I/O Pri
+DiskFlush, 102.125000, pwsh.exe ( 4242), 101, 3, 0xabc3, 0.150000, 0, 0, 0.100000, 2
+FileIoCreate, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, Options, Attributes, ShareAccess, FileName, ParsedOptions, ParsedAttributes, ParsedShareAccess
+FileIoCreate, 103.125000, pwsh.exe ( 4242), 102, pwsh.exe ( 4242), 102, 3, 0xabc4, 0x1000, 0, 0, 0, "C:\fixture,owned.bin", none, none, none
+FileIoRead, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, ByteOffset, Size, Flags, ExtraFlags, Priority, FileName, ParsedFlags
+FileIoRead, 104.125000, pwsh.exe ( 4242), 103, pwsh.exe ( 4242), 103, 3, 0xabc5, 0x1000, 0, 4096, 0, 0, 2, "C:\fixture,owned.bin", none
+FileIoWrite, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, ByteOffset, Size, Flags, ExtraFlags, Priority, FileName, ParsedFlags
+FileIoWrite, 105.125000, pwsh.exe ( 4242), 104, pwsh.exe ( 4242), 104, 3, 0xabc6, 0x1000, 4096, 8192, 0, 0, 2, "C:\fixture,owned.bin", none
+FileIoFlush, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, FileName
+FileIoFlush, 106.125000, pwsh.exe ( 4242), 105, pwsh.exe ( 4242), 105, 3, 0xabc7, 0x1000, "C:\fixture,owned.bin"
+FileIoClose, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, FileName
+FileIoClose, 107.125000, pwsh.exe ( 4242), 106, pwsh.exe ( 4242), 106, 3, 0xabc8, 0x1000, "C:\fixture,owned.bin"
+FileIoDelete, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, ExtraInfo, InfoClass, FileName
+FileIoDelete, 108.125000, pwsh.exe ( 4242), 107, pwsh.exe ( 4242), 107, 3, 0xabc9, 0x1000, 0, 13, "C:\fixture,owned.bin"
+FileIoRename, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, ExtraInfo, InfoClass, FileName
+FileIoRename, 109.125000, pwsh.exe ( 4242), 108, pwsh.exe ( 4242), 108, 3, 0xabca, 0x1000, 0, 10, C:\fixture-renamed.bin
+FileIoOpEnd, TimeStamp, Process Name ( PID), ThreadID, LoggingProcessName ( PID), LoggingThreadID, CPU, IrpPtr, FileObject, ElapsedTime, Status, ExtraInfo, Type, FileName
+FileIoOpEnd, 110.125000, pwsh.exe ( 4242), 109, pwsh.exe ( 4242), 109, 3, 0xabcb, 0x1000, 0.400000, 0, 0, 1, C:\fixture-renamed.bin
