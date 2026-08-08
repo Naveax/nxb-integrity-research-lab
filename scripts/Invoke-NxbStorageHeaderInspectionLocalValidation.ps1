@@ -200,11 +200,11 @@ if ($inspectionText -notmatch "queue_semantics\s*=\s*'not_claimed'") {
     throw 'Storage inspection queue-semantics boundary is missing.'
 }
 
-$profile = & $profileValidatorPath -PassThru
-if ([string]$profile.Name -cne 'NxbStorageIOQueue') {
+$storageProfile = & $profileValidatorPath -PassThru
+if ([string]$storageProfile.Name -cne 'NxbStorageIOQueue') {
     throw 'Storage profile validator returned an unexpected profile.'
 }
-if ([bool]$profile.KernelQueueEnabled) {
+if ([bool]$storageProfile.KernelQueueEnabled) {
     throw 'KernelQueue must remain disabled.'
 }
 
