@@ -29,6 +29,26 @@ File mode uses two independently bounded circular collectors:
 
 The six network/kernel manifest providers intentionally do not encode individual keyword filters yet. The gate captures bounded provider output for host-shape discovery without promoting observed keyword names or event IDs into semantics.
 
+## Native attempt history
+
+### Attempt 1 — `a51064db2cb27b6b04f2b7cebc11329443a5edd8`
+
+The first mega native run established that the chained prerequisite layers were sound:
+
+- selected-provider metadata tests: 9/9;
+- capability-adapter tests: 8/8;
+- aggregate capture/adaptor gate: 17/17 on PowerShell 7 and 17/17 on Windows PowerShell 5.1;
+- PSScriptAnalyzer: 0;
+- all six selected provider GUIDs re-observed with measured keyword rows `3/10/20/12/17/25`;
+- fresh full-system capability snapshot passed JSON Schema validation;
+- capability collection errors: 0;
+- multi-domain WPR profile tests: 10/10 on both PowerShell runtimes;
+- native `wpr.exe` multi-domain profile parse: PASS.
+
+The run stopped before any real ETL capture in the capture-contract Pester suite. A double-quoted PowerShell regex assertion used `"\$false"`; PowerShell expanded `$false`, producing the invalid regex fragment `\False`. This was a test-only literal-escaping defect, not a provider/profile/capture failure.
+
+The repair at `58c406b28eba22dfd40067c5ce55c89826468a01` converts all literal `$false` source assertions in that test suite to `[regex]::Escape(...)`, preventing the same interpolation class from recurring across workload, review-policy, header-policy, and semantic-claim assertions.
+
 ## Evidence boundary
 
 The mega gate may certify only:
