@@ -37,21 +37,21 @@ Describe 'NXB SUPERBLOCK 1 real multi-domain certification contract' {
     }
 
     It 'keeps the bounded workload local-only and external-network free' {
-        $script:WorkloadSource | Should -Match "external_network_used = \$false"
-        $script:WorkloadSource | Should -Match "query = 'localhost'"
-        $script:WorkloadSource | Should -Match 'controlled_gpu_workload_executed = \$false'
+        $script:WorkloadSource | Should -Match ([regex]::Escape('external_network_used = $false'))
+        $script:WorkloadSource | Should -Match ([regex]::Escape("query = 'localhost'"))
+        $script:WorkloadSource | Should -Match ([regex]::Escape('controlled_gpu_workload_executed = $false'))
     }
 
     It 'keeps raw ETL and full dumper outside the review ZIP' {
-        $script:CaptureSource | Should -Match 'raw_etl_in_review_zip = \$false'
-        $script:CaptureSource | Should -Match 'full_xperf_dumper_in_review_zip = \$false'
+        $script:CaptureSource | Should -Match ([regex]::Escape('raw_etl_in_review_zip = $false'))
+        $script:CaptureSource | Should -Match ([regex]::Escape('full_xperf_dumper_in_review_zip = $false'))
         $script:CaptureSource | Should -Match 'Forbidden raw evidence entered SUPERBLOCK review ZIP'
     }
 
     It 'keeps event-header classification explicitly non-semantic' {
-        $script:InventorySource | Should -Match 'event_name_implies_semantics = \$false'
-        $script:InventorySource | Should -Match 'domain_hint_implies_semantics = \$false'
-        $script:InventorySource | Should -Match "parser_completeness = 'not_claimed'"
+        $script:InventorySource | Should -Match ([regex]::Escape('event_name_implies_semantics = $false'))
+        $script:InventorySource | Should -Match ([regex]::Escape('domain_hint_implies_semantics = $false'))
+        $script:InventorySource | Should -Match ([regex]::Escape("parser_completeness = 'not_claimed'"))
     }
 
     It 'keeps all real-capture semantic promotions disabled' {
@@ -63,8 +63,8 @@ Describe 'NXB SUPERBLOCK 1 real multi-domain certification contract' {
             'kernel_lifecycle_semantics',
             'device_lifecycle_semantics'
         )) {
-            $script:CaptureSource | Should -Match ($claim + ' = \$false')
+            $script:CaptureSource | Should -Match ([regex]::Escape($claim + ' = $false'))
         }
-        $script:CaptureSource | Should -Match "trace_completeness = 'not_claimed'"
+        $script:CaptureSource | Should -Match ([regex]::Escape("trace_completeness = 'not_claimed'"))
     }
 }
