@@ -149,6 +149,16 @@ foreach ($providerSpec in $providerSpecs) {
         throw "Keyword section contained no rows for $providerName."
     }
 
+    $contaminatedKeywordRows = @(
+        $keywordTable.rows |
+            Where-Object {
+                [string]$_.text -match '(?i)([a-z]:\\|\.exe(?:\s|$))'
+            }
+    )
+    if ($contaminatedKeywordRows.Count -gt 0) {
+        throw "Keyword metadata contamination detected for $providerName."
+    }
+
     $publisherLines = @(& $wevtutil.Source gp $providerName /ge:true /gm:false 2>&1)
     $publisherExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
     $publisherText = ($publisherLines -join [Environment]::NewLine)
@@ -172,6 +182,7 @@ foreach ($providerSpec in $providerSpecs) {
             output_line_count = @($logmanLines).Count
             keyword_parser = 'section-v1'
             keyword_section_detected = [bool]$keywordTable.section_detected
+            keyword_contamination_detected = $false
             keyword_rows = @($keywordTable.rows)
             keyword_row_count = [int]$keywordTable.row_count
         }
