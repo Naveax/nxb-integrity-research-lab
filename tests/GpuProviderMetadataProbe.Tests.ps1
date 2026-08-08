@@ -31,20 +31,24 @@ Describe 'NXB GPU provider metadata probe contract' {
 
     It 'uses Windows provider metadata surfaces' {
         $script:Source | Should -Match 'logman\.exe'
-        $script:Source | Should -Match 'query providers'
+        $script:Source | Should -Match 'query providers -n'
         $script:Source | Should -Match 'wevtutil\.exe'
         $script:Source | Should -Match 'publisher_metadata'
     }
 
-    It 'records observed keyword rows and hashes' {
-        $script:Source | Should -Match 'keyword_rows'
-        $script:Source | Should -Match 'keyword_row_count'
-        $script:Source | Should -Match 'output_sha256'
+    It 'bounds keyword parsing to the logman Keyword section' {
+        $script:Source | Should -Match 'Get-NxbLogmanKeywordRows'
+        $script:Source | Should -Match '\\bValue\\b'
+        $script:Source | Should -Match '\\bKeyword\\b'
+        $script:Source | Should -Match 'inKeywordSection'
+        $script:Source | Should -Match "keyword_parser = 'section-v1'"
+        $script:Source | Should -Match 'keyword_section_detected'
     }
 
-    It 'fails closed when expected provider identity is absent' {
+    It 'fails closed when provider or keyword evidence is absent' {
         $script:Source | Should -Match 'Expected provider GUID was not observed'
-        $script:Source | Should -Match 'expected_guid_observed'
+        $script:Source | Should -Match 'Keyword section was not observed'
+        $script:Source | Should -Match 'Keyword section contained no rows'
     }
 
     It 'keeps higher-level GPU semantics disabled' {
