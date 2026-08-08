@@ -112,4 +112,4 @@ trace_completeness:               not_claimed
 
 ## Next gate
 
-Validate the raw storage dumper bridge on its exact implementation head, then replay the validated local dumper through it. The bridge must normalize only directly observed integer/identity fields while preserving timing values as raw, unit-unresolved evidence.
+Raw storage bridge implementation is now present after this validated capture. It must be validated on an exact clean implementation head and then replay the preserved local xperf dumper. The bridge is permitted to normalize only directly observed integer/identity fields while preserving timing values as raw, unit-unresolved evidence.
