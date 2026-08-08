@@ -138,7 +138,7 @@ $result = [pscustomobject][ordered]@{
         captured_utc = [string]$capability.captured_utc
         machine_id = [string]$capability.machine_id
     }
-    domains = [ordered]@{
+    domains = [pscustomobject][ordered]@{
         network = [ordered]@{
             status = [string]$network.status
             adapter_count = Get-NxbCapabilityListCount -Domain $network -Name 'adapters'
