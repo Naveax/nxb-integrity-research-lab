@@ -25,6 +25,10 @@ param(
     [string]$OutputPath,
 
     [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [string]$ExperimentId,
+
+    [Parameter()]
     [ValidateRange(1, 5000000)]
     [int]$MaxEventCount = 1000000,
 
@@ -142,9 +146,14 @@ if ($coveredEventTypes.Count -le 0) {
     throw 'Bridge manifest reported no covered real event classes.'
 }
 
-$experimentId = 'storage-real-' + ([string]$capture.head_sha).Substring(0, 12)
+$resolvedExperimentId = if ($PSBoundParameters.ContainsKey('ExperimentId')) {
+    $ExperimentId
+}
+else {
+    'storage-real-' + ([string]$capture.head_sha).Substring(0, 12)
+}
 $summary = & $adapterPath `
-    -ExperimentId $experimentId `
+    -ExperimentId $resolvedExperimentId `
     -InputPath $eventExportFull `
     -OutputPath $outputFull `
     -MachineId ([string]$capture.machine_id) `
