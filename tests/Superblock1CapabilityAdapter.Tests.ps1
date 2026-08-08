@@ -62,10 +62,92 @@ Describe 'NXB SUPERBLOCK 1 capability adapter contract' {
         $script:Source | Should -Match "trace_completeness = 'not_claimed'"
     }
 
-    It 'refuses overwrite and hashes its source capability snapshot' {
+    It 'returns a property-addressable domains object and refuses overwrite' {
+        $script:Source | Should -Match 'domains = \[pscustomobject\]\[ordered\]@\{'
         $script:Source | Should -Match 'OutputPath already exists'
         $script:Source | Should -Match 'Get-FileHash'
         $script:Source | Should -Match 'capability_sha256'
         $script:Source | Should -Match 'WriteAllText'
+
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('nxb-capability-adapter-test-' + [guid]::NewGuid().ToString('N'))
+        [IO.Directory]::CreateDirectory($tempRoot) | Out-Null
+        $capabilityPath = Join-Path $tempRoot 'system-capabilities.json'
+        $outputPath = Join-Path $tempRoot 'adapter.json'
+
+        try {
+            $fixture = [pscustomobject][ordered]@{
+                schema_version = 1
+                captured_utc = '2026-08-09T00:00:00.0000000Z'
+                machine_id = 'fixture-machine'
+                domains = [pscustomobject][ordered]@{
+                    network = [pscustomobject][ordered]@{
+                        status = 'available'
+                        data = [pscustomobject][ordered]@{
+                            adapters = @([pscustomobject]@{ name = 'fixture-adapter' })
+                            configurations = @()
+                        }
+                    }
+                    bus_and_devices = [pscustomobject][ordered]@{
+                        status = 'available'
+                        data = [pscustomobject][ordered]@{
+                            device_class_counts = @([pscustomobject]@{ class = 'fixture'; count = 1 })
+                            signed_drivers = @(
+                                [pscustomobject]@{ is_signed = $true },
+                                [pscustomobject]@{ is_signed = $false },
+                                [pscustomobject]@{ is_signed = $null }
+                            )
+                        }
+                    }
+                    firmware = [pscustomobject][ordered]@{
+                        status = 'available'
+                        data = [pscustomobject][ordered]@{
+                            bios = [pscustomobject]@{ present = $true }
+                            baseboard = [pscustomobject]@{ present = $true }
+                        }
+                    }
+                    security = [pscustomobject][ordered]@{
+                        status = 'available'
+                        data = [pscustomobject][ordered]@{
+                            secure_boot = $true
+                            tpm = [pscustomobject]@{ present = $true }
+                            device_guard = [pscustomobject]@{ present = $true }
+                        }
+                    }
+                    power = [pscustomobject][ordered]@{
+                        status = 'available'
+                        data = [pscustomobject][ordered]@{
+                            active_power_scheme = 'fixture-scheme'
+                            batteries = @()
+                        }
+                    }
+                }
+                collection_errors = @()
+            }
+
+            [IO.File]::WriteAllText(
+                $capabilityPath,
+                (($fixture | ConvertTo-Json -Depth 12) + [Environment]::NewLine),
+                [Text.UTF8Encoding]::new($false)
+            )
+
+            $result = & $script:AdapterPath -CapabilityPath $capabilityPath -OutputPath $outputPath -PassThru
+            [string]$result.status | Should -Be 'passed'
+            ($null -eq $result.domains.PSObject.Properties['network']) | Should -Be $false
+            ($null -eq $result.domains.PSObject.Properties['device_driver']) | Should -Be $false
+            [int]$result.domains.network.adapter_count | Should -Be 1
+            [int]$result.domains.device_driver.signed_driver_count | Should -Be 3
+
+            $serialized = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
+            ($null -eq $serialized.domains.PSObject.Properties['network']) | Should -Be $false
+            [int]$serialized.domains.network.adapter_count | Should -Be 1
+
+            { & $script:AdapterPath -CapabilityPath $capabilityPath -OutputPath $outputPath -PassThru } |
+                Should -Throw '*OutputPath already exists*'
+        }
+        finally {
+            if (Test-Path -LiteralPath $tempRoot) {
+                Remove-Item -LiteralPath $tempRoot -Recurse -Force
+            }
+        }
     }
 }
