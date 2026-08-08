@@ -72,6 +72,9 @@ $gpuMetadataValidator = Join-Path `
 $remainingValidator = Join-Path `
     $PSScriptRoot `
     'Invoke-NxbRemainingProviderInventoryLocalValidation.ps1'
+$certificationRunnerPath = Join-Path `
+    $PSScriptRoot `
+    'Invoke-NxbSuperblock1FoundationCertification.ps1'
 $capabilitySchemaPath = Join-Path `
     $repositoryRoot `
     'schemas\system-capabilities.schema.json'
@@ -83,6 +86,7 @@ foreach ($requiredPath in @(
     $gpuInventoryValidator,
     $gpuMetadataValidator,
     $remainingValidator,
+    $certificationRunnerPath,
     $capabilitySchemaPath,
     $eventSchemaPath,
     $PSCommandPath
@@ -92,23 +96,27 @@ foreach ($requiredPath in @(
     }
 }
 
-$tokens = $null
-$errors = $null
-[void][Management.Automation.Language.Parser]::ParseFile(
-    $PSCommandPath,
-    [ref]$tokens,
-    [ref]$errors
-)
-if (@($errors).Count -gt 0) {
-    throw (
-        'SUPERBLOCK 1 foundation runner parser failed.' + "`n" +
-        (@($errors | ForEach-Object { $_.Message }) -join "`n")
+foreach ($scriptPath in @($PSCommandPath,$certificationRunnerPath)) {
+    $tokens = $null
+    $errors = $null
+    [void][Management.Automation.Language.Parser]::ParseFile(
+        $scriptPath,
+        [ref]$tokens,
+        [ref]$errors
     )
+    if (@($errors).Count -gt 0) {
+        throw (
+            "SUPERBLOCK 1 foundation parser failed: $scriptPath`n" +
+            (@($errors | ForEach-Object { $_.Message }) -join "`n")
+        )
+    }
 }
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $runnerFindings = @(
-    Invoke-ScriptAnalyzer -Path $PSCommandPath -Severity Warning,Error
+    foreach ($scriptPath in @($PSCommandPath,$certificationRunnerPath)) {
+        Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error
+    }
 )
 if ($runnerFindings.Count -gt 0) {
     throw (
@@ -194,6 +202,8 @@ $result = [pscustomobject][ordered]@{
     powershell7_total = 24
     windows_powershell_51_total = 24
     analyzer_findings = 0
+    certification_runner_parser = 'passed'
+    certification_runner_analyzer = 'passed'
     capability_schema_domains = @(
         'gpu',
         'network',
@@ -227,6 +237,7 @@ Write-Information -MessageData "SUPERBLOCK 1 foundation validation passed: $curr
 Write-Information -MessageData 'PowerShell 7 Pester: 24/24' -InformationAction Continue
 Write-Information -MessageData 'Windows PowerShell 5.1 Pester: 24/24' -InformationAction Continue
 Write-Information -MessageData 'PSScriptAnalyzer findings: 0' -InformationAction Continue
+Write-Information -MessageData 'Certification runner parser/analyzer: PASS' -InformationAction Continue
 Write-Information -MessageData 'Capability/event domain integration: PASS' -InformationAction Continue
 Write-Information -MessageData 'Real host inventory executed: False' -InformationAction Continue
 Write-Information -MessageData 'Semantic claims enabled: False' -InformationAction Continue
