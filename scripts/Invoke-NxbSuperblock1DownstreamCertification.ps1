@@ -37,7 +37,7 @@ function Write-NxbDownstreamJson {
     )
 }
 
-function Format-NxbCounterProperties {
+function Format-NxbCounterProperty {
     [CmdletBinding()]
     param(
         [Parameter()][object]$Object,
@@ -142,9 +142,9 @@ if ([int]$coverage.headers.unique_observed_shapes -ne 126) { throw "Normalizer o
 if ([int]$coverage.headers.recognized_shapes -ne 73) { throw "Expected 73 structurally recognized header shapes; got $($coverage.headers.recognized_shapes)" }
 if ([int64]$coverage.rows.normalized_rows -le 0) { throw 'Normalizer produced zero rows.' }
 if ([int64]$coverage.rows.unresolved_schema_rows -ne 0) {
-    $reasonSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_reason_counts
-    $eventSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_event_counts
-    $rowLengthSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_row_length_counts
+    $reasonSummary = Format-NxbCounterProperty -Object $coverage.schema_resolution.unresolved_reason_counts
+    $eventSummary = Format-NxbCounterProperty -Object $coverage.schema_resolution.unresolved_event_counts
+    $rowLengthSummary = Format-NxbCounterProperty -Object $coverage.schema_resolution.unresolved_row_length_counts
     throw (
         "Normalizer has unresolved schema rows: $($coverage.rows.unresolved_schema_rows); " +
         "reasons: $reasonSummary; events: $eventSummary; row_lengths: $rowLengthSummary"
