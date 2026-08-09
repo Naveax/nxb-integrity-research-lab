@@ -31,6 +31,12 @@ Describe 'NXB SUPERBLOCK 1 provider enable matrix contract' {
         }
     }
 
+    It 'uses an analyzer-safe bounded profile writer' {
+        $script:Source | Should -Match 'function Write-NxbProviderProbeProfile'
+        $script:Source | Should -Not -Match 'function New-NxbProviderProbeProfile'
+        $script:Source | Should -Not -Match '\$profileOutput\s*='
+    }
+
     It 'uses strict single-provider probes' {
         $script:Source | Should -Match ([regex]::Escape('Strict="true"'))
         $script:Source | Should -Match ([regex]::Escape('probe_provider_strict = $true'))
