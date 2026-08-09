@@ -2,6 +2,12 @@
 
 SUPERBLOCK 1 batches metadata/adaptor validation, profile validation, native provider enableability, real capture, trace-quality accounting, header discovery, and first deterministic replay into one Windows exact-head gate.
 
+## Current candidate
+
+```text
+239a1b3c37b4b3b60b5eacfa7c904ac869be6c30
+```
+
 ## Gate chain
 
 1. Existing selected-provider metadata + capability-adaptor certification.
@@ -91,8 +97,9 @@ PSUseDeclaredVarsMoreThanAssignments
 
 No WPR probe session or combined recording was started. The repair is behavior-preserving:
 
-- the internal profile writer is renamed to `Write-NxbProviderProbeProfile`, avoiding the `New-*` state-changing-function rule while retaining the same bounded file write;
-- native `wpr -profiles` output is discarded directly while its exit code remains authoritative, removing the unused `$profileOutput` assignment.
+- the internal profile writer is now `Write-NxbProviderProbeProfile`, avoiding the state-changing `New-*` analyzer rule while retaining the same bounded file write;
+- native `wpr -profiles` output is discarded directly while its exit code remains authoritative, removing the unused `$profileOutput` assignment;
+- the matrix regression guard locks both fixes without changing the existing 8-test contract count.
 
 The provider set, strict/non-strict policy, raw-evidence boundary, and semantic claims are unchanged.
 
