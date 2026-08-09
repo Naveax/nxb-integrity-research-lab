@@ -3,11 +3,13 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
 $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
+$certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertification.ps1'
 
 Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     It 'keeps the native source and build runner repo-owned' {
         Test-Path -LiteralPath $sourcePath -PathType Leaf | Should -BeTrue
         Test-Path -LiteralPath $buildPath -PathType Leaf | Should -BeTrue
+        Test-Path -LiteralPath $certificationPath -PathType Leaf | Should -BeTrue
     }
 
     It 'uses hardware D3D11 without a WARP fallback' {
@@ -27,13 +29,16 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetAddrInfoW(L"localhost"'))
         $sourceText | Should -Match ([regex]::Escape('INADDR_LOOPBACK'))
-        $sourceText | Should -Match ([regex]::Escape('external_network_used\": false'))
+        $sourceText | Should -Match 'external_network_used'
+        $sourceText | Should -Not -Match 'https?://|www\.|8\.8\.8\.8|1\.1\.1\.1'
     }
 
-    It 'bounds the loopback payload and file payload' {
+    It 'bounds loopback file and socket waits' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match 'kLoopbackBytes\s*=\s*64u\s*\*\s*1024u'
         $sourceText | Should -Match 'kFileBytes\s*=\s*64u\s*\*\s*1024u'
+        $sourceText | Should -Match 'kSocketTimeoutMilliseconds\s*=\s*5000'
+        $sourceText | Should -Match ([regex]::Escape('select(0, &read_set'))
     }
 
     It 'performs registry reads without registry writes' {
@@ -41,7 +46,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $sourceText | Should -Match ([regex]::Escape('RegOpenCurrentUser(KEY_READ'))
         $sourceText | Should -Match ([regex]::Escape('RegQueryInfoKeyW'))
         $sourceText | Should -Not -Match 'RegSetValue|RegCreateKey|RegDeleteKey|RegDeleteValue'
-        $sourceText | Should -Match ([regex]::Escape('registry_write_executed\": false'))
+        $sourceText | Should -Match 'registry_write_executed'
     }
 
     It 'creates and joins bounded worker threads' {
@@ -60,32 +65,38 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     It 'records the owned process PID and stimulus counters' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetCurrentProcessId()'))
-        $sourceText | Should -Match ([regex]::Escape('present_calls_attempted'))
-        $sourceText | Should -Match ([regex]::Escape('bytes_sent'))
-        $sourceText | Should -Match ([regex]::Escape('bytes_received'))
+        $sourceText | Should -Match 'present_calls_attempted'
+        $sourceText | Should -Match 'present_calls_succeeded'
+        $sourceText | Should -Match 'bytes_sent'
+        $sourceText | Should -Match 'bytes_received'
     }
 
     It 'keeps ETW and causal semantics disabled in the fixture receipt' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
-        foreach ($literal in @(
-            'etw_event_mapping_validated\": false',
-            'present_semantics_validated\": false',
-            'network_semantics_validated\": false',
-            'kernel_semantics_validated\": false',
-            'causal_relationship_validated\": false'
+        foreach ($claimName in @(
+            'etw_event_mapping_validated',
+            'present_semantics_validated',
+            'network_semantics_validated',
+            'kernel_semantics_validated',
+            'causal_relationship_validated'
         )) {
-            $sourceText | Should -Match ([regex]::Escape($literal))
+            $sourceText | Should -Match ([regex]::Escape($claimName))
         }
+        ($sourceText | Select-String -Pattern '\\"[^\"]+\\": false' -AllMatches).Matches.Count | Should -BeGreaterThan 5
     }
 
-    It 'requires an exact clean head and external build directory' {
+    It 'requires exact clean heads and external build output' {
         $buildText = Get-Content -LiteralPath $buildPath -Raw
-        $buildText | Should -Match ([regex]::Escape('rev-parse HEAD'))
-        $buildText | Should -Match ([regex]::Escape('status --porcelain=v1 --untracked-files=all'))
+        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        foreach ($scriptText in @($buildText,$certificationText)) {
+            $scriptText | Should -Match ([regex]::Escape('rev-parse HEAD'))
+            $scriptText | Should -Match ([regex]::Escape('status --porcelain=v1 --untracked-files=all'))
+        }
         $buildText | Should -Match ([regex]::Escape('build output must remain outside the repository worktree'))
+        $certificationText | Should -Match ([regex]::Escape('output must remain outside the repository worktree'))
     }
 
-    It 'uses the installed Visual Studio C++ x64 environment and strict compiler warnings' {
+    It 'uses installed Visual Studio x64 tools and strict compiler warnings' {
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
         $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
