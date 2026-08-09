@@ -21,7 +21,7 @@ Canonical native correlation **code** head:
 8bb94d10b4a74629668ddee2ad2fe378f8928999
 ```
 
-Later branch commits only update documentation for the already-observed portable wrapper issue; they do not change the correlation analyzer/certification code represented by the canonical code head above.
+Later branch commits only document the already-observed portable wrapper issue and its hardening; they do not change the correlation analyzer/certification code represented by the canonical code head above.
 
 Native result:
 
@@ -45,9 +45,9 @@ The repo-owned certification completed and emitted its bounded review ZIP. Porta
 
 This was a portable presentation-layer defect. It did not invalidate the analyzer, replay, bounded receipt, or review ZIP.
 
-## Hardened portable V2 contract
+## Hardened portable V2
 
-Portable V2 treats all JSON/result maps as sparse unless a field is explicitly required.
+V2 removes direct optional nested-property dereferences. All result/JSON traversal goes through StrictMode-safe accessors.
 
 Hardening covers:
 
@@ -64,7 +64,7 @@ missing critical fields
 optional count presentation
 ```
 
-The V2 wrapper executes an in-process self-test before touching evidence:
+Before touching evidence, V2 self-tests:
 
 ```text
 sparse PSCustomObject missing GPU count -> 0
@@ -74,14 +74,14 @@ string "False" -> false
 missing nested path -> requested default
 ```
 
-Reuse-first behavior:
+Reuse-first flow:
 
-1. search for the completed exact-head correlation output from portable V1;
-2. validate implementation head, capture/normalizer identities, normalized-event SHA, row counts, pair count, replay flags, conservative claims, and review ZIP SHA;
-3. if every check matches, reuse the completed native evidence and only render/copy the hardened summary;
-4. otherwise fall back to a fresh exact-head repo-owned correlation run.
+1. search for the already-completed exact-head correlation output from V1;
+2. validate implementation head, capture/normalizer heads, normalized-event SHA, normalized rows, target-PID rows, pair count, replay flags, conservative claim boundary, and review ZIP SHA;
+3. if all checks match, reuse the completed native pass and render the hardened summary only;
+4. otherwise clone the canonical code head and rerun the repo-owned correlation certification.
 
-Critical fields never default silently. Missing critical fields produce explicit controlled errors. Optional aggregate counts may default to `0` only for console presentation and cannot invalidate an already-passed repo-owned certification.
+Required fields never silently default. Missing required fields raise explicit controlled errors. Optional aggregate counts may default to zero for presentation only.
 
 ## Structural correlation layers
 
