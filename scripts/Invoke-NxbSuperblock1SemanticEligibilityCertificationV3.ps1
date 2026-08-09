@@ -45,8 +45,8 @@ if ($selfFindings.Count -gt 0) {
     )
 }
 
-function Invoke-NxbStartProcessCompat {
-    [CmdletBinding()]
+function Start-Process {
+    [CmdletBinding(SupportsShouldProcess=$true,ConfirmImpact='None')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -73,6 +73,10 @@ function Invoke-NxbStartProcessCompat {
         }
     )
 
+    if (-not $PSCmdlet.ShouldProcess($FilePath,'Start process')) {
+        return
+    }
+
     $startedProcess = Microsoft.PowerShell.Management\Start-Process `
         -FilePath $FilePath `
         -ArgumentList $normalizedArguments `
@@ -81,9 +85,7 @@ function Invoke-NxbStartProcessCompat {
 }
 
 $previousRepositoryRoot = [Environment]::GetEnvironmentVariable('NXB_SEMANTIC_REPOSITORY_ROOT','Process')
-$previousStartProcessAlias = Get-Alias -Name Start-Process -ErrorAction SilentlyContinue
 $env:NXB_SEMANTIC_REPOSITORY_ROOT = [IO.Path]::GetFullPath($repositoryRoot)
-Set-Alias -Name Start-Process -Value Invoke-NxbStartProcessCompat -Scope Local
 try {
     if ([string]::IsNullOrWhiteSpace([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT) -or
         -not (Test-Path -LiteralPath $env:NXB_SEMANTIC_REPOSITORY_ROOT -PathType Container)) {
@@ -121,12 +123,5 @@ finally {
     }
     else {
         $env:NXB_SEMANTIC_REPOSITORY_ROOT = $previousRepositoryRoot
-    }
-
-    if ($null -ne $previousStartProcessAlias) {
-        Set-Alias -Name Start-Process -Value $previousStartProcessAlias.Definition -Scope Local
-    }
-    else {
-        Remove-Item Alias:Start-Process -ErrorAction SilentlyContinue
     }
 }
