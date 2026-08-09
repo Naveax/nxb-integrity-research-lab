@@ -35,7 +35,7 @@ function Get-NxbTextSha256 {
     }
 }
 
-function New-NxbProviderProbeProfile {
+function Write-NxbProviderProbeProfile {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -111,9 +111,9 @@ $rows = [Collections.Generic.List[object]]::new()
 foreach ($providerSpec in $providerSpecs) {
     $safeName = ([string]$providerSpec.name -replace '[^A-Za-z0-9._-]','_')
     $profilePath = Join-Path $probeRoot ($safeName + '.wprp')
-    New-NxbProviderProbeProfile -Path $profilePath -ProviderName ([string]$providerSpec.name) -Keywords @($providerSpec.keywords)
+    Write-NxbProviderProbeProfile -Path $profilePath -ProviderName ([string]$providerSpec.name) -Keywords @($providerSpec.keywords)
 
-    $profileOutput = @(& $wpr.Source -profiles $profilePath 2>&1)
+    & $wpr.Source -profiles $profilePath 2>&1 | Out-Null
     $profileExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
     if ($profileExit -ne 0) {
         throw "Native WPR probe profile parse failed for $($providerSpec.name): exit=$profileExit"
