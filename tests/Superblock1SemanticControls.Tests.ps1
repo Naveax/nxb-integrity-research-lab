@@ -78,12 +78,7 @@ Describe 'SUPERBLOCK 1 repeated semantic ON/OFF control contract' {
     It 'tracks network and explicit kernel workers separately' {
         $root = Get-NxbSemanticControlTestRepositoryRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'fixtures\superblock1-semantic-controls\main.cpp') -Raw
-        foreach ($name in @(
-            'network_server_thread_created',
-            'network_server_thread_joined',
-            'kernel_worker_thread_created',
-            'kernel_worker_thread_joined'
-        )) {
+        foreach ($name in @('network_server_thread_created','network_server_thread_joined','kernel_worker_thread_created','kernel_worker_thread_joined')) {
             $source | Should -Match ([regex]::Escape($name))
         }
     }
@@ -112,10 +107,7 @@ Describe 'SUPERBLOCK 1 repeated semantic ON/OFF control contract' {
     It 'runs exactly ten alternating A-B control scenarios in one matrix' {
         $root = Get-NxbSemanticControlTestRepositoryRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock1SemanticControlCertification.ps1') -Raw
-        foreach ($id in @(
-            'all_on_a','gpu_off_a','network_off_a','kernel_off_a','minimal_a',
-            'minimal_b','kernel_off_b','network_off_b','gpu_off_b','all_on_b'
-        )) {
+        foreach ($id in @('all_on_a','gpu_off_a','network_off_a','kernel_off_a','minimal_a','minimal_b','kernel_off_b','network_off_b','gpu_off_b','all_on_b')) {
             $cert | Should -Match ([regex]::Escape("id='$id'"))
         }
         ([regex]::Matches($cert,"id='(?:all_on|gpu_off|network_off|kernel_off|minimal)_[ab]'",[Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count | Should -Be 10
@@ -135,14 +127,7 @@ Describe 'SUPERBLOCK 1 repeated semantic ON/OFF control contract' {
     It 'validates every fixture receipt mode PID and stimulus flags' {
         $root = Get-NxbSemanticControlTestRepositoryRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock1SemanticControlCertification.ps1') -Raw
-        foreach ($needle in @(
-            "'mode'",
-            "'pid'",
-            "'stimulus_enabled.gpu'",
-            "'stimulus_enabled.network'",
-            "'stimulus_enabled.explicit_kernel'",
-            'Fixture stimulus flags mismatch'
-        )) {
+        foreach ($needle in @("'mode'","'pid'","'stimulus_enabled.gpu'","'stimulus_enabled.network'","'stimulus_enabled.explicit_kernel'",'Fixture stimulus flags mismatch')) {
             $cert | Should -Match ([regex]::Escape($needle))
         }
     }
@@ -182,28 +167,18 @@ Describe 'SUPERBLOCK 1 repeated semantic ON/OFF control contract' {
         $tool | Should -Match ([regex]::Escape('family_count(item, "network:tcp") == 0'))
     }
 
-    It 'keeps Present pairing timing causality and generalization claims conservative' {
+    It 'keeps pairing timing causality kernel registry and generalization claims conservative' {
         $root = Get-NxbSemanticControlTestRepositoryRoot
         $tool = Get-Content -LiteralPath (Join-Path $root 'tools\analyze_superblock1_semantic_controls.py') -Raw
         foreach ($claim in @(
-            'present_event_mapping_generalized',
-            'present_pairing_semantics',
-            'present_success_semantics',
-            'timestamp_unit_resolved',
-            'causal_relationship_validated',
-            'root_cause_validated'
+            'present_event_mapping_generalized','present_pairing_semantics','present_success_semantics',
+            'kernel_lifecycle_semantics','registry_operation_semantics','timestamp_unit_resolved',
+            'causal_relationship_validated','root_cause_validated'
         )) {
             $tool | Should -Match ([regex]::Escape('"' + $claim + '": False'))
         }
-        $tool | Should -Match ([regex]::Escape('"trace_completeness": "not_claimed"'))
-    }
-
-    It 'keeps kernel and registry operation semantics unpromoted' {
-        $root = Get-NxbSemanticControlTestRepositoryRoot
-        $tool = Get-Content -LiteralPath (Join-Path $root 'tools\analyze_superblock1_semantic_controls.py') -Raw
-        $tool | Should -Match ([regex]::Escape('"kernel_lifecycle_semantics": False'))
-        $tool | Should -Match ([regex]::Escape('"registry_operation_semantics": False'))
         $tool | Should -Match ([regex]::Escape('"explicit_stimulus_differential"'))
+        $tool | Should -Match ([regex]::Escape('"trace_completeness": "not_claimed"'))
     }
 
     It 'forbids raw capture normalized manifest executable and WPR artifacts from review ZIP' {
