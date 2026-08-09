@@ -44,6 +44,8 @@ if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
 $inputFull = [IO.Path]::GetFullPath($InputPath)
 $recordsFull = [IO.Path]::GetFullPath($RecordsOutputPath)
 $summaryFull = [IO.Path]::GetFullPath($SummaryOutputPath)
+$sourceHeadLower = $SourceHead.ToLowerInvariant()
+$normalizerHeadLower = $NormalizerHead.ToLowerInvariant()
 if ($inputFull -ceq $recordsFull -or $inputFull -ceq $summaryFull -or $recordsFull -ceq $summaryFull) {
     throw 'Correlation input and output paths must be distinct.'
 }
@@ -65,8 +67,8 @@ $output = @(
         --input $inputFull `
         --records-output $recordsFull `
         --summary-output $summaryFull `
-        --source-head $SourceHead.ToLowerInvariant() `
-        --normalizer-head $NormalizerHead.ToLowerInvariant() `
+        --source-head $sourceHeadLower `
+        --normalizer-head $normalizerHeadLower `
         --experiment-id $ExperimentId `
         --target-pid $TargetProcessId 2>&1
 )
