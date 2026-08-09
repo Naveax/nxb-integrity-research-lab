@@ -114,7 +114,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
         $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
-        $certificationText | Should -Match '\$fixtureReceiptArgument\s*='
+        $certificationText | Should -Match ([regex]::Escape('$fixtureReceiptArgument = ''"'' + $fixtureReceiptPath.Replace(''"'',''\"'') + ''"'''))
         $certificationText | Should -Match ([regex]::Escape('-ArgumentList @($fixtureReceiptArgument)'))
     }
 
