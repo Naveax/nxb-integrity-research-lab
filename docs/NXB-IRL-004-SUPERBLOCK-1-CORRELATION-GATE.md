@@ -1,8 +1,8 @@
 # NXB-IRL-004 SUPERBLOCK 1 — Correlation Gate
 
-## Purpose
+## Status
 
-This gate consumes the canonical downstream normalized event stream and builds deterministic cross-domain structural correlation without reopening capture or normalization work.
+`NATIVE REPO-OWNED CORRELATION GATE: PASSED`
 
 Canonical source:
 
@@ -14,6 +14,49 @@ normalized SHA:  269d93e00411d78e15ebfb2c4c5a6568b36addb78238d57d7809184a1a420f8
 coverage SHA:    5756530354f42fb0be9741de7bd6119649a02a4a17505e75658663f8e36ce3aa
 target PID:      26928
 ```
+
+Native exact-head correlation implementation:
+
+```text
+8bb94d10b4a74629668ddee2ad2fe378f8928999
+```
+
+Native result:
+
+```text
+PowerShell 7:               10/10
+Windows PowerShell 5.1:    10/10
+PSScriptAnalyzer:          0 findings
+Python syntax:             PASS
+canonical source SHA:      PASS
+normalized rows consumed:  188505
+structural pair records:   24241
+target PID rows:           6395
+three-domain PID count:    0
+pair-record replay:        byte-identical
+summary replay:            byte-identical
+review ZIP SHA-256:
+6697c15afc7eefec460b6ae436bb0aee41c2052caabbe980d38ff618f71a1d76
+```
+
+The repo-owned certification completed and emitted its bounded review ZIP. Portable V1 then failed only while rendering its final console summary. `target_pid.domain_counts` is intentionally sparse; on the real target PID the `gpu` property was absent, and direct `.gpu` access under `Set-StrictMode -Version Latest` raised `PropertyNotFoundStrict` / `ParentContainsErrorRecordException`.
+
+This was a portable presentation-layer defect. It did not invalidate the analyzer, replay, bounded receipt, or review ZIP.
+
+## PowerShell hardening contract
+
+Portable wrappers must treat JSON aggregate maps as sparse unless the schema explicitly guarantees fixed keys.
+
+The hardened portable contract is:
+
+- all nested result reads use a StrictMode-safe property accessor;
+- required certification fields must exist and match expected values;
+- missing required fields produce explicit controlled errors rather than property-access exceptions;
+- optional aggregate counts default to `0` only for display;
+- a missing optional count can never turn an already-passed repo-owned certification into a wrapper failure;
+- review ZIP SHA-256 is recomputed and compared with the repo-owned result;
+- an already-completed exact-head result may be reused when its head, source identity, replay flags, receipt status, and review ZIP hash all validate;
+- otherwise the wrapper reruns the repo-owned correlation gate.
 
 ## Structural correlation layers
 
@@ -41,23 +84,15 @@ Structural start/end pairing is attempted for:
 
 Process keys use PID, thread keys use PID/TID when available, and image keys use PID plus a hashed named image identifier when available.
 
-### Network
+### Network / DNS / Registry
 
-TCP rows are grouped by PID plus hashed named address/port fields. Aggregate evidence includes observation counts and structural groups containing connect/disconnect/send/receive/retransmit event names and whether connect precedes disconnect by sequence order.
+TCP rows are grouped by PID plus hashed named address/port fields. DNS rows are grouped by PID plus hashed named query/server/interface/address fields. Registry activity is grouped by PID plus hashed named key/KCB/path fields.
 
-DNS rows are grouped by PID plus hashed named query/server/interface/address fields.
-
-No raw address, port, DNS value, or group key hash is admitted to bounded review evidence.
-
-### Registry
-
-Registry activity is grouped by PID plus hashed named key/KCB/path fields. The review artifact contains only aggregate counts.
+No raw address, port, DNS value, registry path, or group key hash is admitted to bounded review evidence.
 
 ### Cross-domain attribution
 
-The gate counts exact PID and PID/TID identities observed across one, two, or three normalized domains. The canonical target PID receives explicit GPU/network/kernel family counts.
-
-GPU/network target-PID rows are also compared with the nearest same-PID kernel event by event sequence index. The resulting distance buckets are explicitly unitless sequence adjacency and are not treated as temporal or causal evidence.
+The gate counts exact PID and PID/TID identities across normalized domains. GPU/network target-PID rows may be compared with the nearest same-PID kernel event by sequence index. Distances remain unitless sequence adjacency and are not temporal or causal evidence.
 
 ## Determinism
 
@@ -67,24 +102,6 @@ The same normalized event stream is analyzed twice. Both must be byte-identical:
 local structural-pair JSONL
 aggregate correlation summary JSON
 ```
-
-## Review boundary
-
-Local only:
-
-- normalized event JSONL;
-- structural pair JSONL;
-- pair key hashes;
-- raw identifier values.
-
-Reviewable:
-
-- aggregate correlation summary;
-- certification receipt;
-- source hashes;
-- pair/group counts;
-- sequence-delta aggregates;
-- exact target-PID aggregate attribution.
 
 ## Claims
 
