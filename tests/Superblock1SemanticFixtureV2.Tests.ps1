@@ -1,8 +1,20 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-NxbSemanticTestRepositoryRoot {
+    $root = [string]$env:NXB_SEMANTIC_REPOSITORY_ROOT
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        throw 'NXB_SEMANTIC_REPOSITORY_ROOT is required for semantic fixture tests.'
+    }
+    $fullRoot = [IO.Path]::GetFullPath($root)
+    if (-not (Test-Path -LiteralPath $fullRoot -PathType Container)) {
+        throw "NXB semantic repository root does not exist: $fullRoot"
+    }
+    return $fullRoot
+}
+
 Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     It 'keeps source build and V2 certification repo-owned' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
         $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
@@ -12,7 +24,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'uses hardware D3D11 without WARP fallback' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('D3D_DRIVER_TYPE_HARDWARE'))
@@ -21,7 +33,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'bounds Present loopback file and socket waits' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match 'kPresentCount\s*=\s*128'
@@ -33,7 +45,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'keeps the network stimulus localhost-only' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetAddrInfoW(L"localhost"'))
@@ -42,7 +54,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'performs registry reads without registry writes' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('RegOpenCurrentUser(KEY_READ'))
@@ -51,7 +63,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'uses strict x64 MSVC compilation' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
@@ -61,7 +73,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'does not assign to the automatic Profile variable' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Not -Match '(?im)^\s*\$profile\s*='
@@ -69,7 +81,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'uses controlled JSON boolean conversion' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('function ConvertTo-NxbSemanticBoolean'))
@@ -78,7 +90,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'uses StrictMode-safe nested property access for optional counts' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('function Get-NxbSemanticProperty'))
@@ -87,7 +99,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'quotes the fixture receipt argument explicitly' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match '\$fixtureReceiptArgument\s*='
@@ -95,7 +107,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'never auto-cancels a pre-existing WPR session' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('$sessionOwned = $false'))
@@ -105,7 +117,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'requires all three fixture PID domains to be positive' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match '\$targetGpu\s*-le\s*0'
@@ -114,7 +126,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'requires deterministic normalization and correlation replay' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('Semantic normalization replay is not byte-identical.'))
@@ -122,7 +134,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'keeps semantic causal and completeness claims conservative' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         foreach ($claimName in @(
@@ -138,7 +150,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
     }
 
     It 'forbids raw ETL dumper normalized rows and pair records from the review ZIP' {
-        $repositoryRoot = [IO.Path]::GetFullPath([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT)
+        $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         foreach ($forbiddenName in @('.etl','xperf-dumper','normalized-events','correlation-records','wpr-status','.wprp')) {
