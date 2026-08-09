@@ -6,7 +6,7 @@ $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFix
 $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertification.ps1'
 
 Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
-    It 'keeps the native source and build runner repo-owned' {
+    It 'keeps the native source build runner and certification repo-owned' {
         Test-Path -LiteralPath $sourcePath -PathType Leaf | Should -BeTrue
         Test-Path -LiteralPath $buildPath -PathType Leaf | Should -BeTrue
         Test-Path -LiteralPath $certificationPath -PathType Leaf | Should -BeTrue
@@ -85,7 +85,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         ($sourceText | Select-String -Pattern '\\"[^\"]+\\": false' -AllMatches).Matches.Count | Should -BeGreaterThan 5
     }
 
-    It 'requires exact clean heads and external build output' {
+    It 'requires exact clean heads and external output roots' {
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         foreach ($scriptText in @($buildText,$certificationText)) {
@@ -102,5 +102,43 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
         $buildText | Should -Match ([regex]::Escape('/W4 /WX'))
         $buildText | Should -Match ([regex]::Escape('/std:c++17'))
+    }
+
+    It 'never cancels a pre-existing WPR session' {
+        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        $certificationText | Should -Match ([regex]::Escape('$sessionOwned = $false'))
+        $certificationText | Should -Match ([regex]::Escape('$sessionOwned = $true'))
+        $certificationText | Should -Match ([regex]::Escape('if ($sessionOwned)'))
+        $certificationText | Should -Match ([regex]::Escape('& $wpr -cancel'))
+        $certificationText | Should -Match ([regex]::Escape('no existing session was cancelled'))
+    }
+
+    It 'requires all three domains on the owned fixture PID' {
+        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.gpu'))
+        $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.network'))
+        $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.kernel_lifecycle'))
+        $certificationText | Should -Match ([regex]::Escape('$targetGpu -le 0 -or $targetNetwork -le 0 -or $targetKernel -le 0'))
+    }
+
+    It 'requires deterministic normalization and correlation replay' {
+        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        foreach ($name in @(
+            'eventsOneSha','eventsTwoSha','coverageOneSha','coverageTwoSha',
+            'recordsOneSha','recordsTwoSha','summaryOneSha','summaryTwoSha'
+        )) {
+            $certificationText | Should -Match ([regex]::Escape($name))
+        }
+        $certificationText | Should -Match ([regex]::Escape('not byte-identical'))
+    }
+
+    It 'keeps raw ETL dumper normalized rows and pair records out of review evidence' {
+        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        foreach ($forbidden in @(
+            '.etl','.exe','.obj','xperf-dumper','normalized-events','correlation-records','wpr-status','.wprp'
+        )) {
+            $certificationText | Should -Match ([regex]::Escape($forbidden))
+        }
+        $certificationText | Should -Match ([regex]::Escape('Forbidden raw/local artifact entered semantic review ZIP'))
     }
 }
