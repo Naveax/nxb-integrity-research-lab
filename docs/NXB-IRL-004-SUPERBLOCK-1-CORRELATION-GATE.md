@@ -15,11 +15,13 @@ coverage SHA:    5756530354f42fb0be9741de7bd6119649a02a4a17505e75658663f8e36ce3a
 target PID:      26928
 ```
 
-Native exact-head correlation implementation:
+Canonical native correlation **code** head:
 
 ```text
 8bb94d10b4a74629668ddee2ad2fe378f8928999
 ```
+
+Later branch commits only update documentation for the already-observed portable wrapper issue; they do not change the correlation analyzer/certification code represented by the canonical code head above.
 
 Native result:
 
