@@ -34,6 +34,41 @@ foreach ($requiredPath in @($innerRunner,$testPath)) {
     }
 }
 
+# The V2 runner intentionally passes its fixture receipt as one Start-Process
+# argument. Normalize legacy escaped outer quotes to real command-line grouping
+# quotes so the native CRT does not receive quote characters as part of argv[1].
+function Start-Process {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$FilePath,
+
+        [Parameter()]
+        [object[]]$ArgumentList,
+
+        [Parameter()]
+        [switch]$PassThru
+    )
+
+    $normalizedArguments = @(
+        foreach ($argument in @($ArgumentList)) {
+            $text = [string]$argument
+            if ($text.Length -ge 4 -and $text.StartsWith('\"',[StringComparison]::Ordinal) -and $text.EndsWith('\"',[StringComparison]::Ordinal)) {
+                '"' + $text.Substring(2,$text.Length - 4) + '"'
+            }
+            else {
+                $text
+            }
+        }
+    )
+
+    return Microsoft.PowerShell.Management\Start-Process `
+        -FilePath $FilePath `
+        -ArgumentList $normalizedArguments `
+        -PassThru:$PassThru
+}
+
 $previousRepositoryRoot = [Environment]::GetEnvironmentVariable('NXB_SEMANTIC_REPOSITORY_ROOT','Process')
 $env:NXB_SEMANTIC_REPOSITORY_ROOT = [IO.Path]::GetFullPath($repositoryRoot)
 try {
