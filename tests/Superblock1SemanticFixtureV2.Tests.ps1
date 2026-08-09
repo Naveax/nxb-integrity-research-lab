@@ -64,15 +64,20 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
         $sourceText | Should -Not -Match 'RegSetValue|RegCreateKey|RegDeleteKey|RegDeleteValue'
     }
 
-    It 'uses strict x64 MSVC compilation' {
+    It 'uses strict direct x64 MSVC compilation without VsDevCmd' {
         $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
-        $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
+        $buildText | Should -Match ([regex]::Escape('function Resolve-NxbSemanticNativeToolchain'))
+        $buildText | Should -Match ([regex]::Escape("'VC\Tools\MSVC'"))
+        $buildText | Should -Match ([regex]::Escape("'SOFTWARE\Microsoft\Windows Kits\Installed Roots'"))
+        $buildText | Should -Match ([regex]::Escape("'KitsRoot10'"))
+        $buildText | Should -Not -Match ([regex]::Escape('VsDevCmd.bat'))
         foreach ($requiredArgument in @('/std:c++17','/EHsc','/W4','/WX','/O2','/DUNICODE','/D_UNICODE','/link')) {
             $buildText | Should -Match ([regex]::Escape("'$requiredArgument'"))
         }
+        $buildText | Should -Match ([regex]::Escape("'/LIBPATH:{0}'"))
         $buildText | Should -Match ([regex]::Escape('$buildOutput = @(& $compiler @compilerArguments 2>&1)'))
         $buildText | Should -Match ([regex]::Escape("'d3d11.lib'"))
         $buildText | Should -Match ([regex]::Escape("'dxgi.lib'"))
