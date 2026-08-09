@@ -25,6 +25,7 @@ constexpr UINT kPresentCount = 128;
 constexpr std::size_t kLoopbackBytes = 64u * 1024u;
 constexpr std::size_t kFileBytes = 64u * 1024u;
 constexpr DWORD kWorkerIterations = 250000;
+constexpr long kSocketTimeoutMilliseconds = 5000;
 
 struct Result {
     bool hardware_device_created = false;
@@ -32,11 +33,9 @@ struct Result {
     UINT presents_succeeded = 0;
     bool dns_lookup_executed = false;
     bool loopback_completed = false;
-    bool external_network_used = false;
     std::size_t bytes_sent = 0;
     std::size_t bytes_received = 0;
     bool registry_read_executed = false;
-    bool registry_write_executed = false;
     bool temp_file_roundtrip = false;
     bool worker_thread_created = false;
     bool worker_thread_joined = false;
@@ -58,7 +57,7 @@ bool WriteUtf8File(const std::wstring& path, const std::string& text) {
     DWORD written = 0;
     const BOOL ok = WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
     CloseHandle(file);
-    return ok && written == text.size();
+    return ok != FALSE && static_cast<std::size_t>(written) == text.size();
 }
 
 std::string BuildReceipt(const Result& result, const char* status, DWORD error_code) {
@@ -147,6 +146,7 @@ bool RunD3D11(Result& result) {
         &context);
     if (FAILED(create_hr)) {
         DestroyWindow(hwnd);
+        UnregisterClassW(class_name, wc.hInstance);
         return false;
     }
     result.hardware_device_created = true;
@@ -212,14 +212,15 @@ bool RunLoopback(Result& result) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = 0;
-    if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
+    const int address_size = static_cast<int>(sizeof(address));
+    if (bind(listener, reinterpret_cast<sockaddr*>(&address), address_size) == SOCKET_ERROR ||
         listen(listener, 1) == SOCKET_ERROR) {
         closesocket(listener);
         WSACleanup();
         return false;
     }
 
-    int address_len = sizeof(address);
+    int address_len = address_size;
     if (getsockname(listener, reinterpret_cast<sockaddr*>(&address), &address_len) == SOCKET_ERROR) {
         closesocket(listener);
         WSACleanup();
@@ -229,8 +230,21 @@ bool RunLoopback(Result& result) {
     std::atomic<bool> server_ok{false};
     result.worker_thread_created = true;
     std::thread server([&]() {
+        fd_set read_set{};
+        FD_ZERO(&read_set);
+        FD_SET(listener, &read_set);
+        timeval timeout{};
+        timeout.tv_sec = kSocketTimeoutMilliseconds / 1000;
+        timeout.tv_usec = (kSocketTimeoutMilliseconds % 1000) * 1000;
+        const int selected = select(0, &read_set, nullptr, nullptr, &timeout);
+        if (selected <= 0 || !FD_ISSET(listener, &read_set)) return;
+
         SOCKET peer = accept(listener, nullptr, nullptr);
         if (peer == INVALID_SOCKET) return;
+        DWORD socket_timeout = static_cast<DWORD>(kSocketTimeoutMilliseconds);
+        setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout));
+        setsockopt(peer, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout));
+
         std::vector<char> buffer(kLoopbackBytes);
         std::size_t total = 0;
         while (total < buffer.size()) {
@@ -244,14 +258,19 @@ bool RunLoopback(Result& result) {
             if (n <= 0) break;
             sent += static_cast<std::size_t>(n);
         }
-        server_ok = (total == kLoopbackBytes && sent == kLoopbackBytes);
+        server_ok = total == kLoopbackBytes && sent == kLoopbackBytes;
         shutdown(peer, SD_BOTH);
         closesocket(peer);
     });
 
     SOCKET client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     bool client_ok = false;
-    if (client != INVALID_SOCKET && connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
+    if (client != INVALID_SOCKET) {
+        DWORD socket_timeout = static_cast<DWORD>(kSocketTimeoutMilliseconds);
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout));
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&socket_timeout), sizeof(socket_timeout));
+    }
+    if (client != INVALID_SOCKET && connect(client, reinterpret_cast<sockaddr*>(&address), address_size) == 0) {
         std::vector<char> payload(kLoopbackBytes);
         for (std::size_t i = 0; i < payload.size(); ++i) payload[i] = static_cast<char>(i % 251u);
         std::size_t sent = 0;
@@ -271,6 +290,8 @@ bool RunLoopback(Result& result) {
         result.bytes_received = received;
         client_ok = sent == payload.size() && received == echoed.size() && payload == echoed;
         shutdown(client, SD_BOTH);
+        closesocket(client);
+    } else if (client != INVALID_SOCKET) {
         closesocket(client);
     }
 
@@ -315,7 +336,8 @@ bool RunTempFile(Result& result) {
     }
 
     DWORD written = 0;
-    bool ok = WriteFile(file, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) && written == payload.size();
+    bool ok = WriteFile(file, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) != FALSE &&
+              static_cast<std::size_t>(written) == payload.size();
     if (ok) {
         LARGE_INTEGER zero{};
         ok = SetFilePointerEx(file, zero, nullptr, FILE_BEGIN) != FALSE;
@@ -323,8 +345,8 @@ bool RunTempFile(Result& result) {
     std::vector<unsigned char> readback(kFileBytes);
     DWORD read = 0;
     if (ok) {
-        ok = ReadFile(file, readback.data(), static_cast<DWORD>(readback.size()), &read, nullptr) &&
-             read == readback.size() && readback == payload;
+        ok = ReadFile(file, readback.data(), static_cast<DWORD>(readback.size()), &read, nullptr) != FALSE &&
+             static_cast<std::size_t>(read) == readback.size() && readback == payload;
     }
     CloseHandle(file);
     DeleteFileW(temp_file);
