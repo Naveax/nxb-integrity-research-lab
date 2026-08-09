@@ -27,6 +27,25 @@ if (Test-Path -LiteralPath $outputFull) {
 }
 [IO.Directory]::CreateDirectory((Split-Path -Parent $outputFull)) | Out-Null
 
+$manifest = Get-Content -LiteralPath $manifestFull -Raw | ConvertFrom-Json
+$scenarios = @($manifest.scenarios)
+if ($scenarios.Count -ne 10) {
+    throw "Semantic control manifest must contain exactly 10 scenarios: actual=$($scenarios.Count)"
+}
+$pids = @(
+    foreach ($scenario in $scenarios) {
+        $pidValue = [int]$scenario.pid
+        if ($pidValue -le 0) {
+            throw "Semantic control manifest contains invalid PID: $pidValue"
+        }
+        $pidValue
+    }
+)
+$uniquePids = @($pids | Sort-Object -Unique)
+if ($uniquePids.Count -ne 10) {
+    throw "Semantic control fixture PIDs must be unique: scenarios=10 unique_pids=$($uniquePids.Count)"
+}
+
 $python = Get-Command python.exe -ErrorAction SilentlyContinue
 if ($null -eq $python) { $python = Get-Command python -ErrorAction Stop }
 $output = @(
