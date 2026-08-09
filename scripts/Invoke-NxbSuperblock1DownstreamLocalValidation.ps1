@@ -65,14 +65,15 @@ if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
 }
 
 $wrapperPath = Join-Path $PSScriptRoot 'ConvertFrom-NxbSuperblock1XperfDumper.ps1'
+$certificationPath = Join-Path $PSScriptRoot 'Invoke-NxbSuperblock1DownstreamCertification.ps1'
 $testPath = Join-Path $repositoryRoot 'tests\Superblock1DownstreamNormalizer.Tests.ps1'
 $toolPath = Join-Path $repositoryRoot 'tools\convert_superblock1_xperf_dumper.py'
 $runnerPath = $PSCommandPath
-foreach ($path in @($wrapperPath,$testPath,$toolPath,$runnerPath)) {
+foreach ($path in @($wrapperPath,$certificationPath,$testPath,$toolPath,$runnerPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required downstream file missing: $path" }
 }
 
-foreach ($path in @($wrapperPath,$testPath,$runnerPath)) {
+foreach ($path in @($wrapperPath,$certificationPath,$testPath,$runnerPath)) {
     $tokens = $null
     $errors = $null
     [void][Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
@@ -81,7 +82,7 @@ foreach ($path in @($wrapperPath,$testPath,$runnerPath)) {
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $findings = @(
-    foreach ($path in @($wrapperPath,$testPath,$runnerPath)) {
+    foreach ($path in @($wrapperPath,$certificationPath,$testPath,$runnerPath)) {
         Invoke-ScriptAnalyzer -Path $path -Severity Warning,Error
     }
 )
@@ -91,9 +92,10 @@ if ($findings.Count -gt 0) {
 
 $python = Get-Command python.exe -ErrorAction SilentlyContinue
 if ($null -eq $python) { $python = Get-Command python -ErrorAction Stop }
-$compileOutput = @(& $python.Source -m py_compile $toolPath 2>&1)
+$syntaxCode = 'import ast,pathlib,sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))'
+$compileOutput = @(& $python.Source -c $syntaxCode $toolPath 2>&1)
 $compileExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-if ($compileExit -ne 0) { throw "Python compile failed: $($compileOutput -join ' ')" }
+if ($compileExit -ne 0) { throw "Python syntax validation failed: $($compileOutput -join ' ')" }
 
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -109,7 +111,7 @@ $result = [pscustomobject][ordered]@{
     powershell7 = [pscustomobject][ordered]@{ passed=[int]$ps7Result.passed; total=[int]$ps7Result.total; failed=[int]$ps7Result.failed; skipped=[int]$ps7Result.skipped }
     windows_powershell_51 = [pscustomobject][ordered]@{ passed=[int]$ps51Result.passed; total=[int]$ps51Result.total; failed=[int]$ps51Result.failed; skipped=[int]$ps51Result.skipped }
     analyzer_findings = 0
-    python_compile = 'passed'
+    python_syntax = 'passed'
     structural_event_name_mapping = $true
     semantic_claims_enabled = $false
     trace_completeness = 'not_claimed'
@@ -118,5 +120,5 @@ Write-Information -MessageData "SUPERBLOCK downstream local validation passed: $
 Write-Information -MessageData "PowerShell 7: $($result.powershell7.passed)/$($result.powershell7.total)" -InformationAction Continue
 Write-Information -MessageData "Windows PowerShell 5.1: $($result.windows_powershell_51.passed)/$($result.windows_powershell_51.total)" -InformationAction Continue
 Write-Information -MessageData 'PSScriptAnalyzer: 0 findings' -InformationAction Continue
-Write-Information -MessageData 'Python compile: PASS' -InformationAction Continue
+Write-Information -MessageData 'Python syntax: PASS' -InformationAction Continue
 if ($PassThru) { return $result }
