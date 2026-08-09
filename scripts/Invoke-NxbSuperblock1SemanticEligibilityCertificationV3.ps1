@@ -45,45 +45,6 @@ if ($selfFindings.Count -gt 0) {
     )
 }
 
-function Start-Process {
-    [CmdletBinding(SupportsShouldProcess=$true,ConfirmImpact='None')]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$FilePath,
-
-        [Parameter()]
-        [object[]]$ArgumentList,
-
-        [Parameter()]
-        [switch]$PassThru
-    )
-
-    $normalizedArguments = @(
-        foreach ($argument in @($ArgumentList)) {
-            $text = [string]$argument
-            if ($text.Length -ge 4 -and
-                $text.StartsWith('\"',[StringComparison]::Ordinal) -and
-                $text.EndsWith('\"',[StringComparison]::Ordinal)) {
-                '"' + $text.Substring(2,$text.Length - 4) + '"'
-            }
-            else {
-                $text
-            }
-        }
-    )
-
-    if (-not $PSCmdlet.ShouldProcess($FilePath,'Start process')) {
-        return
-    }
-
-    $startedProcess = Microsoft.PowerShell.Management\Start-Process `
-        -FilePath $FilePath `
-        -ArgumentList $normalizedArguments `
-        -PassThru:$PassThru
-    return $startedProcess
-}
-
 $previousRepositoryRoot = [Environment]::GetEnvironmentVariable('NXB_SEMANTIC_REPOSITORY_ROOT','Process')
 $env:NXB_SEMANTIC_REPOSITORY_ROOT = [IO.Path]::GetFullPath($repositoryRoot)
 try {
