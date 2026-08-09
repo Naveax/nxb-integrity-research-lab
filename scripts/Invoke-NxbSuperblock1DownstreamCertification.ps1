@@ -29,7 +29,10 @@ $canonicalTargetProcessId = 26928
 
 function Write-NxbDownstreamJson {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][object]$InputObject)
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][object]$InputObject
+    )
     [IO.File]::WriteAllText(
         $Path,
         (($InputObject | ConvertTo-Json -Depth 32) + [Environment]::NewLine),
@@ -64,7 +67,9 @@ if ($LASTEXITCODE -ne 0 -or $currentHead -cne $ExpectedHead.ToLowerInvariant()) 
     throw "Exact-head mismatch. Expected=$ExpectedHead actual=$currentHead"
 }
 $dirty = @(& $git.Source -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
-if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) { throw 'Downstream certification requires a clean exact-head worktree.' }
+if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
+    throw 'Downstream certification requires a clean exact-head worktree.'
+}
 
 $sourceRoot = [IO.Path]::GetFullPath($SourceRunRoot)
 $outputFull = [IO.Path]::GetFullPath($OutputDirectory)
@@ -85,7 +90,7 @@ foreach ($path in @($localValidationPath,$normalizerPath,$PSCommandPath)) {
 Write-Information -MessageData '=== SUPERBLOCK 1 DOWNSTREAM CERTIFICATION ===' -InformationAction Continue
 Write-Information -MessageData '[1/6] Exact-head dual-runtime normalizer gate' -InformationAction Continue
 $localGate = & $localValidationPath -ExpectedHead $ExpectedHead -PassThru
-if ([string]$localGate.status -cne 'passed' -or [int]$localGate.analyzer_findings -ne 0 -or [string]$localGate.python_compile -cne 'passed') {
+if ([string]$localGate.status -cne 'passed' -or [int]$localGate.analyzer_findings -ne 0 -or [string]$localGate.python_syntax -cne 'passed') {
     throw 'Downstream local gate did not pass cleanly.'
 }
 
@@ -125,14 +130,17 @@ $coveragePath = Join-Path $reviewRoot 'superblock1-downstream-coverage.json'
 $schemaDiagnosticsPath = Join-Path $reviewRoot 'superblock1-downstream-schema-diagnostics.json'
 $first = & $normalizerPath -InputPath $dumperPath -EventsOutputPath $eventsPath -CoverageOutputPath $coveragePath -SourceHead $canonicalSourceHead -ExperimentId $canonicalExperimentId -TargetProcessId $canonicalTargetProcessId -PassThru
 $coverage = Get-Content -LiteralPath $coveragePath -Raw | ConvertFrom-Json
+
+$diagnosticStatus = if ([int64]$coverage.rows.unresolved_schema_rows -eq 0 -and [int64]$coverage.rows.recognized_malformed_rows -eq 0) { 'passed' } else { 'failed' }
 $schemaDiagnostics = [pscustomobject][ordered]@{
-    schema_version = 1
-    status = if ([int64]$coverage.rows.unresolved_schema_rows -eq 0) { 'passed' } else { 'failed' }
+    schema_version = 2
+    status = $diagnosticStatus
     source_head = $canonicalSourceHead
     dumper_sha256 = $canonicalDumperSha
     normalized_rows = [int64]$coverage.rows.normalized_rows
     unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
     malformed_rows = [int64]$coverage.rows.malformed_rows
+    recognized_malformed_rows = [int64]$coverage.rows.recognized_malformed_rows
     schema_resolution = $coverage.schema_resolution
     raw_values_in_diagnostics = $false
 }
@@ -150,7 +158,13 @@ if ([int64]$coverage.rows.unresolved_schema_rows -ne 0) {
         "reasons: $reasonSummary; events: $eventSummary; row_lengths: $rowLengthSummary"
     )
 }
-if ([int64]$coverage.rows.malformed_rows -ne 0) { throw "Normalizer has malformed rows: $($coverage.rows.malformed_rows)" }
+if ([int64]$coverage.rows.recognized_malformed_rows -ne 0) {
+    $malformedSummary = Format-NxbCounterProperty -Object $coverage.schema_resolution.recognized_malformed_event_counts
+    throw "Normalizer has recognized malformed rows: $($coverage.rows.recognized_malformed_rows); events: $malformedSummary"
+}
+if ([int64]$coverage.rows.normalized_rows -ne [int64]$coverage.rows.recognized_candidate_rows) {
+    throw "Normalized/candidate row mismatch: normalized=$($coverage.rows.normalized_rows) candidate=$($coverage.rows.recognized_candidate_rows)"
+}
 
 Write-Information -MessageData '[4/6] Deterministic full-row replay' -InformationAction Continue
 $replayEventsPath = Join-Path $localRoot 'superblock1-normalized-events-replay.jsonl'
@@ -172,7 +186,7 @@ $imageHeadersObserved = @($eventNames | Where-Object { $_ -in @('I-Start','I-End
 $registryHeadersObserved = @($eventNames | Where-Object { $_ -like 'Reg*' }).Count -gt 0
 $semanticsPath = Join-Path $reviewRoot 'superblock1-downstream-semantics-boundary.json'
 $semantics = [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     status = 'passed'
     source_head = $canonicalSourceHead
     source_dumper_sha256 = $canonicalDumperSha
@@ -187,7 +201,12 @@ $semantics = [pscustomobject][ordered]@{
     normalization = [ordered]@{
         recognized_header_shapes = [int]$coverage.headers.recognized_shapes
         normalized_rows = [int64]$coverage.rows.normalized_rows
+        recognized_candidate_rows = [int64]$coverage.rows.recognized_candidate_rows
         target_pid_rows = $coverage.rows.target_pid_rows
+        malformed_source_fragments = [int64]$coverage.rows.malformed_rows
+        recognized_malformed_rows = [int64]$coverage.rows.recognized_malformed_rows
+        opaque_tail_rows = [int64]$coverage.schema_resolution.opaque_tail_rows
+        opaque_tail_field_count = [int64]$coverage.schema_resolution.opaque_tail_field_count
         domain_counts = $coverage.domain_counts
         family_counts = $coverage.family_counts
         schema_resolution = $coverage.schema_resolution
@@ -196,6 +215,8 @@ $semantics = [pscustomobject][ordered]@{
     claims = [ordered]@{
         structural_event_name_mapping = $true
         active_header_structural_binding = $true
+        nonempty_extra_columns_preserved_as_opaque = $true
+        opaque_tail_semantics_resolved = $false
         timestamp_unit_resolved = $false
         dxgi_present_pairing_validated = $false
         present_semantics = $false
@@ -213,7 +234,7 @@ Write-NxbDownstreamJson -Path $semanticsPath -InputObject $semantics
 Write-Information -MessageData '[6/6] Bounded downstream receipt and review ZIP' -InformationAction Continue
 $receiptPath = Join-Path $reviewRoot 'superblock1-downstream-certification-receipt.json'
 $receipt = [pscustomobject][ordered]@{
-    schema_version = 2
+    schema_version = 3
     status = 'passed'
     implementation_head = $currentHead
     source = [ordered]@{
@@ -242,6 +263,7 @@ $receipt = [pscustomobject][ordered]@{
         normalized_rows = [int64]$coverage.rows.normalized_rows
         unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
         malformed_rows = [int64]$coverage.rows.malformed_rows
+        recognized_malformed_rows = [int64]$coverage.rows.recognized_malformed_rows
         target_pid_rows = $coverage.rows.target_pid_rows
         schema_resolution = $coverage.schema_resolution
         domain_counts = $coverage.domain_counts
@@ -266,6 +288,8 @@ $receipt = [pscustomobject][ordered]@{
     claims = [ordered]@{
         structural_event_name_mapping = $true
         active_header_structural_binding = $true
+        nonempty_extra_columns_preserved_as_opaque = $true
+        opaque_tail_semantics_resolved = $false
         event_ids_validated = $false
         keyword_semantics_validated = $false
         timestamp_unit_resolved = $false
@@ -291,10 +315,14 @@ try {
         }
     }
 }
-finally { $archive.Dispose() }
+finally {
+    $archive.Dispose()
+}
 
 $postDirty = @(& $git.Source -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
-if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) { throw 'Downstream certification dirtied the exact-head worktree.' }
+if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
+    throw 'Downstream certification dirtied the exact-head worktree.'
+}
 
 $result = [pscustomobject][ordered]@{
     status = 'passed'
@@ -307,8 +335,13 @@ $result = [pscustomobject][ordered]@{
     coverage_sha256 = [string]$first.coverage_output_sha256
     schema_diagnostics_path = $schemaDiagnosticsPath
     normalized_rows = [int64]$coverage.rows.normalized_rows
+    recognized_candidate_rows = [int64]$coverage.rows.recognized_candidate_rows
     recognized_header_shapes = [int]$coverage.headers.recognized_shapes
     unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
+    malformed_rows = [int64]$coverage.rows.malformed_rows
+    recognized_malformed_rows = [int64]$coverage.rows.recognized_malformed_rows
+    opaque_tail_rows = [int64]$coverage.schema_resolution.opaque_tail_rows
+    opaque_tail_field_count = [int64]$coverage.schema_resolution.opaque_tail_field_count
     target_pid_rows = $coverage.rows.target_pid_rows
     schema_resolution = $coverage.schema_resolution
     domain_counts = $coverage.domain_counts
@@ -321,8 +354,10 @@ $result = [pscustomobject][ordered]@{
     trace_completeness = 'not_claimed'
 }
 Write-Information -MessageData "SUPERBLOCK downstream certification passed: $currentHead" -InformationAction Continue
-Write-Information -MessageData "Normalized rows: $($result.normalized_rows)" -InformationAction Continue
+Write-Information -MessageData "Normalized rows: $($result.normalized_rows)/$($result.recognized_candidate_rows)" -InformationAction Continue
 Write-Information -MessageData "Recognized shapes: $($result.recognized_header_shapes)/126" -InformationAction Continue
+Write-Information -MessageData "Opaque-tail rows: $($result.opaque_tail_rows); fields: $($result.opaque_tail_field_count)" -InformationAction Continue
+Write-Information -MessageData "Source malformed fragments: $($result.malformed_rows); recognized malformed: $($result.recognized_malformed_rows)" -InformationAction Continue
 Write-Information -MessageData "Target PID rows: $($result.target_pid_rows)" -InformationAction Continue
 Write-Information -MessageData "Replay events byte-identical: $eventsByteIdentical" -InformationAction Continue
 Write-Information -MessageData "Replay coverage byte-identical: $coverageByteIdentical" -InformationAction Continue
