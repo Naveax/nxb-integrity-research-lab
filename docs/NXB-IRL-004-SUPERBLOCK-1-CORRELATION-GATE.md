@@ -43,69 +43,53 @@ The repo-owned certification completed and emitted its bounded review ZIP. Porta
 
 This was a portable presentation-layer defect. It did not invalidate the analyzer, replay, bounded receipt, or review ZIP.
 
-## PowerShell hardening contract
+## Hardened portable V2 contract
 
-Portable wrappers must treat JSON aggregate maps as sparse unless the schema explicitly guarantees fixed keys.
+Portable V2 treats all JSON/result maps as sparse unless a field is explicitly required.
 
-The hardened portable contract is:
+Hardening covers:
 
-- all nested result reads use a StrictMode-safe property accessor;
-- required certification fields must exist and match expected values;
-- missing required fields produce explicit controlled errors rather than property-access exceptions;
-- optional aggregate counts default to `0` only for display;
-- a missing optional count can never turn an already-passed repo-owned certification into a wrapper failure;
-- review ZIP SHA-256 is recomputed and compared with the repo-owned result;
-- an already-completed exact-head result may be reused when its head, source identity, replay flags, receipt status, and review ZIP hash all validate;
-- otherwise the wrapper reruns the repo-owned correlation gate.
+```text
+StrictMode missing-property access
+sparse PSCustomObject and IDictionary traversal
+null nested values
+string-vs-boolean conversion (including "False")
+numeric conversion failures
+missing/stale evidence roots
+multiple success-output objects
+review ZIP existence + SHA drift
+missing critical fields
+optional count presentation
+```
+
+The V2 wrapper executes an in-process self-test before touching evidence:
+
+```text
+sparse PSCustomObject missing GPU count -> 0
+existing kernel count -> preserved
+nested ordered dictionary -> traversed
+string "False" -> false
+missing nested path -> requested default
+```
+
+Reuse-first behavior:
+
+1. search for the completed exact-head correlation output from portable V1;
+2. validate implementation head, capture/normalizer identities, normalized-event SHA, row counts, pair count, replay flags, conservative claims, and review ZIP SHA;
+3. if every check matches, reuse the completed native evidence and only render/copy the hardened summary;
+4. otherwise fall back to a fresh exact-head repo-owned correlation run.
+
+Critical fields never default silently. Missing critical fields produce explicit controlled errors. Optional aggregate counts may default to `0` only for console presentation and cannot invalidate an already-passed repo-owned certification.
 
 ## Structural correlation layers
 
-### DXGI
+The gate covers structural DXGI Present/MPO start-stop pairing, process/thread/image lifecycle and rundown pairing, hashed TCP/DNS/registry grouping, exact PID/TID attribution, target-PID sequence adjacency, and byte-identical pair/summary replay.
 
-The gate structurally pairs event-name start/stop observations for:
-
-- `Microsoft-Windows-DXGI/Present/win:Start` / `win:Stop`;
-- `PresentMultiplaneOverlay` start/stop.
-
-Keys use exact PID plus named present identifiers such as swap-chain fields when present. If no named present identifier exists, PID-only grouping is recorded explicitly as the weaker structural basis.
-
-The pair record stores only sequence indices and a SHA-256 correlation key. Sequence delta is an event-order distance, not a time duration.
-
-### Kernel lifecycle
-
-Structural start/end pairing is attempted for:
-
-- process `P-Start` / `P-End`;
-- process rundown `P-DCStart` / `P-DCEnd`;
-- thread `T-Start` / `T-End`;
-- thread rundown `T-DCStart` / `T-DCEnd`;
-- image `I-Start` / `I-End`;
-- image rundown `I-DCStart` / `I-DCEnd`.
-
-Process keys use PID, thread keys use PID/TID when available, and image keys use PID plus a hashed named image identifier when available.
-
-### Network / DNS / Registry
-
-TCP rows are grouped by PID plus hashed named address/port fields. DNS rows are grouped by PID plus hashed named query/server/interface/address fields. Registry activity is grouped by PID plus hashed named key/KCB/path fields.
-
-No raw address, port, DNS value, registry path, or group key hash is admitted to bounded review evidence.
-
-### Cross-domain attribution
-
-The gate counts exact PID and PID/TID identities across normalized domains. GPU/network target-PID rows may be compared with the nearest same-PID kernel event by sequence index. Distances remain unitless sequence adjacency and are not temporal or causal evidence.
-
-## Determinism
-
-The same normalized event stream is analyzed twice. Both must be byte-identical:
-
-```text
-local structural-pair JSONL
-aggregate correlation summary JSON
-```
+Raw addresses, ports, DNS values, registry paths, normalized rows, and pair-key hashes remain local.
 
 ## Claims
 
-The gate may certify:
+May be certified:
 
 ```text
 sequence_order_correlation:          true
@@ -115,7 +99,7 @@ hashed_identifier_grouping:          true
 structural_start_stop_pairing:       true
 ```
 
-It must keep the following false or unclaimed:
+Must remain false/unclaimed:
 
 ```text
 timestamp_unit_resolved:              false
