@@ -28,10 +28,21 @@ if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
 
 $innerRunner = Join-Path $PSScriptRoot 'Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
 $testPath = Join-Path $repositoryRoot 'tests\Superblock1SemanticFixtureV2.Tests.ps1'
-foreach ($requiredPath in @($innerRunner,$testPath)) {
+foreach ($requiredPath in @($innerRunner,$testPath,$PSCommandPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Semantic eligibility V3 component is missing: $requiredPath"
     }
+}
+
+Import-Module PSScriptAnalyzer -ErrorAction Stop
+$selfFindings = @(Invoke-ScriptAnalyzer -Path $PSCommandPath -Severity Warning,Error)
+if ($selfFindings.Count -gt 0) {
+    throw (
+        "Semantic eligibility V3 wrapper PSScriptAnalyzer findings: $($selfFindings.Count)`n" +
+        (@($selfFindings | ForEach-Object {
+            '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message
+        }) -join "`n")
+    )
 }
 
 function Invoke-NxbStartProcessCompat {
