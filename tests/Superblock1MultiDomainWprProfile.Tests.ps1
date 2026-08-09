@@ -23,6 +23,7 @@ Describe 'NXB SUPERBLOCK 1 multi-domain WPR profile' {
         $result = & $script:ValidatorPath -PassThru
         $result.status | Should -BeExactly 'passed'
         $result.name | Should -BeExactly 'NxbSuperblock1MultiDomain'
+        $result.event_provider_strict_policy | Should -BeExactly 'false_with_separate_native_enable_matrix'
         $result.semantic_claims_enabled | Should -BeFalse
         $result.trace_completeness | Should -BeExactly 'not_claimed'
     }
@@ -54,20 +55,20 @@ Describe 'NXB SUPERBLOCK 1 multi-domain WPR profile' {
         $dxg = $script:ProfileXml.SelectSingleNode("//EventProvider[@Name='Microsoft-Windows-DxgKrnl']")
         $dxgi = $script:ProfileXml.SelectSingleNode("//EventProvider[@Name='Microsoft-Windows-DXGI']")
         $dxgValues = @($dxg.Keywords.Keyword | ForEach-Object { [string]$_.Value } | Sort-Object)
-        ($dxgValues -join '|') | Should -BeExactly (
-            '0x0000000000008000|0x0000000000010000|0x0000000008000000'
-        )
+        ($dxgValues -join '|') | Should -BeExactly '0x0000000000008000|0x0000000000010000|0x0000000008000000'
         $dxgiValues = @($dxgi.Keywords.Keyword | ForEach-Object { [string]$_.Value })
         ($dxgiValues -join '|') | Should -BeExactly '0x0000000000000002'
     }
 
-    It 'does not invent network or kernel manifest-provider keyword filters' {
-        $providers = @(
-            $script:ProfileXml.SelectNodes('//EventProvider') |
-                Where-Object { $_.Name -notin @('Microsoft-Windows-DxgKrnl','Microsoft-Windows-DXGI') }
-        )
-        $providers.Count | Should -Be 6
+    It 'uses non-strict combined providers and does not invent network/kernel keyword filters' {
+        $providers = @($script:ProfileXml.SelectNodes('//EventProvider'))
+        $providers.Count | Should -Be 8
         foreach ($provider in $providers) {
+            [string]$provider.Strict | Should -BeExactly 'false'
+        }
+        $unfiltered = @($providers | Where-Object { $_.Name -notin @('Microsoft-Windows-DxgKrnl','Microsoft-Windows-DXGI') })
+        $unfiltered.Count | Should -Be 6
+        foreach ($provider in $unfiltered) {
             @($provider.SelectNodes('./Keywords/Keyword')).Count | Should -Be 0
         }
     }
@@ -101,8 +102,9 @@ Describe 'NXB SUPERBLOCK 1 multi-domain WPR profile' {
         @($script:ProfileXml.SelectNodes('//Stacks/Stack')).Count | Should -Be 0
     }
 
-    It 'documents the unpromoted semantic boundary in source' {
+    It 'documents the unpromoted semantic boundary and separate enableability measurement' {
         $script:ProfileText | Should -Match 'event and timing semantics remain unpromoted'
-        $script:ProfileText | Should -Match 'without promoting individual keyword/event semantics'
+        $script:ProfileText | Should -Match 'Individual native enableability is measured separately'
+        $script:ProfileText | Should -Match 'Keywords remain omitted to avoid semantic promotion'
     }
 }
