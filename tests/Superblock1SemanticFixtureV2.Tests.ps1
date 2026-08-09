@@ -70,8 +70,13 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
         $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
-        $buildText | Should -Match ([regex]::Escape('/W4 /WX'))
-        $buildText | Should -Match ([regex]::Escape('/std:c++17'))
+        foreach ($requiredArgument in @('/std:c++17','/EHsc','/W4','/WX','/O2','/DUNICODE','/D_UNICODE','/link')) {
+            $buildText | Should -Match ([regex]::Escape("'$requiredArgument'"))
+        }
+        $buildText | Should -Match ([regex]::Escape('$buildOutput = @(& $compiler @compilerArguments 2>&1)'))
+        $buildText | Should -Match ([regex]::Escape("'d3d11.lib'"))
+        $buildText | Should -Match ([regex]::Escape("'dxgi.lib'"))
+        $buildText | Should -Match ([regex]::Escape("'ws2_32.lib'"))
     }
 
     It 'does not assign to the automatic Profile variable' {
