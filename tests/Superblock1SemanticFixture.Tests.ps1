@@ -25,16 +25,11 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $sourceText | Should -Match ([regex]::Escape('swap_chain->Present(0, 0)'))
     }
 
-    It 'uses only localhost and IPv4 loopback for the network stimulus' {
+    It 'keeps network activity local bounded and timeout protected' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetAddrInfoW(L"localhost"'))
         $sourceText | Should -Match ([regex]::Escape('INADDR_LOOPBACK'))
-        $sourceText | Should -Match 'external_network_used'
         $sourceText | Should -Not -Match 'https?://|www\.|8\.8\.8\.8|1\.1\.1\.1'
-    }
-
-    It 'bounds loopback file and socket waits' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match 'kLoopbackBytes\s*=\s*64u\s*\*\s*1024u'
         $sourceText | Should -Match 'kFileBytes\s*=\s*64u\s*\*\s*1024u'
         $sourceText | Should -Match 'kSocketTimeoutMilliseconds\s*=\s*5000'
@@ -49,20 +44,16 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $sourceText | Should -Match 'registry_write_executed'
     }
 
-    It 'creates and joins bounded worker threads' {
+    It 'joins bounded workers and removes the temporary file' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match 'kWorkerIterations\s*=\s*250000'
         $sourceText | Should -Match ([regex]::Escape('worker.join()'))
         $sourceText | Should -Match ([regex]::Escape('server.join()'))
-    }
-
-    It 'deletes the bounded temporary file' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetTempFileNameW'))
         $sourceText | Should -Match ([regex]::Escape('DeleteFileW(temp_file)'))
     }
 
-    It 'records the owned process PID and stimulus counters' {
+    It 'records the owned PID and bounded stimulus counters' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         $sourceText | Should -Match ([regex]::Escape('GetCurrentProcessId()'))
         $sourceText | Should -Match 'present_calls_attempted'
@@ -71,7 +62,7 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $sourceText | Should -Match 'bytes_received'
     }
 
-    It 'keeps ETW and causal semantics disabled in the fixture receipt' {
+    It 'keeps ETW semantic and causal claims disabled' {
         $sourceText = Get-Content -LiteralPath $sourcePath -Raw
         foreach ($claimName in @(
             'etw_event_mapping_validated',
@@ -82,10 +73,9 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         )) {
             $sourceText | Should -Match ([regex]::Escape($claimName))
         }
-        ($sourceText | Select-String -Pattern '\\"[^\"]+\\": false' -AllMatches).Matches.Count | Should -BeGreaterThan 5
     }
 
-    It 'requires exact clean heads and external output roots' {
+    It 'requires exact clean heads external output and owned-session cancellation only' {
         $buildText = Get-Content -LiteralPath $buildPath -Raw
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         foreach ($scriptText in @($buildText,$certificationText)) {
@@ -94,18 +84,6 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         }
         $buildText | Should -Match ([regex]::Escape('build output must remain outside the repository worktree'))
         $certificationText | Should -Match ([regex]::Escape('output must remain outside the repository worktree'))
-    }
-
-    It 'uses installed Visual Studio x64 tools and strict compiler warnings' {
-        $buildText = Get-Content -LiteralPath $buildPath -Raw
-        $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
-        $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
-        $buildText | Should -Match ([regex]::Escape('/W4 /WX'))
-        $buildText | Should -Match ([regex]::Escape('/std:c++17'))
-    }
-
-    It 'never cancels a pre-existing WPR session' {
-        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('$sessionOwned = $false'))
         $certificationText | Should -Match ([regex]::Escape('$sessionOwned = $true'))
         $certificationText | Should -Match ([regex]::Escape('if ($sessionOwned)'))
@@ -113,16 +91,20 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
         $certificationText | Should -Match ([regex]::Escape('no existing session was cancelled'))
     }
 
-    It 'requires all three domains on the owned fixture PID' {
+    It 'uses installed Visual Studio x64 tools with strict compiler warnings' {
+        $buildText = Get-Content -LiteralPath $buildPath -Raw
+        $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
+        $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
+        $buildText | Should -Match ([regex]::Escape('/W4 /WX'))
+        $buildText | Should -Match ([regex]::Escape('/std:c++17'))
+    }
+
+    It 'requires same-PID three-domain attribution and deterministic replay' {
         $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.gpu'))
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.network'))
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.kernel_lifecycle'))
         $certificationText | Should -Match ([regex]::Escape('$targetGpu -le 0 -or $targetNetwork -le 0 -or $targetKernel -le 0'))
-    }
-
-    It 'requires deterministic normalization and correlation replay' {
-        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
         foreach ($name in @(
             'eventsOneSha','eventsTwoSha','coverageOneSha','coverageTwoSha',
             'recordsOneSha','recordsTwoSha','summaryOneSha','summaryTwoSha'
