@@ -1,18 +1,20 @@
 $ErrorActionPreference = 'Stop'
 
-function Get-NxbSemanticTestRepositoryRoot {
-    $root = [string]$env:NXB_SEMANTIC_REPOSITORY_ROOT
-    if ([string]::IsNullOrWhiteSpace($root)) {
-        throw 'NXB_SEMANTIC_REPOSITORY_ROOT is required for semantic fixture tests.'
-    }
-    $fullRoot = [IO.Path]::GetFullPath($root)
-    if (-not (Test-Path -LiteralPath $fullRoot -PathType Container)) {
-        throw "NXB semantic repository root does not exist: $fullRoot"
-    }
-    return $fullRoot
-}
-
 Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture V2 contract' {
+    BeforeAll {
+        function Get-NxbSemanticTestRepositoryRoot {
+            $root = [string]$env:NXB_SEMANTIC_REPOSITORY_ROOT
+            if ([string]::IsNullOrWhiteSpace($root)) {
+                throw 'NXB_SEMANTIC_REPOSITORY_ROOT is required for semantic fixture tests.'
+            }
+            $fullRoot = [IO.Path]::GetFullPath($root)
+            if (-not (Test-Path -LiteralPath $fullRoot -PathType Container)) {
+                throw "NXB semantic repository root does not exist: $fullRoot"
+            }
+            return $fullRoot
+        }
+    }
+
     It 'keeps source build and V2 certification repo-owned' {
         $repositoryRoot = Get-NxbSemanticTestRepositoryRoot
         $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
