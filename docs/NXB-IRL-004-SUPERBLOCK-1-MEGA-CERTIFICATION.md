@@ -77,6 +77,25 @@ No pre-existing session was cancelled. The failure occurred before the bounded w
 
 This result demonstrated that parse-time validity is not equivalent to native enable-time availability and that `Strict=true` on every combined event provider was too strong for a broad foundation capture. The repair introduces the eight-provider native enable matrix and makes the combined provider policy explicitly non-strict while preserving per-provider startability evidence.
 
+### Attempt 3 — `185d73f7456c306eead9907d19e7a75c9e3f2829`
+
+The run was stopped before provider probing or real capture by the mega gate's analyzer preflight. Two findings were isolated to the newly added provider-enable matrix runner:
+
+```text
+PSUseShouldProcessForStateChangingFunctions
+  New-NxbProviderProbeProfile
+
+PSUseDeclaredVarsMoreThanAssignments
+  $profileOutput
+```
+
+No WPR probe session or combined recording was started. The repair is behavior-preserving:
+
+- the internal profile writer is renamed to `Write-NxbProviderProbeProfile`, avoiding the `New-*` state-changing-function rule while retaining the same bounded file write;
+- native `wpr -profiles` output is discarded directly while its exit code remains authoritative, removing the unused `$profileOutput` assignment.
+
+The provider set, strict/non-strict policy, raw-evidence boundary, and semantic claims are unchanged.
+
 ## Provider enable matrix evidence
 
 For each of the eight event providers the matrix records:
