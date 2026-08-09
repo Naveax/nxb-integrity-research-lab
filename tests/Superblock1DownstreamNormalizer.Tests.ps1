@@ -58,10 +58,10 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
     }
 
     It 'maps DXGI Present structurally without promoting present semantics' {
-        $event = @($script:Events | Where-Object { $_.event_family -ceq 'dxgi_present' })[0]
-        $event.source_event_name | Should -BeExactly 'Microsoft-Windows-DXGI/Present/win:Start'
-        $event.claims.event_name_mapping_only | Should -BeTrue
-        $event.claims.present_pairing_semantics | Should -BeFalse
+        $normalizedEvent = @($script:Events | Where-Object { $_.event_family -ceq 'dxgi_present' })[0]
+        $normalizedEvent.source_event_name | Should -BeExactly 'Microsoft-Windows-DXGI/Present/win:Start'
+        $normalizedEvent.claims.event_name_mapping_only | Should -BeTrue
+        $normalizedEvent.claims.present_pairing_semantics | Should -BeFalse
     }
 
     It 'maps TCP rows while keeping connection and latency semantics false' {
@@ -90,8 +90,8 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
 
     It 'keeps timestamp units unresolved' {
         $script:Coverage.claims.timestamp_unit_resolved | Should -BeFalse
-        foreach ($event in $script:Events) {
-            $event.claims.timestamp_unit_resolved | Should -BeFalse
+        foreach ($normalizedEvent in $script:Events) {
+            $normalizedEvent.claims.timestamp_unit_resolved | Should -BeFalse
         }
     }
 
