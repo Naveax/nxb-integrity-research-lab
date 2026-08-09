@@ -95,37 +95,66 @@ def canonical_json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def header_shape(row):
-    columns = [cell.strip() for cell in row[1:]]
+def shape_from_columns(columns, base_columns_sha256=None, opaque_tail_field_count=0):
     columns_sha = sha256_bytes(("\n".join(columns)).encode("utf-8"))
-    return {"columns": columns, "columns_sha256": columns_sha}
+    return {
+        "columns": columns,
+        "columns_sha256": columns_sha,
+        "base_columns_sha256": base_columns_sha256 or columns_sha,
+        "opaque_tail_field_count": opaque_tail_field_count,
+    }
+
+
+def header_shape(row):
+    return shape_from_columns([cell.strip() for cell in row[1:]])
+
+
+def extend_with_opaque_tail(schema, tail_count):
+    if tail_count <= 0:
+        return schema
+    columns = list(schema["columns"])
+    columns.extend(
+        f"__xperf_opaque_tail_{index:03d}"
+        for index in range(1, tail_count + 1)
+    )
+    return shape_from_columns(
+        columns,
+        base_columns_sha256=schema["base_columns_sha256"],
+        opaque_tail_field_count=tail_count,
+    )
 
 
 def resolve_schema(name, row, active_schemas, schemas):
-    """Resolve a data row structurally without inspecting field semantics.
+    """Resolve a row structurally without assigning meaning to extra payload.
 
-    xperf dumper output is ordered: a header row establishes the schema used by
-    subsequent rows of that event shape. Prefer that active header. Missing
-    trailing values are padded as empty because internal CSV omissions retain
-    delimiters; non-empty extra values are never discarded.
+    xperf dumper headers are stateful. The most recently observed header for an
+    event name is authoritative for named columns. Missing trailing columns are
+    padded empty. Non-empty fields emitted beyond that header are preserved as
+    ordinal opaque-tail fields rather than discarded or semantically guessed.
     """
     active = active_schemas.get(name)
     if active is not None:
         expected_values = len(active["columns"])
         actual_values = len(row) - 1
         if actual_values <= expected_values:
-            return active, "active_header", expected_values - actual_values
+            return active, "active_header", expected_values - actual_values, 0
         extras = row[1 + expected_values :]
         if all(not value.strip() for value in extras):
-            return active, "active_header_trailing_empty_extra", 0
-        return None, "active_header_nonempty_extra", 0
+            return active, "active_header_trailing_empty_extra", 0, 0
+        tail_count = actual_values - expected_values
+        return (
+            extend_with_opaque_tail(active, tail_count),
+            "active_header_opaque_tail",
+            0,
+            tail_count,
+        )
 
     candidates = schemas.get(name, {}).get(len(row), [])
     if len(candidates) == 1:
-        return candidates[0], "exact_length_fallback", 0
+        return candidates[0], "exact_length_fallback", 0, 0
     if len(candidates) == 0:
-        return None, "no_active_or_exact_schema", 0
-    return None, "ambiguous_exact_length_schema", 0
+        return None, "no_active_or_exact_schema", 0, 0
+    return None, "ambiguous_exact_length_schema", 0, 0
 
 
 def main():
@@ -154,6 +183,7 @@ def main():
     recognized_rows = 0
     unresolved_schema_rows = 0
     malformed_rows = 0
+    recognized_malformed_rows = 0
     target_pid_rows = 0
     domain_counts = Counter()
     family_counts = Counter()
@@ -164,9 +194,13 @@ def main():
     unresolved_reason_counts = Counter()
     unresolved_event_counts = Counter()
     unresolved_row_length_counts = Counter()
+    recognized_malformed_event_counts = Counter()
     trailing_missing_field_rows = 0
     trailing_missing_field_count = 0
     trailing_empty_extra_rows = 0
+    opaque_tail_rows = 0
+    opaque_tail_field_count = 0
+    opaque_tail_shape_counts = Counter()
 
     with input_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
         reader = csv.reader(handle, skipinitialspace=True)
@@ -191,6 +225,10 @@ def main():
             if len(row) < 2:
                 if row:
                     malformed_rows += 1
+                    malformed_name = row[0].strip()
+                    if classify_event(malformed_name):
+                        recognized_malformed_rows += 1
+                        recognized_malformed_event_counts[malformed_name] += 1
                 continue
             name = row[0].strip()
             if row[1].strip() == "TimeStamp":
@@ -202,7 +240,7 @@ def main():
                 continue
             recognized_rows += 1
 
-            schema, resolution, missing_trailing = resolve_schema(
+            schema, resolution, missing_trailing, opaque_tail_count = resolve_schema(
                 name, row, active_schemas, schemas
             )
             schema_resolution_counts[resolution] += 1
@@ -231,6 +269,11 @@ def main():
                 values = values[: len(columns)]
                 trailing_empty_extra_rows += 1
 
+            if opaque_tail_count:
+                opaque_tail_rows += 1
+                opaque_tail_field_count += opaque_tail_count
+                opaque_tail_shape_counts[f"{name}|{len(row)}"] += 1
+
             fields = {
                 columns[index]: values[index].strip()
                 for index in range(len(columns))
@@ -243,8 +286,8 @@ def main():
             timestamp_raw = fields.get("TimeStamp")
             if args.target_pid is not None and process_id == args.target_pid:
                 target_pid_rows += 1
-            event = {
-                "schema_version": 1,
+            normalized_event = {
+                "schema_version": 2,
                 "sequence_index": normalized_count,
                 "experiment_id": args.experiment_id,
                 "source_head": args.source_head.lower(),
@@ -252,8 +295,10 @@ def main():
                 "domain": domain,
                 "event_family": family,
                 "columns_sha256": schema["columns_sha256"],
+                "base_columns_sha256": schema["base_columns_sha256"],
                 "schema_resolution": resolution,
                 "trailing_missing_field_count": missing_trailing,
+                "opaque_tail_field_count": opaque_tail_count,
                 "timestamp_raw": timestamp_raw,
                 "process_id": process_id,
                 "thread_id": thread_id,
@@ -262,13 +307,15 @@ def main():
                 "claims": {
                     "event_name_mapping_only": True,
                     "active_header_structural_binding": resolution.startswith("active_header"),
+                    "opaque_tail_preserved_without_semantics": opaque_tail_count > 0,
+                    "opaque_tail_semantics_resolved": False,
                     "timestamp_unit_resolved": False,
                     "latency_semantics": False,
                     "queue_semantics": False,
                     "present_pairing_semantics": False,
                 },
             }
-            output_handle.write(canonical_json(event) + "\n")
+            output_handle.write(canonical_json(normalized_event) + "\n")
             normalized_count += 1
             domain_counts[domain] += 1
             family_counts[f"{domain}:{family}"] += 1
@@ -276,7 +323,7 @@ def main():
 
     normalized_sha = sha256_file(events_output)
     coverage = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "passed",
         "source": {
             "head_sha": args.source_head.lower(),
@@ -293,6 +340,7 @@ def main():
             "normalized_rows": normalized_count,
             "unresolved_schema_rows": unresolved_schema_rows,
             "malformed_rows": malformed_rows,
+            "recognized_malformed_rows": recognized_malformed_rows,
             "target_pid_rows": target_pid_rows if args.target_pid is not None else None,
         },
         "schema_resolution": {
@@ -300,9 +348,13 @@ def main():
             "trailing_missing_field_rows": trailing_missing_field_rows,
             "trailing_missing_field_count": trailing_missing_field_count,
             "trailing_empty_extra_rows": trailing_empty_extra_rows,
+            "opaque_tail_rows": opaque_tail_rows,
+            "opaque_tail_field_count": opaque_tail_field_count,
+            "opaque_tail_shape_counts": dict(sorted(opaque_tail_shape_counts.items())),
             "unresolved_reason_counts": dict(sorted(unresolved_reason_counts.items())),
             "unresolved_event_counts": dict(sorted(unresolved_event_counts.items())),
             "unresolved_row_length_counts": dict(sorted(unresolved_row_length_counts.items())),
+            "recognized_malformed_event_counts": dict(sorted(recognized_malformed_event_counts.items())),
             "raw_values_in_diagnostics": False,
         },
         "domain_counts": dict(sorted(domain_counts.items())),
@@ -314,6 +366,8 @@ def main():
             "active_header_structural_binding": True,
             "trailing_missing_columns_padded_only": True,
             "nonempty_extra_columns_discarded": False,
+            "nonempty_extra_columns_preserved_as_opaque": True,
+            "opaque_tail_semantics_resolved": False,
             "event_ids_validated": False,
             "keyword_semantics_validated": False,
             "timestamp_unit_resolved": False,
