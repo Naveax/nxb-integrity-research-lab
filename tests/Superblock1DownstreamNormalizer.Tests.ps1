@@ -18,10 +18,13 @@ TcpSend, TimeStamp, Process Name ( PID), Transfer Size, Remote IPv4 Addr, Remote
 TcpSend, 2.0, demo.exe ( 42), 64, 127.0.0.1, 5000, 127.0.0.1, 5001
 P-Start, TimeStamp, Process Name ( PID), ParentPID, SessionID, UniqueKey
 P-Start, 3.0, child.exe ( 99), 42, 1, abc
+T-Start, TimeStamp, Process Name ( PID), ThreadID
+T-Start, 3.5, demo.exe ( 42), 12, opaque-a, opaque-b
 RegOpenKey, TimeStamp, KCB, Process Name ( PID), ThreadID, Status, ElapsedTime, Key Name
 RegOpenKey, 4.0, 0x1, demo.exe ( 42), 7, 0, 123
 UnknownThing, TimeStamp, Value
 UnknownThing, 5.0, abc
+xperf-fragment-with-no-comma
 '@ | Set-Content -LiteralPath $script:InputPath -Encoding UTF8
 
     $script:Result = & $script:WrapperPath `
@@ -51,11 +54,11 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
         Test-Path -LiteralPath $script:ToolPath -PathType Leaf | Should -BeTrue
     }
 
-    It 'normalizes GPU network process and registry synthetic rows' {
+    It 'normalizes GPU network and kernel synthetic rows' {
         $script:Result.status | Should -BeExactly 'passed'
-        $script:Coverage.rows.normalized_rows | Should -Be 4
+        $script:Coverage.rows.normalized_rows | Should -Be 5
         $script:Coverage.rows.unresolved_schema_rows | Should -Be 0
-        $script:Events.Count | Should -Be 4
+        $script:Events.Count | Should -Be 5
         (@($script:Events.domain | Sort-Object -Unique) -join '|') | Should -BeExactly 'gpu|kernel_lifecycle|network'
     }
 
@@ -75,29 +78,43 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
         $script:Coverage.claims.network_latency_semantics | Should -BeFalse
     }
 
-    It 'pads only missing trailing registry columns under the active header' {
+    It 'preserves nonempty xperf tail fields opaquely and pads only missing trailing columns' {
+        $threadEvent = @($script:Events | Where-Object { $_.source_event_name -ceq 'T-Start' })[0]
+        $threadEvent.schema_resolution | Should -BeExactly 'active_header_opaque_tail'
+        $threadEvent.opaque_tail_field_count | Should -Be 2
+        $threadEvent.fields.__xperf_opaque_tail_001 | Should -BeExactly 'opaque-a'
+        $threadEvent.fields.__xperf_opaque_tail_002 | Should -BeExactly 'opaque-b'
+        $threadEvent.claims.opaque_tail_preserved_without_semantics | Should -BeTrue
+        $threadEvent.claims.opaque_tail_semantics_resolved | Should -BeFalse
+        $script:Coverage.schema_resolution.opaque_tail_rows | Should -Be 1
+        $script:Coverage.schema_resolution.opaque_tail_field_count | Should -Be 2
+        $script:Coverage.claims.nonempty_extra_columns_discarded | Should -BeFalse
+        $script:Coverage.claims.nonempty_extra_columns_preserved_as_opaque | Should -BeTrue
+
         $registryEvent = @($script:Events | Where-Object { $_.event_family -ceq 'registry' })[0]
         $registryEvent.fields.'Key Name' | Should -BeExactly ''
         $registryEvent.trailing_missing_field_count | Should -Be 1
         $script:Coverage.schema_resolution.trailing_missing_field_rows | Should -Be 1
         $script:Coverage.schema_resolution.trailing_missing_field_count | Should -Be 1
-        $script:Coverage.claims.nonempty_extra_columns_discarded | Should -BeFalse
     }
 
     It 'records target PID attribution without making it a completeness claim' {
-        $script:Coverage.rows.target_pid_rows | Should -Be 3
+        $script:Coverage.rows.target_pid_rows | Should -Be 4
         $script:Coverage.claims.trace_completeness | Should -BeExactly 'not_claimed'
     }
 
-    It 'does not normalize unknown rows' {
-        $script:Coverage.rows.source_data_rows | Should -Be 5
-        $script:Coverage.rows.recognized_candidate_rows | Should -Be 4
-        $script:Coverage.rows.normalized_rows | Should -Be 4
+    It 'separates domain-external malformed fragments from recognized malformed rows' {
+        $script:Coverage.rows.source_data_rows | Should -Be 6
+        $script:Coverage.rows.recognized_candidate_rows | Should -Be 5
+        $script:Coverage.rows.normalized_rows | Should -Be 5
+        $script:Coverage.rows.malformed_rows | Should -Be 1
+        $script:Coverage.rows.recognized_malformed_rows | Should -Be 0
     }
 
     It 'keeps timestamp units and higher semantics unresolved' {
         $script:Coverage.claims.timestamp_unit_resolved | Should -BeFalse
         $script:Coverage.claims.kernel_lifecycle_semantics | Should -BeFalse
+        $script:Coverage.claims.opaque_tail_semantics_resolved | Should -BeFalse
         foreach ($normalizedEvent in $script:Events) {
             $normalizedEvent.claims.timestamp_unit_resolved | Should -BeFalse
         }
