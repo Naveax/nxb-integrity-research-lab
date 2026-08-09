@@ -63,10 +63,11 @@ function Start-Process {
         }
     )
 
-    return Microsoft.PowerShell.Management\Start-Process `
+    $startedProcess = Microsoft.PowerShell.Management\Start-Process `
         -FilePath $FilePath `
         -ArgumentList $normalizedArguments `
         -PassThru:$PassThru
+    return $startedProcess
 }
 
 $previousRepositoryRoot = [Environment]::GetEnvironmentVariable('NXB_SEMANTIC_REPOSITORY_ROOT','Process')
