@@ -95,6 +95,39 @@ def canonical_json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def header_shape(row):
+    columns = [cell.strip() for cell in row[1:]]
+    columns_sha = sha256_bytes(("\n".join(columns)).encode("utf-8"))
+    return {"columns": columns, "columns_sha256": columns_sha}
+
+
+def resolve_schema(name, row, active_schemas, schemas):
+    """Resolve a data row structurally without inspecting field semantics.
+
+    xperf dumper output is ordered: a header row establishes the schema used by
+    subsequent rows of that event shape. Prefer that active header. Missing
+    trailing values are padded as empty because internal CSV omissions retain
+    delimiters; non-empty extra values are never discarded.
+    """
+    active = active_schemas.get(name)
+    if active is not None:
+        expected_values = len(active["columns"])
+        actual_values = len(row) - 1
+        if actual_values <= expected_values:
+            return active, "active_header", expected_values - actual_values
+        extras = row[1 + expected_values :]
+        if all(not value.strip() for value in extras):
+            return active, "active_header_trailing_empty_extra", 0
+        return None, "active_header_nonempty_extra", 0
+
+    candidates = schemas.get(name, {}).get(len(row), [])
+    if len(candidates) == 1:
+        return candidates[0], "exact_length_fallback", 0
+    if len(candidates) == 0:
+        return None, "no_active_or_exact_schema", 0
+    return None, "ambiguous_exact_length_schema", 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
@@ -127,6 +160,13 @@ def main():
     event_name_counts = Counter()
     recognized_header_shapes = set()
     normalized_count = 0
+    schema_resolution_counts = Counter()
+    unresolved_reason_counts = Counter()
+    unresolved_event_counts = Counter()
+    unresolved_row_length_counts = Counter()
+    trailing_missing_field_rows = 0
+    trailing_missing_field_count = 0
+    trailing_empty_extra_rows = 0
 
     with input_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
         reader = csv.reader(handle, skipinitialspace=True)
@@ -134,16 +174,15 @@ def main():
             if len(row) < 2 or row[1].strip() != "TimeStamp":
                 continue
             name = row[0].strip()
-            columns = [cell.strip() for cell in row[1:]]
-            columns_sha = sha256_bytes(("\n".join(columns)).encode("utf-8"))
-            shape = {"columns": columns, "columns_sha256": columns_sha}
+            shape = header_shape(row)
             existing = schemas[name][len(row)]
-            if not any(item["columns_sha256"] == columns_sha for item in existing):
+            if not any(item["columns_sha256"] == shape["columns_sha256"] for item in existing):
                 existing.append(shape)
                 header_rows += 1
                 if classify_event(name):
-                    recognized_header_shapes.add((name, columns_sha))
+                    recognized_header_shapes.add((name, shape["columns_sha256"]))
 
+    active_schemas = {}
     with input_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle, events_output.open(
         "w", encoding="utf-8", newline="\n"
     ) as output_handle:
@@ -153,23 +192,47 @@ def main():
                 if row:
                     malformed_rows += 1
                 continue
+            name = row[0].strip()
             if row[1].strip() == "TimeStamp":
+                active_schemas[name] = header_shape(row)
                 continue
             source_rows += 1
-            name = row[0].strip()
             classification = classify_event(name)
             if classification is None:
                 continue
             recognized_rows += 1
-            candidates = schemas.get(name, {}).get(len(row), [])
-            if len(candidates) != 1:
+
+            schema, resolution, missing_trailing = resolve_schema(
+                name, row, active_schemas, schemas
+            )
+            schema_resolution_counts[resolution] += 1
+            if schema is None:
                 unresolved_schema_rows += 1
+                unresolved_reason_counts[resolution] += 1
+                unresolved_event_counts[name] += 1
+                unresolved_row_length_counts[f"{name}|{len(row)}"] += 1
                 continue
-            schema = candidates[0]
+
             columns = schema["columns"]
-            values = row[1:]
+            values = list(row[1:])
+            if len(values) < len(columns):
+                missing = len(columns) - len(values)
+                values.extend([""] * missing)
+                trailing_missing_field_rows += 1
+                trailing_missing_field_count += missing
+            elif len(values) > len(columns):
+                extras = values[len(columns):]
+                if any(value.strip() for value in extras):
+                    unresolved_schema_rows += 1
+                    unresolved_reason_counts["post_resolution_nonempty_extra"] += 1
+                    unresolved_event_counts[name] += 1
+                    unresolved_row_length_counts[f"{name}|{len(row)}"] += 1
+                    continue
+                values = values[: len(columns)]
+                trailing_empty_extra_rows += 1
+
             fields = {
-                columns[index]: values[index].strip() if index < len(values) else ""
+                columns[index]: values[index].strip()
                 for index in range(len(columns))
             }
             domain, family = classification
@@ -189,6 +252,8 @@ def main():
                 "domain": domain,
                 "event_family": family,
                 "columns_sha256": schema["columns_sha256"],
+                "schema_resolution": resolution,
+                "trailing_missing_field_count": missing_trailing,
                 "timestamp_raw": timestamp_raw,
                 "process_id": process_id,
                 "thread_id": thread_id,
@@ -196,6 +261,7 @@ def main():
                 "fields": fields,
                 "claims": {
                     "event_name_mapping_only": True,
+                    "active_header_structural_binding": resolution.startswith("active_header"),
                     "timestamp_unit_resolved": False,
                     "latency_semantics": False,
                     "queue_semantics": False,
@@ -210,7 +276,7 @@ def main():
 
     normalized_sha = sha256_file(events_output)
     coverage = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "passed",
         "source": {
             "head_sha": args.source_head.lower(),
@@ -229,12 +295,25 @@ def main():
             "malformed_rows": malformed_rows,
             "target_pid_rows": target_pid_rows if args.target_pid is not None else None,
         },
+        "schema_resolution": {
+            "resolution_counts": dict(sorted(schema_resolution_counts.items())),
+            "trailing_missing_field_rows": trailing_missing_field_rows,
+            "trailing_missing_field_count": trailing_missing_field_count,
+            "trailing_empty_extra_rows": trailing_empty_extra_rows,
+            "unresolved_reason_counts": dict(sorted(unresolved_reason_counts.items())),
+            "unresolved_event_counts": dict(sorted(unresolved_event_counts.items())),
+            "unresolved_row_length_counts": dict(sorted(unresolved_row_length_counts.items())),
+            "raw_values_in_diagnostics": False,
+        },
         "domain_counts": dict(sorted(domain_counts.items())),
         "family_counts": dict(sorted(family_counts.items())),
         "event_name_counts": dict(sorted(event_name_counts.items())),
         "normalized_events_sha256": normalized_sha,
         "claims": {
             "structural_event_name_mapping": True,
+            "active_header_structural_binding": True,
+            "trailing_missing_columns_padded_only": True,
+            "nonempty_extra_columns_discarded": False,
             "event_ids_validated": False,
             "keyword_semantics_validated": False,
             "timestamp_unit_resolved": False,
@@ -249,6 +328,7 @@ def main():
             "normalized_event_rows_reviewable": False,
             "raw_field_values_reviewable": False,
             "coverage_counts_reviewable": True,
+            "schema_diagnostics_reviewable": True,
         },
     }
     coverage_output.write_text(canonical_json(coverage) + "\n", encoding="utf-8")
