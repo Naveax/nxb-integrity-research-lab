@@ -37,6 +37,23 @@ function Write-NxbDownstreamJson {
     )
 }
 
+function Format-NxbCounterProperties {
+    [CmdletBinding()]
+    param(
+        [Parameter()][object]$Object,
+        [Parameter()][int]$Limit = 12
+    )
+    if ($null -eq $Object) { return 'none' }
+    $items = @(
+        $Object.PSObject.Properties |
+            Sort-Object { [int64]$_.Value } -Descending |
+            Select-Object -First $Limit |
+            ForEach-Object { '{0}={1}' -f $_.Name,$_.Value }
+    )
+    if ($items.Count -eq 0) { return 'none' }
+    return ($items -join ', ')
+}
+
 if ($env:OS -cne 'Windows_NT') { throw 'SUPERBLOCK downstream certification requires Windows.' }
 if ($PSVersionTable.PSEdition -cne 'Core') { throw 'SUPERBLOCK downstream certification requires PowerShell 7.' }
 
@@ -105,12 +122,34 @@ if ([int]$inventory.header_count -ne 126 -or [int]$inventory.candidate_counts.gp
 Write-Information -MessageData '[3/6] Full local dumper normalization' -InformationAction Continue
 $eventsPath = Join-Path $localRoot 'superblock1-normalized-events.jsonl'
 $coveragePath = Join-Path $reviewRoot 'superblock1-downstream-coverage.json'
+$schemaDiagnosticsPath = Join-Path $reviewRoot 'superblock1-downstream-schema-diagnostics.json'
 $first = & $normalizerPath -InputPath $dumperPath -EventsOutputPath $eventsPath -CoverageOutputPath $coveragePath -SourceHead $canonicalSourceHead -ExperimentId $canonicalExperimentId -TargetProcessId $canonicalTargetProcessId -PassThru
 $coverage = Get-Content -LiteralPath $coveragePath -Raw | ConvertFrom-Json
+$schemaDiagnostics = [pscustomobject][ordered]@{
+    schema_version = 1
+    status = if ([int64]$coverage.rows.unresolved_schema_rows -eq 0) { 'passed' } else { 'failed' }
+    source_head = $canonicalSourceHead
+    dumper_sha256 = $canonicalDumperSha
+    normalized_rows = [int64]$coverage.rows.normalized_rows
+    unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
+    malformed_rows = [int64]$coverage.rows.malformed_rows
+    schema_resolution = $coverage.schema_resolution
+    raw_values_in_diagnostics = $false
+}
+Write-NxbDownstreamJson -Path $schemaDiagnosticsPath -InputObject $schemaDiagnostics
+
 if ([int]$coverage.headers.unique_observed_shapes -ne 126) { throw "Normalizer observed unexpected header-shape count: $($coverage.headers.unique_observed_shapes)" }
 if ([int]$coverage.headers.recognized_shapes -ne 73) { throw "Expected 73 structurally recognized header shapes; got $($coverage.headers.recognized_shapes)" }
 if ([int64]$coverage.rows.normalized_rows -le 0) { throw 'Normalizer produced zero rows.' }
-if ([int64]$coverage.rows.unresolved_schema_rows -ne 0) { throw "Normalizer has unresolved schema rows: $($coverage.rows.unresolved_schema_rows)" }
+if ([int64]$coverage.rows.unresolved_schema_rows -ne 0) {
+    $reasonSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_reason_counts
+    $eventSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_event_counts
+    $rowLengthSummary = Format-NxbCounterProperties -Object $coverage.schema_resolution.unresolved_row_length_counts
+    throw (
+        "Normalizer has unresolved schema rows: $($coverage.rows.unresolved_schema_rows); " +
+        "reasons: $reasonSummary; events: $eventSummary; row_lengths: $rowLengthSummary"
+    )
+}
 if ([int64]$coverage.rows.malformed_rows -ne 0) { throw "Normalizer has malformed rows: $($coverage.rows.malformed_rows)" }
 
 Write-Information -MessageData '[4/6] Deterministic full-row replay' -InformationAction Continue
@@ -151,10 +190,12 @@ $semantics = [pscustomobject][ordered]@{
         target_pid_rows = $coverage.rows.target_pid_rows
         domain_counts = $coverage.domain_counts
         family_counts = $coverage.family_counts
+        schema_resolution = $coverage.schema_resolution
         event_rows_local_only = $true
     }
     claims = [ordered]@{
         structural_event_name_mapping = $true
+        active_header_structural_binding = $true
         timestamp_unit_resolved = $false
         dxgi_present_pairing_validated = $false
         present_semantics = $false
@@ -172,7 +213,7 @@ Write-NxbDownstreamJson -Path $semanticsPath -InputObject $semantics
 Write-Information -MessageData '[6/6] Bounded downstream receipt and review ZIP' -InformationAction Continue
 $receiptPath = Join-Path $reviewRoot 'superblock1-downstream-certification-receipt.json'
 $receipt = [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     status = 'passed'
     implementation_head = $currentHead
     source = [ordered]@{
@@ -191,7 +232,7 @@ $receipt = [pscustomobject][ordered]@{
         powershell7 = "$($localGate.powershell7.passed)/$($localGate.powershell7.total)"
         windows_powershell_51 = "$($localGate.windows_powershell_51.passed)/$($localGate.windows_powershell_51.total)"
         analyzer_findings = 0
-        python_compile = 'passed'
+        python_syntax = 'passed'
     }
     normalization = [ordered]@{
         unique_observed_header_shapes = [int]$coverage.headers.unique_observed_shapes
@@ -202,6 +243,7 @@ $receipt = [pscustomobject][ordered]@{
         unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
         malformed_rows = [int64]$coverage.rows.malformed_rows
         target_pid_rows = $coverage.rows.target_pid_rows
+        schema_resolution = $coverage.schema_resolution
         domain_counts = $coverage.domain_counts
         family_counts = $coverage.family_counts
         normalized_events_sha256 = [string]$first.events_output_sha256
@@ -219,9 +261,11 @@ $receipt = [pscustomobject][ordered]@{
         normalized_event_rows_in_review_zip = $false
         raw_field_values_in_review_zip = $false
         coverage_counts_in_review_zip = $true
+        schema_diagnostics_in_review_zip = $true
     }
     claims = [ordered]@{
         structural_event_name_mapping = $true
+        active_header_structural_binding = $true
         event_ids_validated = $false
         keyword_semantics_validated = $false
         timestamp_unit_resolved = $false
@@ -261,9 +305,12 @@ $result = [pscustomobject][ordered]@{
     normalized_events_sha256 = [string]$first.events_output_sha256
     coverage_path = $coveragePath
     coverage_sha256 = [string]$first.coverage_output_sha256
+    schema_diagnostics_path = $schemaDiagnosticsPath
     normalized_rows = [int64]$coverage.rows.normalized_rows
     recognized_header_shapes = [int]$coverage.headers.recognized_shapes
+    unresolved_schema_rows = [int64]$coverage.rows.unresolved_schema_rows
     target_pid_rows = $coverage.rows.target_pid_rows
+    schema_resolution = $coverage.schema_resolution
     domain_counts = $coverage.domain_counts
     family_counts = $coverage.family_counts
     replay_events_byte_identical = $eventsByteIdentical
@@ -274,10 +321,10 @@ $result = [pscustomobject][ordered]@{
     trace_completeness = 'not_claimed'
 }
 Write-Information -MessageData "SUPERBLOCK downstream certification passed: $currentHead" -InformationAction Continue
-Write-Information -MessageData "Recognized header shapes: $($result.recognized_header_shapes)/126" -InformationAction Continue
 Write-Information -MessageData "Normalized rows: $($result.normalized_rows)" -InformationAction Continue
+Write-Information -MessageData "Recognized shapes: $($result.recognized_header_shapes)/126" -InformationAction Continue
 Write-Information -MessageData "Target PID rows: $($result.target_pid_rows)" -InformationAction Continue
-Write-Information -MessageData "Replay events byte-identical: $($result.replay_events_byte_identical)" -InformationAction Continue
-Write-Information -MessageData "Replay coverage byte-identical: $($result.replay_coverage_byte_identical)" -InformationAction Continue
+Write-Information -MessageData "Replay events byte-identical: $eventsByteIdentical" -InformationAction Continue
+Write-Information -MessageData "Replay coverage byte-identical: $coverageByteIdentical" -InformationAction Continue
 Write-Information -MessageData "Review ZIP SHA256: $($result.review_zip_sha256)" -InformationAction Continue
 if ($PassThru) { return $result }
