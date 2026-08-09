@@ -5,7 +5,7 @@ BeforeAll {
 }
 
 Describe 'NXB SUPERBLOCK 1 provider enable matrix contract' {
-    It 'parses the matrix source' {
+    It 'parses the matrix source and keeps the analyzer-safe bounded profile writer' {
         $tokens = $null
         $errors = $null
         [void][Management.Automation.Language.Parser]::ParseFile(
@@ -14,6 +14,9 @@ Describe 'NXB SUPERBLOCK 1 provider enable matrix contract' {
             [ref]$errors
         )
         @($errors).Count | Should -Be 0
+        $script:Source | Should -Match 'function Write-NxbProviderProbeProfile'
+        $script:Source | Should -Not -Match 'function New-NxbProviderProbeProfile'
+        $script:Source | Should -Not -Match '\$profileOutput\s*='
     }
 
     It 'contains the exact eight provider identities' {
@@ -29,12 +32,6 @@ Describe 'NXB SUPERBLOCK 1 provider enable matrix contract' {
         )) {
             $script:Source | Should -Match ([regex]::Escape("name='$name'"))
         }
-    }
-
-    It 'uses an analyzer-safe bounded profile writer' {
-        $script:Source | Should -Match 'function Write-NxbProviderProbeProfile'
-        $script:Source | Should -Not -Match 'function New-NxbProviderProbeProfile'
-        $script:Source | Should -Not -Match '\$profileOutput\s*='
     }
 
     It 'uses strict single-provider probes' {
