@@ -44,69 +44,143 @@ function Write-NxbSemanticJson {
     )
 }
 
-function Import-NxbSemanticDeveloperEnvironment {
+function Get-NxbSemanticLatestVersionDirectory {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
-        [string]$VsDevCmd,
+        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+        [string]$Root,
 
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string]$WorkingDirectory
+        [string]$RequiredRelativePath
     )
 
-    $cmdPath = (Get-Command cmd.exe -ErrorAction Stop).Source
-    $environmentScript = Join-Path $WorkingDirectory 'capture-vs-environment.cmd'
-    $environmentLog = Join-Path $WorkingDirectory 'vs-environment.log'
-    $lines = @(
-        '@echo off',
-        ('call "{0}" -no_logo -arch=x64 -host_arch=x64' -f $VsDevCmd),
-        'if errorlevel 1 exit /b %errorlevel%',
-        'set'
+    $candidates = @(
+        Get-ChildItem -LiteralPath $Root -Directory -ErrorAction Stop |
+            ForEach-Object {
+                $parsed = $null
+                if ([version]::TryParse($_.Name,[ref]$parsed)) {
+                    $required = Join-Path $_.FullName $RequiredRelativePath
+                    if (Test-Path -LiteralPath $required -PathType Leaf) {
+                        [pscustomobject]@{
+                            Version = $parsed
+                            Path = $_.FullName
+                        }
+                    }
+                }
+            } |
+            Sort-Object Version -Descending
     )
-    [IO.File]::WriteAllLines($environmentScript,$lines,[Text.ASCIIEncoding]::new())
+    if ($candidates.Count -eq 0) {
+        throw "No version directory under '$Root' contains '$RequiredRelativePath'."
+    }
+    return [string]$candidates[0].Path
+}
 
-    $output = @(& $cmdPath /d /c $environmentScript 2>&1)
-    $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-    [IO.File]::WriteAllLines(
-        $environmentLog,
-        @($output | ForEach-Object { [string]$_ }),
-        [Text.UTF8Encoding]::new($false)
+function Resolve-NxbSemanticNativeToolchain {
+    [CmdletBinding()]
+    param()
+
+    $vswhere = Resolve-NxbSemanticVsWhere
+    $installationPath = @(
+        & $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath
+    ) | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$installationPath)) {
+        throw 'Visual Studio C++ x64 Build Tools installation was not resolved.'
+    }
+    $installationPath = [IO.Path]::GetFullPath(([string]$installationPath).Trim())
+
+    $msvcVersionsRoot = Join-Path $installationPath 'VC\Tools\MSVC'
+    if (-not (Test-Path -LiteralPath $msvcVersionsRoot -PathType Container)) {
+        throw "MSVC tools root is missing: $msvcVersionsRoot"
+    }
+    $msvcRoot = Get-NxbSemanticLatestVersionDirectory -Root $msvcVersionsRoot -RequiredRelativePath 'bin\Hostx64\x64\cl.exe'
+    $compiler = Join-Path $msvcRoot 'bin\Hostx64\x64\cl.exe'
+    $linker = Join-Path $msvcRoot 'bin\Hostx64\x64\link.exe'
+    $msvcInclude = Join-Path $msvcRoot 'include'
+    $msvcLib = Join-Path $msvcRoot 'lib\x64'
+
+    $registryBase = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::LocalMachine,
+        [Microsoft.Win32.RegistryView]::Registry64
     )
-    if ($exitCode -ne 0) {
-        foreach ($line in $output) {
-            Write-Information -MessageData ([string]$line) -InformationAction Continue
+    try {
+        $kitsKey = $registryBase.OpenSubKey('SOFTWARE\Microsoft\Windows Kits\Installed Roots')
+        if ($null -eq $kitsKey) {
+            throw 'Windows Kits Installed Roots registry key is unavailable.'
         }
-        throw "Visual Studio developer environment initialization failed: exit=$exitCode log=$environmentLog"
+        try {
+            $kitsRoot10 = [string]$kitsKey.GetValue('KitsRoot10',$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        }
+        finally {
+            $kitsKey.Dispose()
+        }
+    }
+    finally {
+        $registryBase.Dispose()
+    }
+    if ([string]::IsNullOrWhiteSpace($kitsRoot10)) {
+        throw 'KitsRoot10 is unavailable in Windows Kits registry metadata.'
+    }
+    $kitsRoot10 = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($kitsRoot10))
+
+    $sdkIncludeVersions = Join-Path $kitsRoot10 'Include'
+    $sdkIncludeRoot = Get-NxbSemanticLatestVersionDirectory -Root $sdkIncludeVersions -RequiredRelativePath 'um\Windows.h'
+    $sdkVersion = Split-Path -Leaf $sdkIncludeRoot
+    $sdkLibRoot = Join-Path (Join-Path $kitsRoot10 'Lib') $sdkVersion
+    $sdkBinRoot = Join-Path (Join-Path $kitsRoot10 'bin') $sdkVersion
+
+    $includePaths = @(
+        $msvcInclude,
+        (Join-Path $sdkIncludeRoot 'ucrt'),
+        (Join-Path $sdkIncludeRoot 'shared'),
+        (Join-Path $sdkIncludeRoot 'um'),
+        (Join-Path $sdkIncludeRoot 'winrt')
+    )
+    $libraryPaths = @(
+        $msvcLib,
+        (Join-Path $sdkLibRoot 'ucrt\x64'),
+        (Join-Path $sdkLibRoot 'um\x64')
+    )
+    $requiredFiles = @(
+        $compiler,
+        $linker,
+        (Join-Path $msvcInclude 'vector'),
+        (Join-Path $sdkIncludeRoot 'um\Windows.h'),
+        (Join-Path $sdkIncludeRoot 'um\d3d11.h'),
+        (Join-Path $sdkLibRoot 'um\x64\d3d11.lib'),
+        (Join-Path $sdkLibRoot 'um\x64\dxgi.lib'),
+        (Join-Path $sdkLibRoot 'um\x64\ws2_32.lib'),
+        (Join-Path $sdkLibRoot 'um\x64\advapi32.lib'),
+        (Join-Path $sdkLibRoot 'ucrt\x64\ucrt.lib')
+    )
+    foreach ($requiredFile in $requiredFiles) {
+        if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+            throw "Semantic native toolchain component is missing: $requiredFile"
+        }
+    }
+    foreach ($includePath in $includePaths) {
+        if (-not (Test-Path -LiteralPath $includePath -PathType Container)) {
+            throw "Semantic native include path is missing: $includePath"
+        }
+    }
+    foreach ($libraryPath in $libraryPaths) {
+        if (-not (Test-Path -LiteralPath $libraryPath -PathType Container)) {
+            throw "Semantic native library path is missing: $libraryPath"
+        }
     }
 
-    $imported = 0
-    foreach ($line in $output) {
-        $text = [string]$line
-        $separator = $text.IndexOf('=')
-        if ($separator -le 0) {
-            continue
-        }
-        $name = $text.Substring(0,$separator)
-        $value = $text.Substring($separator + 1)
-        if ([string]::IsNullOrWhiteSpace($name)) {
-            continue
-        }
-        [Environment]::SetEnvironmentVariable($name,$value,'Process')
-        $imported++
-    }
-    if ($imported -lt 10) {
-        throw "Visual Studio developer environment import was unexpectedly sparse: imported=$imported"
-    }
-
-    $compiler = (Get-Command cl.exe -ErrorAction Stop).Source
-    $linker = (Get-Command link.exe -ErrorAction Stop).Source
     return [pscustomobject][ordered]@{
+        installation_path = $installationPath
+        msvc_root = $msvcRoot
+        sdk_root = $kitsRoot10
+        sdk_version = $sdkVersion
         compiler = [IO.Path]::GetFullPath($compiler)
         linker = [IO.Path]::GetFullPath($linker)
-        imported_variable_count = $imported
-        environment_log_path = $environmentLog
+        sdk_bin_x64 = Join-Path $sdkBinRoot 'x64'
+        include_paths = @($includePaths)
+        library_paths = @($libraryPaths)
     }
 }
 
@@ -139,26 +213,13 @@ if (Test-Path -LiteralPath $outputFull) {
 }
 [IO.Directory]::CreateDirectory($outputFull) | Out-Null
 
-$vswhere = Resolve-NxbSemanticVsWhere
-$installationPath = @(
-    & $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath
-) | Select-Object -First 1
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$installationPath)) {
-    throw 'Visual Studio C++ x64 Build Tools installation was not resolved.'
-}
-$installationPath = [IO.Path]::GetFullPath(([string]$installationPath).Trim())
-$vsDevCmd = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-if (-not (Test-Path -LiteralPath $vsDevCmd -PathType Leaf)) {
-    throw "VsDevCmd.bat is missing: $vsDevCmd"
-}
-
 $exePath = Join-Path $outputFull 'NXB-Superblock1SemanticFixture.exe'
 $objectPath = Join-Path $outputFull 'NXB-Superblock1SemanticFixture.obj'
 $buildLogPath = Join-Path $outputFull 'build.log'
 $receiptPath = Join-Path $outputFull 'semantic-fixture-build-receipt.json'
 
-$developerEnvironment = Import-NxbSemanticDeveloperEnvironment -VsDevCmd $vsDevCmd -WorkingDirectory $outputFull
-$compiler = [string]$developerEnvironment.compiler
+$toolchain = Resolve-NxbSemanticNativeToolchain
+$compiler = [string]$toolchain.compiler
 $compilerArguments = @(
     '/nologo',
     '/std:c++17',
@@ -167,11 +228,21 @@ $compilerArguments = @(
     '/WX',
     '/O2',
     '/DUNICODE',
-    '/D_UNICODE',
+    '/D_UNICODE'
+)
+foreach ($includePath in @($toolchain.include_paths)) {
+    $compilerArguments += ('/I{0}' -f [string]$includePath)
+}
+$compilerArguments += @(
     ('/Fo{0}' -f $objectPath),
     $sourcePath,
     ('/Fe{0}' -f $exePath),
-    '/link',
+    '/link'
+)
+foreach ($libraryPath in @($toolchain.library_paths)) {
+    $compilerArguments += ('/LIBPATH:{0}' -f [string]$libraryPath)
+}
+$compilerArguments += @(
     'd3d11.lib',
     'dxgi.lib',
     'user32.lib',
@@ -198,17 +269,19 @@ if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
 }
 
 $receipt = [pscustomobject][ordered]@{
-    schema_version = 2
+    schema_version = 3
     status = 'passed'
     head_sha = $currentHead
     source_sha256 = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
     executable_sha256 = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
     executable_length = [int64](Get-Item -LiteralPath $exePath).Length
     architecture = 'x64'
-    compiler_environment = 'Visual Studio VsDevCmd imported into PowerShell process'
+    compiler_environment = 'Direct MSVC plus explicit Windows SDK include/lib paths'
     compiler_path = $compiler
-    linker_path = [string]$developerEnvironment.linker
-    imported_environment_variables = [int]$developerEnvironment.imported_variable_count
+    linker_path = [string]$toolchain.linker
+    msvc_root = [string]$toolchain.msvc_root
+    windows_sdk_root = [string]$toolchain.sdk_root
+    windows_sdk_version = [string]$toolchain.sdk_version
     build_exit_code = $buildExit
     claims = [ordered]@{
         executable_built_from_exact_head_source = $true
@@ -229,6 +302,9 @@ $result = [pscustomobject][ordered]@{
     build_log_path = $buildLogPath
     receipt_path = $receiptPath
     compiler_path = $compiler
+    linker_path = [string]$toolchain.linker
+    msvc_root = [string]$toolchain.msvc_root
+    windows_sdk_version = [string]$toolchain.sdk_version
     build_exit_code = $buildExit
 }
 Write-Information -MessageData "SUPERBLOCK semantic fixture build passed: $($result.executable_sha256)" -InformationAction Continue
