@@ -173,13 +173,69 @@ circular_overwrite:                  unknown
 trace_completeness:                  not_claimed
 ```
 
+## Downstream normalization attempt 1
+
+Implementation head:
+
+```text
+5372b87cff7c4d9efea1e9d6746d4adad0d6c514
+```
+
+The dual-runtime static gate passed:
+
+```text
+PowerShell 7:            10/10
+Windows PowerShell 5.1: 10/10
+PSScriptAnalyzer:        0
+Python syntax:           PASS
+canonical source binding:PASS
+```
+
+The first full real-dumper normalization then measured:
+
+```text
+normalized rows:          176,369
+unresolved schema rows:    12,136
+```
+
+The certification failed closed before deterministic replay. No semantic claim was promoted.
+
+The initial parser resolved each data row only by `event name + exact CSV row length`. That rule is insufficient for real xperf dumper output because the same event name can have multiple observed header variants and trailing empty values can be absent from a data row.
+
+## Active-header structural repair
+
+The repaired parser uses xperf dumper ordering as structural evidence rather than field-value guessing:
+
+1. each encountered header becomes the active schema for that event name;
+2. subsequent rows bind to the active header;
+3. missing values are padded only at the trailing end of that active schema;
+4. extra values are accepted only when every extra value is empty;
+5. a non-empty extra value remains unresolved and is never silently discarded;
+6. the old exact-length lookup remains only as a unique-schema fallback if no active header has yet been observed.
+
+Coverage now includes review-safe schema diagnostics:
+
+```text
+resolution counts
+trailing-missing row/count totals
+trailing-empty-extra row count
+unresolved reason counts
+unresolved event-name counts
+unresolved event+row-length counts
+raw values in diagnostics: false
+```
+
+The existing 10-test synthetic suite now contains two same-length DXGI Present header variants and requires the later active header to bind the following row. It also contains a registry row with one missing trailing field and requires exactly one trailing empty pad.
+
+Canonical downstream acceptance still requires:
+
+```text
+unresolved_schema_rows: 0
+malformed_rows:         0
+```
+
+The diagnostics make any remaining mismatch actionable without weakening that gate.
+
 ## Next wide gate
 
-Use the validated local dumper and the canonical 126-header inventory to build a single downstream batch containing:
-
-1. observed event-shape registry for GPU/network/kernel families;
-2. deterministic full-dumper row normalization;
-3. per-domain and per-event-family coverage accounting;
-4. target-PID attribution accounting;
-5. second-pass replay with byte-identical normalized output and coverage receipt;
-6. semantics investigation receipts that promote no latency/queue/present meaning merely from event names.
+Run the active-header normalizer against the same hash-bound canonical V4 dumper. If unresolved rows reach zero, proceed immediately to byte-identical full-row replay and measured GPU/network/kernel row-family coverage. If any rows remain unresolved, use only the bounded diagnostics above to repair the remaining structural case without exposing raw event values.
