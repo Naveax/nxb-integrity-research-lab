@@ -1,10 +1,10 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 
 #include <atomic>
 #include <chrono>
@@ -130,7 +130,6 @@ bool RunD3D11(Result& result) {
     IDXGISwapChain* swap_chain = nullptr;
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
-    D3D_FEATURE_LEVEL feature_level{};
     const HRESULT create_hr = D3D11CreateDeviceAndSwapChain(
         nullptr,
         D3D_DRIVER_TYPE_HARDWARE,
@@ -142,7 +141,7 @@ bool RunD3D11(Result& result) {
         &desc,
         &swap_chain,
         &device,
-        &feature_level,
+        nullptr,
         &context);
     if (FAILED(create_hr)) {
         DestroyWindow(hwnd);
@@ -375,6 +374,11 @@ int wmain(int argc, wchar_t** argv) {
         return 64;
     }
 
+    std::wstring receipt_path = argv[1];
+    if (receipt_path.size() >= 2 && receipt_path.front() == L'"' && receipt_path.back() == L'"') {
+        receipt_path = receipt_path.substr(1, receipt_path.size() - 2);
+    }
+
     Result result{};
     DWORD error_code = ERROR_SUCCESS;
     bool ok = true;
@@ -401,7 +405,7 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     const std::string receipt = BuildReceipt(result, ok ? "passed" : "failed", error_code);
-    if (!WriteUtf8File(argv[1], receipt)) {
+    if (!WriteUtf8File(receipt_path, receipt)) {
         return 65;
     }
     return ok ? 0 : 1;
