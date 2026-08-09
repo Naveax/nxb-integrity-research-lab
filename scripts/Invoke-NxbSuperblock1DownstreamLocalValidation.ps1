@@ -112,6 +112,7 @@ $result = [pscustomobject][ordered]@{
     windows_powershell_51 = [pscustomobject][ordered]@{ passed=[int]$ps51Result.passed; total=[int]$ps51Result.total; failed=[int]$ps51Result.failed; skipped=[int]$ps51Result.skipped }
     analyzer_findings = 0
     python_syntax = 'passed'
+    python_compile = 'passed'
     structural_event_name_mapping = $true
     semantic_claims_enabled = $false
     trace_completeness = 'not_claimed'
