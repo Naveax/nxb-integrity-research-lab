@@ -21,7 +21,7 @@ Canonical native correlation **code** head:
 8bb94d10b4a74629668ddee2ad2fe378f8928999
 ```
 
-Later branch commits only document the already-observed portable wrapper issue and its hardening; they do not change the correlation analyzer/certification code represented by the canonical code head above.
+Subsequent branch commits document the portable wrapper issue/hardening only; they do not modify the correlation analyzer/certification code represented by the canonical code head.
 
 Native result:
 
@@ -47,7 +47,7 @@ This was a portable presentation-layer defect. It did not invalidate the analyze
 
 ## Hardened portable V2
 
-V2 removes direct optional nested-property dereferences. All result/JSON traversal goes through StrictMode-safe accessors.
+V2 removes direct optional nested-property dereferences. All result/JSON traversal uses StrictMode-safe accessors.
 
 Hardening covers:
 
@@ -76,12 +76,12 @@ missing nested path -> requested default
 
 Reuse-first flow:
 
-1. search for the already-completed exact-head correlation output from V1;
-2. validate implementation head, capture/normalizer heads, normalized-event SHA, normalized rows, target-PID rows, pair count, replay flags, conservative claim boundary, and review ZIP SHA;
-3. if all checks match, reuse the completed native pass and render the hardened summary only;
-4. otherwise clone the canonical code head and rerun the repo-owned correlation certification.
+1. find the already-completed exact-head correlation output from V1;
+2. validate implementation/capture/normalizer heads, normalized-event SHA, normalized rows, target-PID rows, structural pair count, replay flags, conservative claims, and review ZIP SHA;
+3. reuse the completed native pass when every check matches;
+4. otherwise fall back to a fresh exact-head repo-owned correlation run.
 
-Required fields never silently default. Missing required fields raise explicit controlled errors. Optional aggregate counts may default to zero for presentation only.
+Required fields never silently default. Missing required fields raise explicit controlled errors. Optional aggregate counts may default to zero for console presentation only.
 
 ## Structural correlation layers
 
