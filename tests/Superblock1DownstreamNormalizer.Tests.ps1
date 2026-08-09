@@ -12,13 +12,14 @@ BeforeAll {
 
     @'
 Microsoft-Windows-DXGI/Present/win:Start, TimeStamp, Process Name ( PID), ThreadID, CPU, pIDXGISwapChain, Flags, SyncInterval
+Microsoft-Windows-DXGI/Present/win:Start, TimeStamp, Process Name ( PID), ThreadID, CPU, pIDXGISwapChain, PresentFlags, SyncInterval
 Microsoft-Windows-DXGI/Present/win:Start, 1.0, demo.exe ( 42), 7, 1, 0x123, 0, 1
 TcpSend, TimeStamp, Process Name ( PID), Transfer Size, Remote IPv4 Addr, Remote IPv4 Port, Local IPv4 Addr, Local IPv4 Port
 TcpSend, 2.0, demo.exe ( 42), 64, 127.0.0.1, 5000, 127.0.0.1, 5001
 P-Start, TimeStamp, Process Name ( PID), ParentPID, SessionID, UniqueKey
 P-Start, 3.0, child.exe ( 99), 42, 1, abc
 RegOpenKey, TimeStamp, KCB, Process Name ( PID), ThreadID, Status, ElapsedTime, Key Name
-RegOpenKey, 4.0, 0x1, demo.exe ( 42), 7, 0, 123, HKLM\Software\NXB
+RegOpenKey, 4.0, 0x1, demo.exe ( 42), 7, 0, 123
 UnknownThing, TimeStamp, Value
 UnknownThing, 5.0, abc
 '@ | Set-Content -LiteralPath $script:InputPath -Encoding UTF8
@@ -53,14 +54,17 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
     It 'normalizes GPU network process and registry synthetic rows' {
         $script:Result.status | Should -BeExactly 'passed'
         $script:Coverage.rows.normalized_rows | Should -Be 4
+        $script:Coverage.rows.unresolved_schema_rows | Should -Be 0
         $script:Events.Count | Should -Be 4
         (@($script:Events.domain | Sort-Object -Unique) -join '|') | Should -BeExactly 'gpu|kernel_lifecycle|network'
     }
 
-    It 'maps DXGI Present structurally without promoting present semantics' {
+    It 'uses the active DXGI header when same-length header variants exist' {
         $normalizedEvent = @($script:Events | Where-Object { $_.event_family -ceq 'dxgi_present' })[0]
         $normalizedEvent.source_event_name | Should -BeExactly 'Microsoft-Windows-DXGI/Present/win:Start'
-        $normalizedEvent.claims.event_name_mapping_only | Should -BeTrue
+        $normalizedEvent.schema_resolution | Should -BeExactly 'active_header'
+        $normalizedEvent.fields.PresentFlags | Should -BeExactly '0'
+        $normalizedEvent.claims.active_header_structural_binding | Should -BeTrue
         $normalizedEvent.claims.present_pairing_semantics | Should -BeFalse
     }
 
@@ -71,10 +75,13 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
         $script:Coverage.claims.network_latency_semantics | Should -BeFalse
     }
 
-    It 'incorporates process and registry kernel shapes missed by the first-pass heuristic' {
-        $script:Coverage.family_counts.'kernel_lifecycle:process' | Should -Be 1
-        $script:Coverage.family_counts.'kernel_lifecycle:registry' | Should -Be 1
-        $script:Coverage.claims.kernel_lifecycle_semantics | Should -BeFalse
+    It 'pads only missing trailing registry columns under the active header' {
+        $registryEvent = @($script:Events | Where-Object { $_.event_family -ceq 'registry' })[0]
+        $registryEvent.fields.'Key Name' | Should -BeExactly ''
+        $registryEvent.trailing_missing_field_count | Should -Be 1
+        $script:Coverage.schema_resolution.trailing_missing_field_rows | Should -Be 1
+        $script:Coverage.schema_resolution.trailing_missing_field_count | Should -Be 1
+        $script:Coverage.claims.nonempty_extra_columns_discarded | Should -BeFalse
     }
 
     It 'records target PID attribution without making it a completeness claim' {
@@ -88,17 +95,20 @@ Describe 'NXB SUPERBLOCK 1 downstream normalizer' {
         $script:Coverage.rows.normalized_rows | Should -Be 4
     }
 
-    It 'keeps timestamp units unresolved' {
+    It 'keeps timestamp units and higher semantics unresolved' {
         $script:Coverage.claims.timestamp_unit_resolved | Should -BeFalse
+        $script:Coverage.claims.kernel_lifecycle_semantics | Should -BeFalse
         foreach ($normalizedEvent in $script:Events) {
             $normalizedEvent.claims.timestamp_unit_resolved | Should -BeFalse
         }
     }
 
-    It 'keeps event rows local-only by review policy' {
+    It 'keeps event rows local while allowing bounded schema diagnostics' {
         $script:Coverage.review_policy.normalized_event_rows_reviewable | Should -BeFalse
         $script:Coverage.review_policy.raw_field_values_reviewable | Should -BeFalse
         $script:Coverage.review_policy.coverage_counts_reviewable | Should -BeTrue
+        $script:Coverage.review_policy.schema_diagnostics_reviewable | Should -BeTrue
+        $script:Coverage.schema_resolution.raw_values_in_diagnostics | Should -BeFalse
     }
 
     It 'is deterministic for the same input and identity' {
