@@ -1,6 +1,14 @@
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$repositoryRoot = [string]$env:NXB_SEMANTIC_REPOSITORY_ROOT
+if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+    throw 'NXB_SEMANTIC_REPOSITORY_ROOT is required for the semantic fixture Pester contract.'
+}
+$repositoryRoot = [IO.Path]::GetFullPath($repositoryRoot)
+if (-not (Test-Path -LiteralPath $repositoryRoot -PathType Container)) {
+    throw "NXB semantic repository root does not exist: $repositoryRoot"
+}
+
 $sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
 $buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
 $certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertificationV2.ps1'
