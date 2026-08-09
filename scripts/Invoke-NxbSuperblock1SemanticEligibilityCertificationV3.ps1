@@ -34,10 +34,7 @@ foreach ($requiredPath in @($innerRunner,$testPath)) {
     }
 }
 
-# The V2 runner intentionally passes its fixture receipt as one Start-Process
-# argument. Normalize legacy escaped outer quotes to real command-line grouping
-# quotes so the native CRT does not receive quote characters as part of argv[1].
-function Start-Process {
+function Invoke-NxbStartProcessCompat {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -54,7 +51,9 @@ function Start-Process {
     $normalizedArguments = @(
         foreach ($argument in @($ArgumentList)) {
             $text = [string]$argument
-            if ($text.Length -ge 4 -and $text.StartsWith('\"',[StringComparison]::Ordinal) -and $text.EndsWith('\"',[StringComparison]::Ordinal)) {
+            if ($text.Length -ge 4 -and
+                $text.StartsWith('\"',[StringComparison]::Ordinal) -and
+                $text.EndsWith('\"',[StringComparison]::Ordinal)) {
                 '"' + $text.Substring(2,$text.Length - 4) + '"'
             }
             else {
@@ -71,7 +70,9 @@ function Start-Process {
 }
 
 $previousRepositoryRoot = [Environment]::GetEnvironmentVariable('NXB_SEMANTIC_REPOSITORY_ROOT','Process')
+$previousStartProcessAlias = Get-Alias -Name Start-Process -ErrorAction SilentlyContinue
 $env:NXB_SEMANTIC_REPOSITORY_ROOT = [IO.Path]::GetFullPath($repositoryRoot)
+Set-Alias -Name Start-Process -Value Invoke-NxbStartProcessCompat -Scope Local
 try {
     if ([string]::IsNullOrWhiteSpace([string]$env:NXB_SEMANTIC_REPOSITORY_ROOT) -or
         -not (Test-Path -LiteralPath $env:NXB_SEMANTIC_REPOSITORY_ROOT -PathType Container)) {
@@ -88,7 +89,9 @@ try {
 
     $passedResult = $null
     foreach ($item in $innerResult) {
-        if ($null -eq $item) { continue }
+        if ($null -eq $item) {
+            continue
+        }
         $statusProperty = $item.PSObject.Properties['status']
         if ($null -ne $statusProperty -and [string]$statusProperty.Value -ceq 'passed') {
             $passedResult = $item
@@ -107,5 +110,12 @@ finally {
     }
     else {
         $env:NXB_SEMANTIC_REPOSITORY_ROOT = $previousRepositoryRoot
+    }
+
+    if ($null -ne $previousStartProcessAlias) {
+        Set-Alias -Name Start-Process -Value $previousStartProcessAlias.Definition -Scope Local
+    }
+    else {
+        Remove-Item Alias:Start-Process -ErrorAction SilentlyContinue
     }
 }
