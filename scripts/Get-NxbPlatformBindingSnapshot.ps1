@@ -111,7 +111,7 @@ function ConvertTo-NxbPlatformCanonicalNode {
     return $objectResult
 }
 
-function Get-NxbPlatformEventSources {
+function Get-NxbPlatformEventSourceInventory {
     [CmdletBinding()]
     param()
     $providerNames = @(
@@ -537,7 +537,7 @@ $volatileState = [pscustomobject][ordered]@{
     thermal_zones = $thermalZones
 }
 
-$eventSources = Get-NxbPlatformEventSources
+$eventSources = Get-NxbPlatformEventSourceInventory
 $fingerprintMaterial = [pscustomobject][ordered]@{
     identity = $identity
     bindings = $bindings
