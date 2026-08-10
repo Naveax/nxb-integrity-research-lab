@@ -39,7 +39,7 @@ function ConvertTo-NxbPlatformV2CanonicalNode {
 
     if ($Value -is [System.Collections.IEnumerable]) {
         $items = @($Value | ForEach-Object { ConvertTo-NxbPlatformV2CanonicalNode -Value $_ })
-        Write-Output -NoEnumerate $items
+        Write-Output -InputObject $items -NoEnumerate
         return
     }
 
