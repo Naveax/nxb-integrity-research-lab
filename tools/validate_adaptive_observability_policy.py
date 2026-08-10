@@ -140,7 +140,7 @@ def validate_policy(policy: dict[str, Any]) -> str:
     return canonical_sha256(policy)
 
 
-def validate_plan(policy: dict[str, Any], plan: dict[str, Any]) -> None:
+def validate_plan(policy: dict[str, Any], plan: dict[str, Any]) -> str:
     if plan.get("schema_version") != 1:
         fail("plan schema_version must be 1")
     mode = plan.get("effective_mode")
@@ -202,25 +202,44 @@ def validate_plan(policy: dict[str, Any], plan: dict[str, Any]) -> None:
         f"pending_claims={','.join(sorted(pending))}",
         f"validated_claims={','.join(sorted(validated))}",
     ])
-    # PowerShell boolean interpolation emits True/False exactly as Python str(bool).
     expected = hashlib.sha256(material.encode("utf-8")).hexdigest()
     if plan.get("plan_fingerprint_sha256") != expected:
         fail(f"plan fingerprint mismatch: expected={expected} actual={plan.get('plan_fingerprint_sha256')}")
+    return expected
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("policy", type=Path)
     parser.add_argument("--plan", type=Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     policy = load_json(args.policy)
     policy_sha = validate_policy(policy)
+    plan_sha: str | None = None
+    mode: str | None = None
     if args.plan:
         plan = load_json(args.plan)
-        validate_plan(policy, plan)
+        plan_sha = validate_plan(policy, plan)
+        mode = str(plan.get("effective_mode"))
 
-    print(f"NXB adaptive policy validation passed: policy_sha256={policy_sha}")
+    receipt = {
+        "schema_version": 1,
+        "status": "passed",
+        "policy_fingerprint_sha256": policy_sha,
+        "plan_fingerprint_sha256": plan_sha,
+        "effective_mode": mode,
+        "required_semantic_targets": sorted(REQUIRED_TARGETS),
+    }
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    print(
+        "NXB adaptive policy validation passed: "
+        f"policy_sha256={policy_sha} plan_sha256={plan_sha or 'none'}"
+    )
 
 
 if __name__ == "__main__":
