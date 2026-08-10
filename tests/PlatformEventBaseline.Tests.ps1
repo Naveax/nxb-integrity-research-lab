@@ -170,6 +170,9 @@ Describe 'SUPERBLOCK 2 platform event baseline contract' {
         foreach ($needle in @('platform-event-baseline-a.json','platform-event-baseline-b.json','provider metadata fingerprint changed between baselines')) {
             $cert | Should -Match ([regex]::Escape($needle))
         }
+        ([regex]::Matches($cert,[regex]::Escape('| Out-Null'))).Count | Should -BeGreaterOrEqual 2
+        $cert | Should -Not -Match ([regex]::Escape('$baselineA ='))
+        $cert | Should -Not -Match ([regex]::Escape('$baselineB ='))
         $cert | Should -Not -Match ([regex]::Escape('sampled_event_count changed between baselines'))
     }
 
