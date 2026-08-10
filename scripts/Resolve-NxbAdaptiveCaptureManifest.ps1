@@ -24,9 +24,9 @@ $includeDeepAssets = ($detail -ceq 'semantic' -or $detail -ceq 'payload')
 $entries = [Collections.Generic.List[object]]::new()
 
 foreach ($domainName in @($plan.active_domains)) {
-    $matches = @($domainMap.domains | Where-Object { [string]$_.name -ceq [string]$domainName })
-    if ($matches.Count -ne 1) { throw ('Domain map must contain exactly one entry for {0}; found {1}' -f $domainName,$matches.Count) }
-    $mapping = $matches[0]
+    $domainMappings = @($domainMap.domains | Where-Object { [string]$_.name -ceq [string]$domainName })
+    if ($domainMappings.Count -ne 1) { throw ('Domain map must contain exactly one entry for {0}; found {1}' -f $domainName,$domainMappings.Count) }
+    $mapping = $domainMappings[0]
     $assets = [Collections.Generic.List[string]]::new()
     foreach ($asset in @($mapping.base_assets)) { $assets.Add([string]$asset) }
     if ($includeDeepAssets) {
