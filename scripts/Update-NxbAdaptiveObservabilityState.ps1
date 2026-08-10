@@ -75,7 +75,8 @@ $triggerStates = [Collections.Generic.List[object]]::new()
 foreach ($trigger in @($policy.triggers | Sort-Object -Property @{Expression='priority';Descending=$true}, @{Expression='id';Descending=$false})) {
     $id = [string]$trigger.id
     $previousItems = @(Get-NxbAdaptivePreviousTriggerState -PreviousState $previousState -TriggerId $id)
-    $previous = if ($previousItems.Count -gt 0) { $previousItems[0] } else { $null }
+    $previous = $null
+    if ($previousItems.Count -gt 0) { $previous = $previousItems[0] }
     $wasActive = $false
     $previousHoldUntil = [DateTime]::MinValue
     $previousCooldownUntil = [DateTime]::MinValue
@@ -116,14 +117,19 @@ foreach ($trigger in @($policy.triggers | Sort-Object -Property @{Expression='pr
         $transition = 'activated'
     }
 
+    $holdText = $null
+    if ($holdUntil -ne [DateTime]::MinValue) { $holdText = $holdUntil.ToString('o') }
+    $cooldownText = $null
+    if ($cooldownUntil -ne [DateTime]::MinValue) { $cooldownText = $cooldownUntil.ToString('o') }
+
     $triggerStates.Add([pscustomobject][ordered]@{
         id = $id
         priority = [int]$trigger.priority
         matched_now = $matched
         active = $active
         transition = $transition
-        hold_until_utc = if ($holdUntil -eq [DateTime]::MinValue) { $null } else { $holdUntil.ToString('o') }
-        cooldown_until_utc = if ($cooldownUntil -eq [DateTime]::MinValue) { $null } else { $cooldownUntil.ToString('o') }
+        hold_until_utc = $holdText
+        cooldown_until_utc = $cooldownText
         last_match_utc = $lastMatchUtc
         last_transition_utc = $lastTransitionUtc
     })
