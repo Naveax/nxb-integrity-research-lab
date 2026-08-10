@@ -34,6 +34,8 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery V2 contract' {
         foreach ($needle in @('LogLinks','Get-WinEvent -ListLog $logName',"status = 'available'","status = 'disabled'","status = 'unavailable'")) {
             $source | Should -Match ([regex]::Escape($needle))
         }
+        $source | Should -Not -Match ('(?is)catch\s*\{\s*\}')
+        $source | Should -Match ([regex]::Escape("reason = 'list_log_failed'"))
     }
 
     It 'bounds provider surface and family replay cardinality' {
