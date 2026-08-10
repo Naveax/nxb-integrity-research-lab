@@ -110,7 +110,7 @@ function Invoke-NxbL4PnpRepeat {
     $before = Get-NxbL4PnpSnapshot
     & $PnpUtilPath /scan-devices *> $null
     $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-    if ($exitCode -ne 0) { throw "pnputil /scan-devices failed in repeat $Repeat: exit=$exitCode" }
+    if ($exitCode -ne 0) { throw "pnputil /scan-devices failed in repeat ${Repeat}: exit=$exitCode" }
     Start-Sleep -Milliseconds $DelayMilliseconds
     $after = Get-NxbL4PnpSnapshot
     return [pscustomobject][ordered]@{
