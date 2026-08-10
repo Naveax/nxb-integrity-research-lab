@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$PolicyPath,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$SignalsPath,
+    [Parameter()][ValidateNotNullOrEmpty()][string]$TriggerStatePath,
     [Parameter()][ValidateSet('off','minimal','normal','deep','forensic')][string]$OperatorMode,
     [Parameter()][ValidateNotNullOrEmpty()][string]$OutputPath,
     [Parameter()][switch]$PassThru
@@ -82,6 +83,16 @@ $policy = Get-Content -LiteralPath $policyFull -Raw | ConvertFrom-Json
 $signals = Get-Content -LiteralPath $signalsFull -Raw | ConvertFrom-Json
 if ([int]$policy.schema_version -ne 1) { throw 'Unsupported adaptive observability policy schema.' }
 
+$stateActiveSet = $null
+if (-not [string]::IsNullOrWhiteSpace($TriggerStatePath)) {
+    $stateFull = [IO.Path]::GetFullPath($TriggerStatePath)
+    if (-not (Test-Path -LiteralPath $stateFull -PathType Leaf)) { throw "Trigger state missing: $stateFull" }
+    $triggerState = Get-Content -LiteralPath $stateFull -Raw | ConvertFrom-Json
+    if ([string]$triggerState.policy_id -cne [string]$policy.policy_id) { throw 'Trigger state policy_id does not match policy.' }
+    $stateActiveSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($triggerId in @($triggerState.active_trigger_ids)) { [void]$stateActiveSet.Add([string]$triggerId) }
+}
+
 $defaultRank = Get-NxbModeRank -Mode ([string]$policy.default_mode)
 $maximumRank = Get-NxbModeRank -Mode ([string]$policy.maximum_mode)
 if ($defaultRank -gt $maximumRank) { throw 'default_mode cannot exceed maximum_mode.' }
@@ -97,11 +108,21 @@ if (-not [string]::IsNullOrWhiteSpace($OperatorMode)) {
     $reasons.Add("operator:$OperatorMode")
 }
 
-$activeTriggers = @(
-    @($policy.triggers) |
-        Where-Object { Test-NxbTriggerCondition -Trigger $_ -Signals $signals } |
-        Sort-Object -Property @{Expression='priority';Descending=$true}, @{Expression='id';Descending=$false}
-)
+if ($null -ne $stateActiveSet) {
+    $activeTriggers = @(
+        @($policy.triggers) |
+            Where-Object { [bool]$_.enabled -and $stateActiveSet.Contains([string]$_.id) } |
+            Sort-Object -Property @{Expression='priority';Descending=$true}, @{Expression='id';Descending=$false}
+    )
+    $reasons.Add('trigger_state:authoritative')
+}
+else {
+    $activeTriggers = @(
+        @($policy.triggers) |
+            Where-Object { Test-NxbTriggerCondition -Trigger $_ -Signals $signals } |
+            Sort-Object -Property @{Expression='priority';Descending=$true}, @{Expression='id';Descending=$false}
+    )
+}
 
 foreach ($trigger in $activeTriggers) {
     $triggerRank = Get-NxbModeRank -Mode ([string]$trigger.minimum_mode)
