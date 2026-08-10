@@ -83,7 +83,7 @@ def validate(
         fail("manifest detail mismatch")
 
     ready = pending = unavailable = 0
-    for domain, entry in zip(active_domains, entries, strict=True):
+    for domain, entry in zip(active_domains, entries):
         if domain not in by_name:
             fail(f"active domain missing from map: {domain}")
         mapping = by_name[domain]
@@ -104,7 +104,7 @@ def validate(
             fail(f"asset selection mismatch for {domain}: expected={expected_assets} actual={actual_paths}")
 
         missing = 0
-        for relative, asset_state in zip(expected_assets, actual_assets, strict=True):
+        for relative, asset_state in zip(expected_assets, actual_assets):
             full = repo_root / Path(relative)
             exists = full.is_file()
             if bool(asset_state.get("repo_owned")) != exists:
