@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "policy_id": "nxb-adaptive-default-v1",
+  "default_mode": "minimal",
+  "maximum_mode": "forensic",
+  "budgets": {
+    "max_disk_mb_per_hour": 2048,
+    "max_event_rate_per_second": 50000,
+    "max_session_seconds": 1800,
+    "max_concurrent_domains": 8,
+    "pretrigger_seconds": 15,
+    "posttrigger_seconds": 60
+  },
+  "privacy": {
+    "raw_identifiers": false,
+    "formatted_messages": false,
+    "payload_fields": false,
+    "network_payload": false
+  },
+  "mode_profiles": {
+    "off": {
+      "domains": [],
+      "detail": "none",
+      "max_event_rate_per_second": 0,
+      "max_disk_mb_per_hour": 0
+    },
+    "minimal": {
+      "domains": ["cpu", "memory", "storage", "gpu", "network", "correlation"],
+      "detail": "summary",
+      "max_event_rate_per_second": 2500,
+      "max_disk_mb_per_hour": 128
+    },
+    "normal": {
+      "domains": ["cpu", "memory", "storage", "gpu", "network", "pnp", "power", "kernel", "correlation"],
+      "detail": "structural",
+      "max_event_rate_per_second": 10000,
+      "max_disk_mb_per_hour": 512
+    },
+    "deep": {
+      "domains": ["cpu", "memory", "storage", "gpu", "network", "pnp", "pcie", "kernel", "registry", "power", "thermal", "security", "correlation"],
+      "detail": "semantic",
+      "max_event_rate_per_second": 30000,
+      "max_disk_mb_per_hour": 1536
+    },
+    "forensic": {
+      "domains": ["cpu", "memory", "storage", "gpu", "network", "pnp", "pcie", "kernel", "registry", "power", "thermal", "firmware", "security", "correlation"],
+      "detail": "payload",
+      "max_event_rate_per_second": 50000,
+      "max_disk_mb_per_hour": 2048
+    }
+  },
+  "triggers": [
+    {
+      "id": "frame-spike",
+      "enabled": true,
+      "source": "anomaly",
+      "signal": "frame_time_ms",
+      "operator": "ge",
+      "threshold": 33,
+      "minimum_mode": "deep",
+      "domains": ["gpu", "cpu", "memory", "storage", "correlation"],
+      "hold_seconds": 10,
+      "cooldown_seconds": 30,
+      "priority": 700
+    },
+    {
+      "id": "network-latency-spike",
+      "enabled": true,
+      "source": "anomaly",
+      "signal": "network_latency_ms",
+      "operator": "ge",
+      "threshold": 100,
+      "minimum_mode": "deep",
+      "domains": ["network", "cpu", "kernel", "correlation"],
+      "hold_seconds": 10,
+      "cooldown_seconds": 30,
+      "priority": 650
+    },
+    {
+      "id": "device-inventory-change",
+      "enabled": true,
+      "source": "domain_error",
+      "signal": "device_inventory_changed",
+      "operator": "eq",
+      "threshold": true,
+      "minimum_mode": "deep",
+      "domains": ["pnp", "pcie", "kernel", "correlation"],
+      "hold_seconds": 20,
+      "cooldown_seconds": 60,
+      "priority": 800
+    },
+    {
+      "id": "power-policy-transition",
+      "enabled": true,
+      "source": "experiment",
+      "signal": "power_policy_transition",
+      "operator": "present",
+      "threshold": true,
+      "minimum_mode": "deep",
+      "domains": ["power", "cpu", "kernel", "correlation"],
+      "hold_seconds": 15,
+      "cooldown_seconds": 30,
+      "priority": 750
+    },
+    {
+      "id": "security-state-change",
+      "enabled": true,
+      "source": "domain_error",
+      "signal": "security_state_changed",
+      "operator": "eq",
+      "threshold": true,
+      "minimum_mode": "forensic",
+      "domains": ["security", "firmware", "kernel", "correlation"],
+      "hold_seconds": 60,
+      "cooldown_seconds": 300,
+      "priority": 950
+    },
+    {
+      "id": "trace-loss",
+      "enabled": true,
+      "source": "domain_error",
+      "signal": "event_loss_count",
+      "operator": "gt",
+      "threshold": 0,
+      "minimum_mode": "forensic",
+      "domains": ["kernel", "correlation"],
+      "hold_seconds": 30,
+      "cooldown_seconds": 120,
+      "priority": 1000
+    },
+    {
+      "id": "root-cause-request",
+      "enabled": true,
+      "source": "operator",
+      "signal": "root_cause_request",
+      "operator": "eq",
+      "threshold": true,
+      "minimum_mode": "forensic",
+      "domains": ["cpu", "memory", "storage", "gpu", "network", "pnp", "pcie", "kernel", "registry", "power", "thermal", "security", "correlation"],
+      "hold_seconds": 120,
+      "cooldown_seconds": 60,
+      "priority": 1000
+    }
+  ],
+  "claim_targets": [
+    { "name": "pnp_lifecycle_semantics", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "pcie_bdf_semantics", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "event_id_semantics", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "event_task_opcode_semantics", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "power_causality", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "firmware_causality", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "root_cause_validated", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null },
+    { "name": "continuous_trace_completeness", "target_requested": true, "validated": false, "scope": null, "evidence_receipt_sha256": null }
+  ],
+  "panel": {
+    "enabled": true,
+    "local_only": true,
+    "bind_address": "127.0.0.1",
+    "port": 43128,
+    "manual_override_max_seconds": 3600
+  }
+}
