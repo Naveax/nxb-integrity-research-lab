@@ -69,7 +69,7 @@ function Get-NxbPlatformEventV3OrdinalStringSet {
     Write-Output -InputObject $items -NoEnumerate
 }
 
-function Sort-NxbPlatformEventV3DefinitionInventory {
+function Get-NxbPlatformEventV3OrderedDefinitionInventory {
     [CmdletBinding()]
     param([Parameter()][AllowNull()][object[]]$Values)
     $items = @(
@@ -83,7 +83,7 @@ function Sort-NxbPlatformEventV3DefinitionInventory {
     Write-Output -InputObject $items -NoEnumerate
 }
 
-function Sort-NxbPlatformEventV3ShapeInventory {
+function Get-NxbPlatformEventV3OrderedShapeInventory {
     [CmdletBinding()]
     param([Parameter()][AllowNull()][object[]]$Values)
     $items = @(
@@ -97,14 +97,14 @@ function Sort-NxbPlatformEventV3ShapeInventory {
     Write-Output -InputObject $items -NoEnumerate
 }
 
-function Sort-NxbPlatformEventV3LogInventory {
+function Get-NxbPlatformEventV3OrderedLogInventory {
     [CmdletBinding()]
     param([Parameter()][AllowNull()][object[]]$Values)
     $items = @(@($Values) | Sort-Object @{ Expression = { Get-NxbPlatformEventV3OrdinalHexKey -Value $_.log_name }; Ascending = $true })
     Write-Output -InputObject $items -NoEnumerate
 }
 
-function Sort-NxbPlatformEventV3ProviderInventory {
+function Get-NxbPlatformEventV3OrderedProviderInventory {
     [CmdletBinding()]
     param([Parameter()][AllowNull()][object[]]$Values)
     $items = @(@($Values) | Sort-Object @{ Expression = { Get-NxbPlatformEventV3OrdinalHexKey -Value $_.provider_name }; Ascending = $true })
@@ -139,15 +139,15 @@ try {
         foreach ($definition in @($provider.event_definitions)) {
             $definition.keywords = Get-NxbPlatformEventV3OrdinalStringSet -Values @($definition.keywords)
         }
-        $provider.event_definitions = Sort-NxbPlatformEventV3DefinitionInventory -Values @($provider.event_definitions)
+        $provider.event_definitions = Get-NxbPlatformEventV3OrderedDefinitionInventory -Values @($provider.event_definitions)
         $provider.event_definition_count = [int]@($provider.event_definitions).Count
         foreach ($log in @($provider.logs)) {
-            $log.shapes = Sort-NxbPlatformEventV3ShapeInventory -Values @($log.shapes)
+            $log.shapes = Get-NxbPlatformEventV3OrderedShapeInventory -Values @($log.shapes)
         }
-        $provider.logs = Sort-NxbPlatformEventV3LogInventory -Values @($provider.logs)
+        $provider.logs = Get-NxbPlatformEventV3OrderedLogInventory -Values @($provider.logs)
         $provider.attached_log_count = [int]@($provider.logs).Count
     }
-    $snapshot.providers = Sort-NxbPlatformEventV3ProviderInventory -Values @($snapshot.providers)
+    $snapshot.providers = Get-NxbPlatformEventV3OrderedProviderInventory -Values @($snapshot.providers)
 
     $metadataMaterial = [pscustomobject][ordered]@{
         binding_fingerprint_sha256 = [string]$snapshot.binding_fingerprint_sha256
