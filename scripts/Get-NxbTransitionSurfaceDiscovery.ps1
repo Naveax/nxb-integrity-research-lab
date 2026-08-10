@@ -32,6 +32,18 @@ function Get-NxbSurfaceOrdinalHexKey {
     return (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
 }
 
+function Get-NxbSurfaceOrderedStringInventory {
+    [CmdletBinding()]
+    param([Parameter()][AllowNull()][object[]]$Values)
+    $set = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($value in @($Values)) {
+        $text = [string]$value
+        if (-not [string]::IsNullOrWhiteSpace($text)) { [void]$set.Add($text) }
+    }
+    $items = @($set)
+    Write-Output -InputObject $items -NoEnumerate
+}
+
 function Get-NxbSurfaceSha256Text {
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
@@ -41,34 +53,6 @@ function Get-NxbSurfaceSha256Text {
         return (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
     }
     finally { $sha256.Dispose() }
-}
-
-function ConvertTo-NxbSurfaceCanonicalNode {
-    [CmdletBinding()]
-    param([Parameter()][AllowNull()][object]$Value)
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [string] -or $Value -is [char] -or $Value -is [bool] -or
-        $Value -is [byte] -or $Value -is [sbyte] -or $Value -is [int16] -or
-        $Value -is [uint16] -or $Value -is [int32] -or $Value -is [uint32] -or
-        $Value -is [int64] -or $Value -is [uint64] -or $Value -is [single] -or
-        $Value -is [double] -or $Value -is [decimal]) { return $Value }
-    if ($Value -is [System.Collections.IDictionary]) {
-        $dictionaryResult = [ordered]@{}
-        foreach ($key in @($Value.Keys | ForEach-Object { [string]$_ } | Sort-Object -CaseSensitive)) {
-            $dictionaryResult[$key] = ConvertTo-NxbSurfaceCanonicalNode -Value $Value[$key]
-        }
-        return $dictionaryResult
-    }
-    if ($Value -is [System.Collections.IEnumerable]) {
-        $items = @($Value | ForEach-Object { ConvertTo-NxbSurfaceCanonicalNode -Value $_ })
-        Write-Output -InputObject $items -NoEnumerate
-        return
-    }
-    $objectResult = [ordered]@{}
-    foreach ($name in @($Value.PSObject.Properties.Name | Sort-Object -CaseSensitive)) {
-        $objectResult[$name] = ConvertTo-NxbSurfaceCanonicalNode -Value $Value.PSObject.Properties[$name].Value
-    }
-    return $objectResult
 }
 
 function Write-NxbSurfaceJson {
@@ -94,81 +78,90 @@ $familyPatterns = [ordered]@{
     power = '(?i)(power|energy|battery|processor)'
 }
 
+$providerCandidates = @()
+foreach ($providerInfo in @(Get-WinEvent -ListProvider * -ErrorAction Stop)) {
+    $providerName = [string](Get-NxbSurfaceProperty -InputObject $providerInfo -Name 'Name' -DefaultValue '')
+    if ([string]::IsNullOrWhiteSpace($providerName)) { continue }
+    $familiesRaw = @()
+    foreach ($entry in $familyPatterns.GetEnumerator()) {
+        if ([regex]::IsMatch($providerName,[string]$entry.Value)) { $familiesRaw += [string]$entry.Key }
+    }
+    if ($familiesRaw.Count -eq 0) { continue }
+    $logNameRaw = @(
+        @(Get-NxbSurfaceProperty -InputObject $providerInfo -Name 'LogLinks' -DefaultValue @()) |
+            ForEach-Object { [string](Get-NxbSurfaceProperty -InputObject $_ -Name 'LogName' -DefaultValue '') } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $providerCandidates += [pscustomobject][ordered]@{
+        provider_name = $providerName
+        provider_guid = [string](Get-NxbSurfaceProperty -InputObject $providerInfo -Name 'Id' -DefaultValue '')
+        families = Get-NxbSurfaceOrderedStringInventory -Values $familiesRaw
+        attached_logs = Get-NxbSurfaceOrderedStringInventory -Values $logNameRaw
+    }
+}
+
 $providerInventory = @(
-    Get-WinEvent -ListProvider * -ErrorAction Stop |
-        ForEach-Object {
-            $providerName = [string](Get-NxbSurfaceProperty -InputObject $_ -Name 'Name' -DefaultValue '')
-            if ([string]::IsNullOrWhiteSpace($providerName)) { return }
-            $families = @(
-                foreach ($entry in $familyPatterns.GetEnumerator()) {
-                    if ($providerName -match [string]$entry.Value) { [string]$entry.Key }
-                }
-            )
-            if ($families.Count -eq 0) { return }
-            $logNames = @(
-                @(Get-NxbSurfaceProperty -InputObject $_ -Name 'LogLinks' -DefaultValue @()) |
-                    ForEach-Object { [string](Get-NxbSurfaceProperty -InputObject $_ -Name 'LogName' -DefaultValue '') } |
-                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-                    Sort-Object -Unique
-            )
-            [pscustomobject][ordered]@{
-                provider_name = $providerName
-                provider_guid = [string](Get-NxbSurfaceProperty -InputObject $_ -Name 'Id' -DefaultValue '')
-                families = @($families | Sort-Object -Unique)
-                attached_logs = $logNames
-            }
-        } |
+    $providerCandidates |
         Sort-Object @{ Expression = { Get-NxbSurfaceOrdinalHexKey -Value $_.provider_name }; Ascending = $true } |
         Select-Object -First $MaxProviders
 )
 
-$surfaceInventory = @(
-    foreach ($provider in $providerInventory) {
-        foreach ($logName in @($provider.attached_logs)) {
-            $status = 'unavailable'
-            $enabled = $null
-            $reason = 'list_log_failed'
-            try {
-                $logInfo = Get-WinEvent -ListLog $logName -ErrorAction Stop
-                $enabled = [bool](Get-NxbSurfaceProperty -InputObject $logInfo -Name 'IsEnabled' -DefaultValue $false)
-                if ($enabled) { $status = 'available'; $reason = $null }
-                else { $status = 'disabled'; $reason = 'log_disabled' }
-            }
-            catch { }
-            [pscustomobject][ordered]@{
-                provider_name = [string]$provider.provider_name
-                provider_guid = [string]$provider.provider_guid
-                families = @($provider.families)
-                log_name = [string]$logName
-                status = $status
-                enabled = $enabled
-                reason = $reason
-            }
+$surfaceCandidates = @()
+foreach ($provider in $providerInventory) {
+    foreach ($logName in @($provider.attached_logs)) {
+        $status = 'unavailable'
+        $enabled = $null
+        $reason = 'list_log_failed'
+        try {
+            $logInfo = Get-WinEvent -ListLog $logName -ErrorAction Stop
+            $enabled = [bool](Get-NxbSurfaceProperty -InputObject $logInfo -Name 'IsEnabled' -DefaultValue $false)
+            if ($enabled) { $status = 'available'; $reason = $null }
+            else { $status = 'disabled'; $reason = 'log_disabled' }
+        }
+        catch { }
+        $surfaceCandidates += [pscustomobject][ordered]@{
+            provider_name = [string]$provider.provider_name
+            provider_guid = [string]$provider.provider_guid
+            families = @($provider.families)
+            log_name = [string]$logName
+            status = $status
+            enabled = $enabled
+            reason = $reason
         }
     }
-    | Sort-Object `
-        @{ Expression = { Get-NxbSurfaceOrdinalHexKey -Value $_.provider_name }; Ascending = $true },
-        @{ Expression = { Get-NxbSurfaceOrdinalHexKey -Value $_.log_name }; Ascending = $true } |
+}
+
+$surfaceInventory = @(
+    $surfaceCandidates |
+        Sort-Object `
+            @{ Expression = { Get-NxbSurfaceOrdinalHexKey -Value $_.provider_name }; Ascending = $true },
+            @{ Expression = { Get-NxbSurfaceOrdinalHexKey -Value $_.log_name }; Ascending = $true } |
         Select-Object -First $MaxSurfaces
 )
-
 $usableSurfaceInventory = @($surfaceInventory | Where-Object { $_.status -ceq 'available' })
-$discoveryMaterial = [pscustomobject][ordered]@{
-    binding_fingerprint_sha256 = $BindingFingerprintSha256.ToLowerInvariant()
-    provider_metadata_fingerprint_sha256 = $ProviderMetadataFingerprintSha256.ToLowerInvariant()
-    providers = $providerInventory
-    surfaces = $surfaceInventory
+
+$fingerprintLines = @(
+    'binding' + "`t" + $BindingFingerprintSha256.ToLowerInvariant()
+    'metadata' + "`t" + $ProviderMetadataFingerprintSha256.ToLowerInvariant()
+)
+foreach ($provider in $providerInventory) {
+    $fingerprintLines += ('P' + "`t" + [string]$provider.provider_name + "`t" + [string]$provider.provider_guid + "`t" + (@($provider.families) -join '|') + "`t" + (@($provider.attached_logs) -join '|'))
 }
-$canonical = ConvertTo-NxbSurfaceCanonicalNode -Value $discoveryMaterial
-$discoveryJson = $canonical | ConvertTo-Json -Depth 30 -Compress
-$fingerprint = Get-NxbSurfaceSha256Text -Text $discoveryJson
+foreach ($surface in $surfaceInventory) {
+    $enabledText = if ($null -eq $surface.enabled) { 'null' } elseif ([bool]$surface.enabled) { 'true' } else { 'false' }
+    $reasonText = if ($null -eq $surface.reason) { '' } else { [string]$surface.reason }
+    $fingerprintLines += ('S' + "`t" + [string]$surface.provider_name + "`t" + [string]$surface.provider_guid + "`t" + (@($surface.families) -join '|') + "`t" + [string]$surface.log_name + "`t" + [string]$surface.status + "`t" + $enabledText + "`t" + $reasonText)
+}
+$fingerprintMaterial = $fingerprintLines -join "`n"
+$fingerprint = Get-NxbSurfaceSha256Text -Text $fingerprintMaterial
 
 $result = [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     captured_utc = [DateTime]::UtcNow.ToString('o')
     binding_fingerprint_sha256 = $BindingFingerprintSha256.ToLowerInvariant()
     provider_metadata_fingerprint_sha256 = $ProviderMetadataFingerprintSha256.ToLowerInvariant()
     discovery_fingerprint_sha256 = $fingerprint
+    fingerprint_contract = 'ordinal_tsv_v1'
     max_providers = $MaxProviders
     max_surfaces = $MaxSurfaces
     provider_count = [int]$providerInventory.Count
