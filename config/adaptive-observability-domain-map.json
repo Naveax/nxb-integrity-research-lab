@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "domains": [
+    {
+      "name": "cpu",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.MinimalCpuScheduler.wprp", "scripts/Start-PerformanceTrace.ps1", "scripts/Stop-PerformanceTrace.ps1"],
+      "deep_assets": ["profiles/Nxb.Superblock1MultiDomain.wprp"],
+      "runtime_surface": "windows_performance_recorder"
+    },
+    {
+      "name": "memory",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.MemoryWorkingSet.wprp", "scripts/Invoke-NxbMemoryRealCaptureV2.ps1"],
+      "deep_assets": ["scripts/Invoke-NxbMemoryDownstreamReplay.ps1"],
+      "runtime_surface": "windows_performance_recorder"
+    },
+    {
+      "name": "storage",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.StorageIOQueue.wprp", "scripts/Invoke-NxbStorageProfileLocalValidationV2.ps1"],
+      "deep_assets": ["scripts/Invoke-NxbStorageDownstreamReplayValidation.ps1"],
+      "runtime_surface": "windows_performance_recorder"
+    },
+    {
+      "name": "gpu",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.GpuDxgkrnlPresent.wprp"],
+      "deep_assets": ["profiles/Nxb.Superblock1MultiDomain.wprp", "scripts/Invoke-NxbSuperblock1CorrelationAnalysis.ps1"],
+      "runtime_surface": "dxgkrnl_etw"
+    },
+    {
+      "name": "network",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.Superblock1MultiDomain.wprp"],
+      "deep_assets": ["scripts/Invoke-NxbSuperblock1CorrelationAnalysis.ps1"],
+      "runtime_surface": "ndis_network_etw"
+    },
+    {
+      "name": "pnp",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": ["scripts/Get-NxbTransitionSurfaceDiscovery.ps1", "scripts/Invoke-NxbPlatformDirectStateTransitions.ps1"],
+      "runtime_surface": "pnp_cim_and_event_metadata"
+    },
+    {
+      "name": "pcie",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": ["scripts/Get-NxbTransitionSurfaceDiscovery.ps1"],
+      "runtime_surface": "pnp_pcie_properties"
+    },
+    {
+      "name": "kernel",
+      "adapter_kind": "wpr_profile",
+      "base_assets": ["profiles/Nxb.MinimalCpuScheduler.wprp"],
+      "deep_assets": ["profiles/Nxb.Superblock1MultiDomain.wprp"],
+      "runtime_surface": "kernel_etw"
+    },
+    {
+      "name": "registry",
+      "adapter_kind": "pending_semantic_adapter",
+      "base_assets": [],
+      "deep_assets": [],
+      "runtime_surface": "not_yet_certified"
+    },
+    {
+      "name": "power",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": ["scripts/Get-NxbPlatformEventBaselineV3.ps1", "scripts/Invoke-NxbPlatformDirectStateTransitions.ps1"],
+      "runtime_surface": "power_policy_and_event_metadata"
+    },
+    {
+      "name": "thermal",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": [],
+      "runtime_surface": "acpi_thermal_when_available"
+    },
+    {
+      "name": "firmware",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": [],
+      "runtime_surface": "bios_boot_security_binding"
+    },
+    {
+      "name": "security",
+      "adapter_kind": "platform_snapshot",
+      "base_assets": ["scripts/Get-NxbPlatformBindingSnapshotV2.ps1"],
+      "deep_assets": ["scripts/Get-NxbPlatformEventBaselineV3.ps1"],
+      "runtime_surface": "secure_boot_tpm_device_guard_binding"
+    },
+    {
+      "name": "correlation",
+      "adapter_kind": "analysis",
+      "base_assets": ["scripts/Invoke-NxbSuperblock1CorrelationAnalysis.ps1"],
+      "deep_assets": ["tools/analyze_superblock1_correlations.py"],
+      "runtime_surface": "normalized_cross_domain_events"
+    }
+  ]
+}
