@@ -161,18 +161,14 @@ Describe 'SUPERBLOCK 2 L4 direct-state transition contract' {
         $cert | Should -Match ([regex]::Escape('transition-surface-certification-receipt.json'))
     }
 
-    It 'keeps L4 review evidence bounded and free of raw trace exports' {
+    It 'keeps L4 review evidence bounded and uses no WPR ETL or raw event collection' {
         $root = Get-NxbL4TestRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2DirectStateTransitionCertification.ps1') -Raw
+        $runtime = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbPlatformDirectStateTransitions.ps1') -Raw
         $cert | Should -Match ([regex]::Escape('(?i)\.(etl|evtx|xml|jsonl|exe|obj|pdb)$'))
         $cert | Should -Match ([regex]::Escape('PCI\\VEN_'))
         $cert | Should -Match ([regex]::Escape('PNPDeviceID'))
         $cert | Should -Match ([regex]::Escape('Forbidden L4 review artifact content:'))
-    }
-
-    It 'does not use WPR ETL or raw event payload collection' {
-        $root = Get-NxbL4TestRoot
-        $runtime = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbPlatformDirectStateTransitions.ps1') -Raw
         $runtime | Should -Not -Match ('(?i)\bwpr(?:\.exe)?\b')
         $runtime | Should -Not -Match ('(?i)\.etl\b')
         $runtime | Should -Not -Match ([regex]::Escape('Get-WinEvent'))
