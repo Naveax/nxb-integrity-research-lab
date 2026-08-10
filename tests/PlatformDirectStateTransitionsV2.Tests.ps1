@@ -49,6 +49,8 @@ Describe 'SUPERBLOCK 2 L4 direct-state transition V2 contract' {
         $source | Should -Match ([regex]::Escape('Invoke-NxbL4PnpRepeat -Repeat A'))
         $source | Should -Match ([regex]::Escape('Invoke-NxbL4PnpRepeat -Repeat B'))
         $source | Should -Match ([regex]::Escape('/scan-devices'))
+        $source | Should -Not -Match ([regex]::Escape('$Repeat: exit='))
+        $source | Should -Match ([regex]::Escape('${Repeat}: exit='))
     }
 
     It 'does not disable remove or install PnP devices' {
