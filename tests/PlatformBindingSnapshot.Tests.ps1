@@ -96,7 +96,7 @@ Describe 'SUPERBLOCK 2 platform binding snapshot contract' {
     It 'reuses canonical active-power-policy resolution' {
         $root = Get-NxbPlatformBindingTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbPlatformBindingSnapshot.ps1') -Raw
-        $source | Should -Match ([regex]::Escape("Join-Path $PSScriptRoot 'Get-NxbActivePowerPolicy.ps1'"))
+        $source | Should -Match ([regex]::Escape('Join-Path $PSScriptRoot ''Get-NxbActivePowerPolicy.ps1'''))
         $source | Should -Match ([regex]::Escape('scheme_guid'))
     }
 
