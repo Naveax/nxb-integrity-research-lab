@@ -8,7 +8,7 @@ Describe 'NXB IRL-005 adaptive capture manifest contract' {
             return [IO.Path]::GetFullPath($root)
         }
 
-        function New-NxbAdaptiveManifestTestPlan {
+        function Get-NxbAdaptiveManifestTestPlanPath {
             param(
                 [Parameter(Mandatory)][string[]]$Domains,
                 [Parameter(Mandatory)][ValidateSet('none','summary','structural','semantic','payload')][string]$Detail,
@@ -52,7 +52,7 @@ Describe 'NXB IRL-005 adaptive capture manifest contract' {
             $root = Get-NxbAdaptiveManifestRoot
             $resolver = Join-Path $root 'scripts\Resolve-NxbAdaptiveCaptureManifest.ps1'
             $map = Join-Path $root 'config\adaptive-observability-domain-map.json'
-            $plan = New-NxbAdaptiveManifestTestPlan -Domains $Domains -Detail $Detail -Mode $Mode
+            $plan = Get-NxbAdaptiveManifestTestPlanPath -Domains $Domains -Detail $Detail -Mode $Mode
             return (& $resolver -PlanPath $plan -DomainMapPath $map -PassThru)
         }
     }
@@ -66,6 +66,12 @@ Describe 'NXB IRL-005 adaptive capture manifest contract' {
         )) {
             Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue
         }
+        $resolverSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveCaptureManifest.ps1') -Raw
+        $testSource = Get-Content -LiteralPath (Join-Path $root 'tests\AdaptiveCaptureManifest.Tests.ps1') -Raw
+        $resolverSource | Should -Not -Match '(?im)^\s*\$matches\s*='
+        $resolverSource | Should -Match ([regex]::Escape('$domainMappings = @('))
+        $testSource | Should -Not -Match '(?im)^\s*function\s+New-NxbAdaptiveManifest'
+        $testSource | Should -Match ([regex]::Escape('function Get-NxbAdaptiveManifestTestPlanPath'))
     }
 
     It 'maps all fourteen adaptive domains exactly once' {
