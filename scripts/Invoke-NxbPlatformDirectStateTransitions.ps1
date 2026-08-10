@@ -97,7 +97,7 @@ function Get-NxbL4PowerSchemeGuidInventory {
             ForEach-Object { $_.Value.ToLowerInvariant() } |
             Sort-Object -Unique
     )
-    Write-Output -InputObject $values -NoEnumerate
+    return $values
 }
 
 function Invoke-NxbL4PnpRepeat {
@@ -198,14 +198,19 @@ function Invoke-NxbL4PowerRepeat {
             catch { $deleted = $false }
         }
     }
+    $beforeHash = Get-NxbL4Sha256Text -Text $originalGuid
+    $duringHash = $null
+    if ($null -ne $duringGuid) { $duringHash = Get-NxbL4Sha256Text -Text $duringGuid }
+    $restoredHash = $null
+    if ($null -ne $restoredGuid) { $restoredHash = Get-NxbL4Sha256Text -Text $restoredGuid }
     return [pscustomobject][ordered]@{
         repeat = $Repeat
         stimulus = 'temporary_power_scheme_direct_state'
         original_scheme_guid_sha256 = $originalHash
         temporary_scheme_guid_sha256 = $temporaryHash
-        before_active_scheme_guid_sha256 = Get-NxbL4Sha256Text -Text $originalGuid
-        during_active_scheme_guid_sha256 = if ($null -eq $duringGuid) { $null } else { Get-NxbL4Sha256Text -Text $duringGuid }
-        restored_active_scheme_guid_sha256 = if ($null -eq $restoredGuid) { $null } else { Get-NxbL4Sha256Text -Text $restoredGuid }
+        before_active_scheme_guid_sha256 = $beforeHash
+        during_active_scheme_guid_sha256 = $duringHash
+        restored_active_scheme_guid_sha256 = $restoredHash
         temporary_scheme_created = $created
         temporary_scheme_activated = $activated
         original_scheme_restored = $restored
