@@ -78,8 +78,21 @@ $familyPatterns = [ordered]@{
     power = '(?i)(power|energy|battery|processor)'
 }
 
+$providerEnumerationErrors = @()
+$providerInfoInventory = @(
+    Get-WinEvent -ListProvider * -ErrorAction SilentlyContinue -ErrorVariable +providerEnumerationErrors
+)
+if ($providerInfoInventory.Count -eq 0) {
+    throw 'Transition surface discovery returned no readable provider metadata.'
+}
+if ($providerEnumerationErrors.Count -gt 0) {
+    Write-Information -MessageData (
+        'NXB transition surface discovery skipped {0} provider metadata error(s); readable providers continue through bounded discovery.' -f $providerEnumerationErrors.Count
+    ) -InformationAction Continue
+}
+
 $providerCandidates = @()
-foreach ($providerInfo in @(Get-WinEvent -ListProvider * -ErrorAction Stop)) {
+foreach ($providerInfo in $providerInfoInventory) {
     $providerName = [string](Get-NxbSurfaceProperty -InputObject $providerInfo -Name 'Name' -DefaultValue '')
     if ([string]::IsNullOrWhiteSpace($providerName)) { continue }
     $familiesRaw = @()
