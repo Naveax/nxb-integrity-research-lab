@@ -125,9 +125,9 @@ function Read-NxbFinalZipJson {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $matches = @($archive.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith($EntrySuffix,[StringComparison]::OrdinalIgnoreCase) })
-        if ($matches.Count -ne 1) { throw "Expected exactly one ZIP entry ending with '$EntrySuffix'; found=$($matches.Count)" }
-        $stream = $matches[0].Open()
+        $zipEntryMatches = @($archive.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith($EntrySuffix,[StringComparison]::OrdinalIgnoreCase) })
+        if ($zipEntryMatches.Count -ne 1) { throw "Expected exactly one ZIP entry ending with '$EntrySuffix'; found=$($zipEntryMatches.Count)" }
+        $stream = $zipEntryMatches[0].Open()
         $reader = [IO.StreamReader]::new($stream,[Text.UTF8Encoding]::new($false),$true)
         try { return ($reader.ReadToEnd() | ConvertFrom-Json) }
         finally { $reader.Dispose(); $stream.Dispose() }
@@ -306,7 +306,7 @@ function Invoke-NxbFinalInstrumentedArm {
     }
 }
 
-function New-NxbFinalDelta {
+function Get-NxbFinalDelta {
     param(
         [Parameter(Mandatory)][double]$Control,
         [Parameter(Mandatory)][double]$Instrumented,
@@ -402,8 +402,8 @@ if ([string](Get-NxbFinalProperty -InputObject $build -Path 'status') -cne 'pass
 $fixtureExecutable = [string](Get-NxbFinalProperty -InputObject $build -Path 'executable_path')
 if (-not (Test-Path -LiteralPath $fixtureExecutable -PathType Leaf)) { throw 'Final fixture executable missing.' }
 $fixtureSha = [string](Get-NxbFinalProperty -InputObject $build -Path 'executable_sha256')
-$profile = & $profileScript -PassThru
-$profilePath = [string](Get-NxbFinalProperty -InputObject $profile -Path 'path')
+$profileContract = & $profileScript -PassThru
+$profilePath = [string](Get-NxbFinalProperty -InputObject $profileContract -Path 'path')
 if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) { throw 'Final WPR profile unresolved.' }
 $profileReference = "$profilePath!NxbSuperblock1MultiDomain.Verbose"
 $wpr = (Get-Command wpr.exe -ErrorAction Stop).Source
@@ -438,10 +438,10 @@ foreach ($definition in $pairDefinitions) {
         $control = Invoke-NxbFinalControlArm -ExecutablePath $fixtureExecutable -ArmRoot (Join-Path $pairRoot 'control')
     }
     Test-NxbFinalIdentityEqual -Expected $baselineIdentity -Actual (Get-NxbFinalIdentity -PowerPolicyScript $powerPolicyScript) -Label "pair $($definition.ordinal) post"
-    $durationDelta = New-NxbFinalDelta -Control ([double]$control.measurement.duration_ms) -Instrumented ([double]$instrumented.measurement.duration_ms) -Unit 'ms'
-    $cpuDelta = New-NxbFinalDelta -Control ([double]$control.measurement.cpu_time_ms) -Instrumented ([double]$instrumented.measurement.cpu_time_ms) -Unit 'ms'
-    $workingSetDelta = New-NxbFinalDelta -Control ([double]$control.measurement.peak_working_set_bytes) -Instrumented ([double]$instrumented.measurement.peak_working_set_bytes) -Unit 'bytes'
-    $privateDelta = New-NxbFinalDelta -Control ([double]$control.measurement.peak_private_bytes) -Instrumented ([double]$instrumented.measurement.peak_private_bytes) -Unit 'bytes'
+    $durationDelta = Get-NxbFinalDelta -Control ([double]$control.measurement.duration_ms) -Instrumented ([double]$instrumented.measurement.duration_ms) -Unit 'ms'
+    $cpuDelta = Get-NxbFinalDelta -Control ([double]$control.measurement.cpu_time_ms) -Instrumented ([double]$instrumented.measurement.cpu_time_ms) -Unit 'ms'
+    $workingSetDelta = Get-NxbFinalDelta -Control ([double]$control.measurement.peak_working_set_bytes) -Instrumented ([double]$instrumented.measurement.peak_working_set_bytes) -Unit 'bytes'
+    $privateDelta = Get-NxbFinalDelta -Control ([double]$control.measurement.peak_private_bytes) -Instrumented ([double]$instrumented.measurement.peak_private_bytes) -Unit 'bytes'
     $pairs += [pscustomobject][ordered]@{
         ordinal = [int]$definition.ordinal
         warmup = [bool]$definition.warmup
