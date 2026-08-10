@@ -139,8 +139,8 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
         $triggerIndex = $source.IndexOf('foreach ($trigger in $activeTriggers)')
         $budgetIndex = $source.IndexOf('$maxDomains = [int]$policy.budgets.max_concurrent_domains')
-        $triggerIndex | Should -BeGreaterThanOrEqual 0
-        $budgetIndex | Should -BeGreaterThan $triggerIndex
+        ($triggerIndex -ge 0) | Should -BeTrue
+        ($budgetIndex -gt $triggerIndex) | Should -BeTrue
     }
 
     It 'clamps per-mode rate and disk budgets to global policy limits' {
