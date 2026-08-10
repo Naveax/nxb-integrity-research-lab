@@ -35,19 +35,6 @@ function Get-NxbSha256Text {
     finally { $sha.Dispose() }
 }
 
-function Get-NxbPropertyValue {
-    [CmdletBinding()]
-    param(
-        [Parameter()][AllowNull()][object]$InputObject,
-        [Parameter(Mandatory)][string]$Name,
-        [Parameter()][AllowNull()][object]$DefaultValue = $null
-    )
-    if ($null -eq $InputObject) { return $DefaultValue }
-    $property = $InputObject.PSObject.Properties[$Name]
-    if ($null -eq $property) { return $DefaultValue }
-    return $property.Value
-}
-
 function Test-NxbTriggerCondition {
     [CmdletBinding()]
     param(
@@ -74,17 +61,14 @@ function Test-NxbTriggerCondition {
     }
 }
 
-function Get-NxbOrdinalUniqueDomains {
+function Get-NxbStableUniqueDomains {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$Domains)
-    $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $ordered = [Collections.Generic.List[string]]::new()
     foreach ($domain in $Domains) {
         if ([Array]::IndexOf($DomainOrder,$domain) -lt 0) { throw "Unknown domain: $domain" }
-        [void]$set.Add($domain)
-    }
-    $ordered = [Collections.Generic.List[string]]::new()
-    foreach ($domain in $DomainOrder) {
-        if ($set.Contains($domain)) { [void]$ordered.Add($domain) }
+        if ($seen.Add($domain)) { $ordered.Add($domain) }
     }
     return $ordered.ToArray()
 }
@@ -129,13 +113,16 @@ foreach ($trigger in $activeTriggers) {
 $effectiveMode = $ModeOrder[$effectiveRank]
 $profile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value
 
+# Domain candidates intentionally preserve semantic priority: highest-priority active
+# triggers first, then the selected mode profile as a fallback. The global domain
+# budget is applied only after this stable first-occurrence ordering is built.
 $domainCandidates = [Collections.Generic.List[string]]::new()
 foreach ($trigger in $activeTriggers) {
     foreach ($domain in @($trigger.domains)) { $domainCandidates.Add([string]$domain) }
 }
 foreach ($domain in @($profile.domains)) { $domainCandidates.Add([string]$domain) }
 
-$orderedDomains = @(Get-NxbOrdinalUniqueDomains -Domains $domainCandidates.ToArray())
+$orderedDomains = @(Get-NxbStableUniqueDomains -Domains $domainCandidates.ToArray())
 $maxDomains = [int]$policy.budgets.max_concurrent_domains
 if ($orderedDomains.Count -gt $maxDomains) {
     $orderedDomains = @($orderedDomains | Select-Object -First $maxDomains)
