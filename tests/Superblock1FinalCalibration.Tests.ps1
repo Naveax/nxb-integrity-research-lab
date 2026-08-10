@@ -68,8 +68,8 @@ Describe 'SUPERBLOCK 1 final calibration and claim-audit contract' {
     It 'alternates control-first and instrumented-first measured pairs' {
         $root = Get-NxbFinalTestRepositoryRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock1FinalCertification.ps1') -Raw
-        ([regex]::Matches($source,"warmup=\$false; order='control_then_instrumented'")).Count | Should -Be 2
-        ([regex]::Matches($source,"warmup=\$false; order='instrumented_then_control'")).Count | Should -Be 2
+        ([regex]::Matches($source,[regex]::Escape("warmup=`$false; order='control_then_instrumented'"))).Count | Should -Be 2
+        ([regex]::Matches($source,[regex]::Escape("warmup=`$false; order='instrumented_then_control'"))).Count | Should -Be 2
         $source | Should -Match ([regex]::Escape("ordering = 'alternating_control_instrumented'"))
     }
 
