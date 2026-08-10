@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "claim_set_id": "nxb-semantic-hardening-v1",
+  "promotion_policy": {
+    "require_repeated_control": true,
+    "require_negative_control": true,
+    "require_independent_validator": true,
+    "require_deterministic_replay": true,
+    "require_cleanup_or_rollback": true,
+    "allow_unscoped_promotion": false
+  },
+  "claims": [
+    {
+      "claim_id": "pnp_lifecycle_semantics",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "owned_or_isolated_device_fixture",
+      "risk_class": "state_changing",
+      "required_evidence": [
+        "owned or isolated device fixture",
+        "create-or-arrive transition observed twice",
+        "remove-or-depart transition observed twice",
+        "negative idle controls",
+        "exact device identity binding using hashed identifiers",
+        "independent replay and validator",
+        "rollback verified"
+      ],
+      "adaptive_domains": ["pnp_device", "pcie", "kernel_driver"]
+    },
+    {
+      "claim_id": "pcie_bdf_semantics",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "host_inventory",
+      "risk_class": "read_only",
+      "required_evidence": [
+        "two independent Windows PCI location sources",
+        "exact segment-bus-device-function parse",
+        "cross-source equality for the same hashed device identity",
+        "repeat-stable mapping",
+        "malformed and unavailable cases rejected"
+      ],
+      "adaptive_domains": ["pcie", "pnp_device"]
+    },
+    {
+      "claim_id": "event_id_semantics",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "provider_event_definition",
+      "risk_class": "read_only_or_controlled",
+      "required_evidence": [
+        "provider manifest or event-definition metadata binding",
+        "controlled stimulus A/B",
+        "negative control A/B",
+        "repeated event-id separation",
+        "independent validator",
+        "deterministic replay"
+      ],
+      "adaptive_domains": ["pnp_device", "power", "kernel_driver"]
+    },
+    {
+      "claim_id": "event_task_opcode_semantics",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "provider_event_definition",
+      "risk_class": "read_only_or_controlled",
+      "required_evidence": [
+        "event id plus task plus opcode metadata binding",
+        "controlled stimulus A/B",
+        "negative control A/B",
+        "repeated exact shape separation",
+        "independent validator",
+        "deterministic replay"
+      ],
+      "adaptive_domains": ["pnp_device", "power", "kernel_driver"]
+    },
+    {
+      "claim_id": "power_causality",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "owned_temporary_power_policy_experiment",
+      "risk_class": "reversible_state_changing",
+      "required_evidence": [
+        "owned temporary power policy with one isolated setting difference",
+        "before-during-restored direct state proof",
+        "dependent power or frequency telemetry response twice",
+        "matched idle and unchanged-setting controls",
+        "restore and delete verified",
+        "independent causal-analysis replay"
+      ],
+      "adaptive_domains": ["power", "cpu_scheduler", "kernel_driver"]
+    },
+    {
+      "claim_id": "firmware_causality",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "isolated_reboot_capable_fixture_only",
+      "risk_class": "high_risk_reboot_state_changing",
+      "required_evidence": [
+        "explicit isolated or disposable fixture",
+        "pre-state binding",
+        "single firmware or boot-security variable transition",
+        "reboot boundary identity binding",
+        "post-state and dependent behavior proof",
+        "rollback or snapshot restore proof",
+        "independent replay"
+      ],
+      "adaptive_domains": ["firmware_security", "kernel_driver"]
+    },
+    {
+      "claim_id": "root_cause_validated",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "owned_controlled_fixture",
+      "risk_class": "controlled_fixture",
+      "required_evidence": [
+        "single injected or selected root cause",
+        "three-or-more-domain correlated symptom",
+        "cause-present repeat A/B",
+        "cause-absent negative control A/B",
+        "exact target and boot binding",
+        "deterministic correlation replay",
+        "independent root-cause validator"
+      ],
+      "adaptive_domains": ["cpu_scheduler", "memory", "storage", "gpu_present", "network", "kernel_driver", "power"]
+    },
+    {
+      "claim_id": "continuous_trace_completeness",
+      "current_state": false,
+      "desired_state": true,
+      "scope": "declared_observation_interval",
+      "risk_class": "observability_integrity",
+      "required_evidence": [
+        "declared interval start and end markers",
+        "all expected source sessions bound to the same observation identity",
+        "zero EventsLost and BuffersLost",
+        "ring-buffer overwrite explicitly absent or fully accounted",
+        "monotonic checkpoint continuity",
+        "restart and gap accounting",
+        "independent completeness validator"
+      ],
+      "adaptive_domains": ["cpu_scheduler", "memory", "storage", "gpu_present", "network", "pnp_device", "power", "kernel_driver"]
+    }
+  ]
+}
