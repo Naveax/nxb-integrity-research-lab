@@ -58,6 +58,27 @@ function Get-NxbPanelModeRank {
     return $rank
 }
 
+function Get-NxbPanelProcessToken {
+    [CmdletBinding()]
+    param()
+    $bytes = [byte[]]::new(32)
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) }
+    finally { $rng.Dispose() }
+    return (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Test-NxbPanelMutationToken {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][Net.HttpListenerRequest]$Request,
+        [Parameter(Mandatory)][string]$ExpectedToken
+    )
+    $provided = [string]$Request.Headers['X-NXB-Panel-Token']
+    if ([string]::IsNullOrWhiteSpace($provided)) { return $false }
+    return [string]::Equals($provided,$ExpectedToken,[StringComparison]::Ordinal)
+}
+
 $policyFull = [IO.Path]::GetFullPath($PolicyPath)
 $signalsFull = [IO.Path]::GetFullPath($SignalsPath)
 if (-not (Test-Path -LiteralPath $policyFull -PathType Leaf)) { throw "Policy missing: $policyFull" }
@@ -81,6 +102,7 @@ $stateFull = [IO.Path]::GetFullPath($StateDirectory)
 [IO.Directory]::CreateDirectory($stateFull) | Out-Null
 $overridePath = Join-Path $stateFull 'override.json'
 $planPath = Join-Path $stateFull 'current-plan.json'
+$processToken = Get-NxbPanelProcessToken
 
 if (-not (Test-Path -LiteralPath $signalsFull -PathType Leaf)) {
     $signalsParent = Split-Path -Parent $signalsFull
@@ -102,6 +124,7 @@ function Get-NxbPanelOverride {
         return $value
     }
     catch {
+        Write-Verbose -Message 'Invalid override state was removed.'
         Remove-Item -LiteralPath $overridePath -Force -ErrorAction SilentlyContinue
         return $null
     }
@@ -160,6 +183,7 @@ try {
 
             if ($request.HttpMethod -ceq 'GET' -and $path -ceq '/') {
                 $html = Get-Content -LiteralPath $panelHtmlPath -Raw
+                $html = $html.Replace('__NXB_PANEL_TOKEN__',$processToken)
                 Write-NxbPanelResponse -Response $response -StatusCode 200 -ContentType 'text/html; charset=utf-8' -Body $html
                 continue
             }
@@ -176,6 +200,10 @@ try {
             }
 
             if ($request.HttpMethod -ceq 'POST' -and $path -ceq '/api/override') {
+                if (-not (Test-NxbPanelMutationToken -Request $request -ExpectedToken $processToken)) {
+                    Write-NxbPanelResponse -Response $response -StatusCode 403 -ContentType 'application/json; charset=utf-8' -Body '{"error":"forbidden"}'
+                    continue
+                }
                 $body = Get-NxbPanelRequestBody -Request $request
                 $payload = $body | ConvertFrom-Json
                 $mode = [string]$payload.mode
@@ -195,6 +223,10 @@ try {
             }
 
             if ($request.HttpMethod -ceq 'POST' -and $path -ceq '/api/clear') {
+                if (-not (Test-NxbPanelMutationToken -Request $request -ExpectedToken $processToken)) {
+                    Write-NxbPanelResponse -Response $response -StatusCode 403 -ContentType 'application/json; charset=utf-8' -Body '{"error":"forbidden"}'
+                    continue
+                }
                 Remove-Item -LiteralPath $overridePath -Force -ErrorAction SilentlyContinue
                 Write-NxbPanelResponse -Response $response -StatusCode 200 -ContentType 'application/json; charset=utf-8' -Body '{"cleared":true}'
                 continue
