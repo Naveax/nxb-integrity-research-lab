@@ -20,10 +20,13 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery V2 contract' {
         )) { Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue }
     }
 
-    It 'discovers provider families dynamically from Windows metadata' {
+    It 'discovers provider families dynamically and tolerates unreadable provider metadata' {
         $root = Get-NxbL3V2TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbTransitionSurfaceDiscovery.ps1') -Raw
-        $source | Should -Match ([regex]::Escape('Get-WinEvent -ListProvider *'))
+        $source | Should -Match ([regex]::Escape('Get-WinEvent -ListProvider * -ErrorAction SilentlyContinue -ErrorVariable +providerEnumerationErrors'))
+        $source | Should -Not -Match ([regex]::Escape('Get-WinEvent -ListProvider * -ErrorAction Stop'))
+        $source | Should -Match ([regex]::Escape('$providerEnumerationErrors.Count'))
+        $source | Should -Match ([regex]::Escape('provider metadata error(s)'))
         $source | Should -Match ([regex]::Escape("pnp = '(?i)(pnp|device|setup|install)'"))
         $source | Should -Match ([regex]::Escape("power = '(?i)(power|energy|battery|processor)'"))
     }
