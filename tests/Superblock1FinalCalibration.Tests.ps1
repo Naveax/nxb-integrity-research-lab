@@ -11,7 +11,7 @@ Describe 'SUPERBLOCK 1 final calibration and claim-audit contract' {
         }
     }
 
-    It 'keeps the final runner and controlled fixture build repo-owned' {
+    It 'keeps the final runner and controlled fixture build repo-owned with analyzer-safe names' {
         $root = Get-NxbFinalTestRepositoryRoot
         foreach ($relative in @(
             'scripts\Invoke-NxbSuperblock1FinalCertification.ps1',
@@ -22,6 +22,13 @@ Describe 'SUPERBLOCK 1 final calibration and claim-audit contract' {
         )) {
             Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue
         }
+        $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock1FinalCertification.ps1') -Raw
+        $source | Should -Match ([regex]::Escape('$zipEntryMatches'))
+        $source | Should -Match ([regex]::Escape('$profileContract'))
+        $source | Should -Match ([regex]::Escape('function Get-NxbFinalDelta'))
+        $source | Should -Not -Match ([regex]::Escape('$matches ='))
+        $source | Should -Not -Match ([regex]::Escape('$profile ='))
+        $source | Should -Not -Match ([regex]::Escape('function New-NxbFinalDelta'))
     }
 
     It 'requires exact clean HEAD before native work' {
