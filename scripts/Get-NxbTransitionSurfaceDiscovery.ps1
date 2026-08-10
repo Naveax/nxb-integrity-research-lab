@@ -118,7 +118,12 @@ foreach ($provider in $providerInventory) {
             if ($enabled) { $status = 'available'; $reason = $null }
             else { $status = 'disabled'; $reason = 'log_disabled' }
         }
-        catch { }
+        catch {
+            $status = 'unavailable'
+            $enabled = $null
+            $reason = 'list_log_failed'
+            Write-Verbose -Message ("L3 surface discovery could not inspect log '{0}': {1}" -f $logName,$_.Exception.Message)
+        }
         $surfaceCandidates += [pscustomobject][ordered]@{
             provider_name = [string]$provider.provider_name
             provider_guid = [string]$provider.provider_guid
