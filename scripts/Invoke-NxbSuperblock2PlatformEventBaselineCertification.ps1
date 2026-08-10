@@ -184,14 +184,14 @@ if ([string]$l0Receipt.binding.binding_fingerprint_sha256 -cne $ExpectedBindingF
 Write-Information -MessageData '[3/7] Collect and validate bounded platform event baseline A' -InformationAction Continue
 $baselineAPath = Join-Path $reviewRoot 'platform-event-baseline-a.json'
 $validationAPath = Join-Path $reviewRoot 'platform-event-validation-a.json'
-$baselineA = & $collectorPath -OutputPath $baselineAPath -BindingFingerprintSha256 $ExpectedBindingFingerprint -LookbackDays 7 -MaxEventsPerLog 128 -PassThru
+& $collectorPath -OutputPath $baselineAPath -BindingFingerprintSha256 $ExpectedBindingFingerprint -LookbackDays 7 -MaxEventsPerLog 128 | Out-Null
 $validationA = Invoke-NxbPlatformEventValidation -PythonPath $pythonCommand.Source -ValidatorPath $validatorPath -InputPath $baselineAPath -OutputPath $validationAPath
 
 Start-Sleep -Milliseconds 500
 Write-Information -MessageData '[4/7] Collect and validate bounded platform event baseline B' -InformationAction Continue
 $baselineBPath = Join-Path $reviewRoot 'platform-event-baseline-b.json'
 $validationBPath = Join-Path $reviewRoot 'platform-event-validation-b.json'
-$baselineB = & $collectorPath -OutputPath $baselineBPath -BindingFingerprintSha256 $ExpectedBindingFingerprint -LookbackDays 7 -MaxEventsPerLog 128 -PassThru
+& $collectorPath -OutputPath $baselineBPath -BindingFingerprintSha256 $ExpectedBindingFingerprint -LookbackDays 7 -MaxEventsPerLog 128 | Out-Null
 $validationB = Invoke-NxbPlatformEventValidation -PythonPath $pythonCommand.Source -ValidatorPath $validatorPath -InputPath $baselineBPath -OutputPath $validationBPath
 
 Write-Information -MessageData '[5/7] Stable provider metadata + bounded baseline acceptance' -InformationAction Continue
