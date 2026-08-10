@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder
+  Version="1.0"
+  Author="NXB Integrity Research Lab"
+  Team="Observability"
+  Company="NXB Integrity Research Lab"
+  Comments="Bounded SUPERBLOCK 1 foundation capture for GPU, network, and kernel-lifecycle evidence. Provider identities are certified; event and timing semantics remain unpromoted. Individual native enableability is measured separately."
+  Tag="NXB-IRL-004">
+  <Profiles>
+    <SystemCollector Id="NxbSuperblock1SystemCollectorFile" Name="NT Kernel Logger">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="128" FileMode="Circular" />
+    </SystemCollector>
+    <SystemCollector Id="NxbSuperblock1SystemCollectorMemory" Name="NT Kernel Logger">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+    </SystemCollector>
+    <EventCollector Id="NxbSuperblock1EventCollectorFile" Name="NXB SUPERBLOCK 1 Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="128" FileMode="Circular" />
+    </EventCollector>
+    <EventCollector Id="NxbSuperblock1EventCollectorMemory" Name="NXB SUPERBLOCK 1 Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+    </EventCollector>
+
+    <SystemProvider Id="NxbSuperblock1SystemProvider">
+      <Keywords>
+        <Keyword Value="Loader" />
+        <Keyword Value="NetworkTrace" />
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="Registry" />
+      </Keywords>
+    </SystemProvider>
+
+    <EventProvider Id="NxbSuperblock1DxgKrnlEventProvider" Name="Microsoft-Windows-DxgKrnl" Strict="false">
+      <Keywords>
+        <Keyword Value="0x0000000000008000" />
+        <Keyword Value="0x0000000000010000" />
+        <Keyword Value="0x0000000008000000" />
+      </Keywords>
+    </EventProvider>
+    <EventProvider Id="NxbSuperblock1DxgiEventProvider" Name="Microsoft-Windows-DXGI" Strict="false">
+      <Keywords>
+        <Keyword Value="0x0000000000000002" />
+      </Keywords>
+    </EventProvider>
+
+    <!-- These identities are native-certified. Strict=false is intentional: the separate enable-matrix gate records native startability while the combined profile captures every provider that can start on the host without one unavailable provider rolling back the full trace. Keywords remain omitted to avoid semantic promotion. -->
+    <EventProvider Id="NxbSuperblock1KernelNetworkEventProvider" Name="Microsoft-Windows-Kernel-Network" Strict="false" />
+    <EventProvider Id="NxbSuperblock1WinsockAfdEventProvider" Name="Microsoft-Windows-Winsock-AFD" Strict="false" />
+    <EventProvider Id="NxbSuperblock1DnsClientEventProvider" Name="Microsoft-Windows-DNS-Client" Strict="false" />
+    <EventProvider Id="NxbSuperblock1KernelProcessEventProvider" Name="Microsoft-Windows-Kernel-Process" Strict="false" />
+    <EventProvider Id="NxbSuperblock1KernelRegistryEventProvider" Name="Microsoft-Windows-Kernel-Registry" Strict="false" />
+    <EventProvider Id="NxbSuperblock1KernelPnpEventProvider" Name="Microsoft-Windows-Kernel-PnP" Strict="false" />
+
+    <Profile Id="NxbSuperblock1MultiDomain.Verbose.File" Name="NxbSuperblock1MultiDomain" DetailLevel="Verbose" LoggingMode="File" Description="Bounded SUPERBLOCK 1 GPU/network/kernel foundation capture">
+      <ProblemCategories><ProblemCategory Value="First Level Triage" /></ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbSuperblock1SystemCollectorFile"><SystemProviderId Value="NxbSuperblock1SystemProvider" /></SystemCollectorId>
+        <EventCollectorId Value="NxbSuperblock1EventCollectorFile">
+          <EventProviders>
+            <EventProviderId Value="NxbSuperblock1DxgKrnlEventProvider" />
+            <EventProviderId Value="NxbSuperblock1DxgiEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelNetworkEventProvider" />
+            <EventProviderId Value="NxbSuperblock1WinsockAfdEventProvider" />
+            <EventProviderId Value="NxbSuperblock1DnsClientEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelProcessEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelRegistryEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelPnpEventProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile Id="NxbSuperblock1MultiDomain.Verbose.Memory" Name="NxbSuperblock1MultiDomain" DetailLevel="Verbose" LoggingMode="Memory" Description="SUPERBLOCK 1 GPU/network/kernel foundation capture in memory mode">
+      <ProblemCategories><ProblemCategory Value="First Level Triage" /></ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbSuperblock1SystemCollectorMemory"><SystemProviderId Value="NxbSuperblock1SystemProvider" /></SystemCollectorId>
+        <EventCollectorId Value="NxbSuperblock1EventCollectorMemory">
+          <EventProviders>
+            <EventProviderId Value="NxbSuperblock1DxgKrnlEventProvider" />
+            <EventProviderId Value="NxbSuperblock1DxgiEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelNetworkEventProvider" />
+            <EventProviderId Value="NxbSuperblock1WinsockAfdEventProvider" />
+            <EventProviderId Value="NxbSuperblock1DnsClientEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelProcessEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelRegistryEventProvider" />
+            <EventProviderId Value="NxbSuperblock1KernelPnpEventProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
