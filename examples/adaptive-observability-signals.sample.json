@@ -1,0 +1,13 @@
+{
+  "signals": [
+    {
+      "signal": "frame_latency_spike",
+      "captured_utc": "2026-08-10T15:30:00Z"
+    },
+    {
+      "signal": "device_transition",
+      "captured_utc": "2026-08-10T15:30:10Z",
+      "domains": ["pnp_device", "pcie", "kernel_driver"]
+    }
+  ]
+}
