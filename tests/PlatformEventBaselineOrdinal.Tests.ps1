@@ -34,15 +34,16 @@ Describe 'SUPERBLOCK 2 L1 ordinal metadata repair contract' {
         }
     }
 
-    It 'normalizes definitions shapes logs and providers before hashing' {
+    It 'normalizes definitions shapes logs and providers before hashing with approved verbs' {
         $root = Get-NxbPlatformEventOrdinalTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbPlatformEventBaselineV3.ps1') -Raw
         foreach ($name in @(
-            'Sort-NxbPlatformEventV3DefinitionInventory',
-            'Sort-NxbPlatformEventV3ShapeInventory',
-            'Sort-NxbPlatformEventV3LogInventory',
-            'Sort-NxbPlatformEventV3ProviderInventory'
+            'Get-NxbPlatformEventV3OrderedDefinitionInventory',
+            'Get-NxbPlatformEventV3OrderedShapeInventory',
+            'Get-NxbPlatformEventV3OrderedLogInventory',
+            'Get-NxbPlatformEventV3OrderedProviderInventory'
         )) { $source | Should -Match ([regex]::Escape($name)) }
+        $source | Should -Not -Match ([regex]::Escape('Sort-NxbPlatformEventV3'))
     }
 
     It 'preserves array cardinality while rebuilding canonical metadata' {
