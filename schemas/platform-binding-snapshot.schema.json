@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/platform-binding-snapshot.schema.json",
+  "title": "NXB Platform Binding Snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "captured_utc",
+    "identity",
+    "bindings",
+    "volatile_state",
+    "event_sources",
+    "binding_fingerprint_sha256",
+    "claims",
+    "collection_errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "captured_utc": { "type": "string", "format": "date-time" },
+    "identity": {
+      "type": "object",
+      "required": [
+        "machine_id_sha256",
+        "machine_id_source",
+        "boot_utc",
+        "os_version",
+        "os_build",
+        "os_architecture"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "machine_id_sha256": { "$ref": "#/$defs/sha256" },
+        "machine_id_source": { "enum": ["computer_system_product_uuid", "computer_name_fallback"] },
+        "boot_utc": { "type": "string", "format": "date-time" },
+        "os_version": { "type": "string", "minLength": 1 },
+        "os_build": { "type": "string", "minLength": 1 },
+        "os_architecture": { "type": ["string", "null"] }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "required": ["devices", "power", "firmware_security"],
+      "additionalProperties": false,
+      "properties": {
+        "devices": {
+          "type": "object",
+          "required": ["pnp_entities", "signed_drivers", "system_drivers", "pci_property_enrichment"],
+          "additionalProperties": false,
+          "properties": {
+            "pnp_entities": { "$ref": "#/$defs/statusBlock" },
+            "signed_drivers": { "$ref": "#/$defs/statusBlock" },
+            "system_drivers": { "$ref": "#/$defs/statusBlock" },
+            "pci_property_enrichment": { "$ref": "#/$defs/statusBlock" }
+          }
+        },
+        "power": {
+          "type": "object",
+          "required": ["active_power_scheme"],
+          "additionalProperties": false,
+          "properties": {
+            "active_power_scheme": { "$ref": "#/$defs/statusBlock" }
+          }
+        },
+        "firmware_security": {
+          "type": "object",
+          "required": ["bios", "secure_boot", "tpm", "device_guard", "virtualization", "boot_configuration"],
+          "additionalProperties": false,
+          "properties": {
+            "bios": { "$ref": "#/$defs/statusBlock" },
+            "secure_boot": { "$ref": "#/$defs/statusBlock" },
+            "tpm": { "$ref": "#/$defs/statusBlock" },
+            "device_guard": { "$ref": "#/$defs/statusBlock" },
+            "virtualization": { "$ref": "#/$defs/statusBlock" },
+            "boot_configuration": { "$ref": "#/$defs/statusBlock" }
+          }
+        }
+      }
+    },
+    "volatile_state": {
+      "type": "object",
+      "required": ["processor_clock", "battery", "thermal_zones"],
+      "additionalProperties": false,
+      "properties": {
+        "processor_clock": { "$ref": "#/$defs/statusBlock" },
+        "battery": { "$ref": "#/$defs/statusBlock" },
+        "thermal_zones": { "$ref": "#/$defs/statusBlock" }
+      }
+    },
+    "event_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["provider_name", "status", "provider_guid", "logs"],
+        "additionalProperties": false,
+        "properties": {
+          "provider_name": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["available", "unavailable"] },
+          "provider_guid": { "type": ["string", "null"] },
+          "logs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "binding_fingerprint_sha256": { "$ref": "#/$defs/sha256" },
+    "claims": {
+      "type": "object",
+      "required": [
+        "raw_machine_identifier_exposed",
+        "raw_pnp_identifier_exposed",
+        "serial_number_exposed",
+        "volatile_state_in_binding_fingerprint",
+        "pcie_bdf_semantics",
+        "device_lifecycle_semantics",
+        "thermal_representativeness",
+        "power_causality",
+        "firmware_causality",
+        "root_cause_validated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "raw_machine_identifier_exposed": { "const": false },
+        "raw_pnp_identifier_exposed": { "const": false },
+        "serial_number_exposed": { "const": false },
+        "volatile_state_in_binding_fingerprint": { "const": false },
+        "pcie_bdf_semantics": { "const": false },
+        "device_lifecycle_semantics": { "const": false },
+        "thermal_representativeness": { "const": false },
+        "power_causality": { "const": false },
+        "firmware_causality": { "const": false },
+        "root_cause_validated": { "const": false }
+      }
+    },
+    "collection_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["domain", "error_type"],
+        "additionalProperties": false,
+        "properties": {
+          "domain": { "type": "string", "minLength": 1 },
+          "error_type": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "statusBlock": {
+      "type": "object",
+      "required": ["status", "data", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["available", "partial", "unavailable", "failed"] },
+        "data": {},
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
