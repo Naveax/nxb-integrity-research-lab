@@ -47,17 +47,12 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery V2 contract' {
         $replay | Should -Match ([regex]::Escape('[ValidateRange(4,64)][int]$MaxFamilySurfaces = 32'))
     }
 
-    It 'uses ordinal set and UTF8 ordering contracts' {
+    It 'uses ordinal set UTF8 ordering and fingerprint contracts' {
         $root = Get-NxbL3V2TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbTransitionSurfaceDiscovery.ps1') -Raw
         $source | Should -Match ([regex]::Escape('[Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)'))
         $source | Should -Match ([regex]::Escape('[Text.Encoding]::UTF8.GetBytes([string]$Value)'))
         $source | Should -Match ([regex]::Escape('Get-NxbSurfaceOrdinalHexKey'))
-    }
-
-    It 'uses explicit ordinal TSV discovery fingerprint material' {
-        $root = Get-NxbL3V2TestRoot
-        $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbTransitionSurfaceDiscovery.ps1') -Raw
         $source | Should -Match ([regex]::Escape("fingerprint_contract = 'ordinal_tsv_v1'"))
         $source | Should -Match ([regex]::Escape('$fingerprintMaterial = $fingerprintLines -join'))
     }
@@ -177,8 +172,9 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery V2 contract' {
     It 'keeps L3 review ZIP bounded and free of raw trace exports' {
         $root = Get-NxbL3V2TestRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertificationV2.ps1') -Raw
-        foreach ($needle in @('.etl','.evtx','.xml','.jsonl','Forbidden L3 review artifact')) {
-            $cert | Should -Match ([regex]::Escape($needle))
-        }
+        $cert | Should -Match ([regex]::Escape('(?i)\.(etl|evtx|xml|jsonl|exe|obj|pdb)$'))
+        $cert | Should -Match ([regex]::Escape('(?i)"(message|xml|payload|properties|event_data|user_data|raw_event)"\s*:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact content:'))
     }
 }
