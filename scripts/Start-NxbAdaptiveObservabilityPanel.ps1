@@ -87,8 +87,10 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $resolverPath = Join-Path $scriptRoot 'Resolve-NxbAdaptiveObservabilityPlan.ps1'
 $stateUpdaterPath = Join-Path $scriptRoot 'Update-NxbAdaptiveObservabilityState.ps1'
+$manifestResolverPath = Join-Path $scriptRoot 'Resolve-NxbAdaptiveCaptureManifest.ps1'
+$domainMapPath = Join-Path $repoRoot 'config\adaptive-observability-domain-map.json'
 $panelHtmlPath = Join-Path $repoRoot 'ui\adaptive-observability-panel.html'
-foreach ($requiredPath in @($resolverPath,$stateUpdaterPath,$panelHtmlPath)) {
+foreach ($requiredPath in @($resolverPath,$stateUpdaterPath,$manifestResolverPath,$domainMapPath,$panelHtmlPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw "Panel component missing: $requiredPath" }
 }
 
@@ -105,6 +107,7 @@ $stateFull = [IO.Path]::GetFullPath($StateDirectory)
 $overridePath = Join-Path $stateFull 'override.json'
 $planPath = Join-Path $stateFull 'current-plan.json'
 $triggerStatePath = Join-Path $stateFull 'trigger-state.json'
+$manifestPath = Join-Path $stateFull 'capture-manifest.json'
 $processToken = Get-NxbPanelProcessToken
 
 if (-not (Test-Path -LiteralPath $signalsFull -PathType Leaf)) {
@@ -148,6 +151,7 @@ function Get-NxbPanelStatus {
     else {
         $plan = & $resolverPath -PolicyPath $policyFull -SignalsPath $signalsFull -TriggerStatePath $triggerStatePath -OperatorMode $operatorMode -OutputPath $planPath -PassThru
     }
+    $manifest = & $manifestResolverPath -PlanPath $planPath -DomainMapPath $domainMapPath -OutputPath $manifestPath -PassThru
 
     $overrideStatus = [pscustomobject][ordered]@{ active = $false; mode = $null; expires_utc = $null }
     if ($null -ne $override) {
@@ -163,6 +167,7 @@ function Get-NxbPanelStatus {
         utc = [DateTime]::UtcNow.ToString('o')
         policy_id = [string]$currentPolicy.policy_id
         plan = $plan
+        capture_manifest = $manifest
         trigger_state = [pscustomobject][ordered]@{
             active_trigger_ids = @($triggerState.active_trigger_ids)
             evaluated_utc = [string]$triggerState.evaluated_utc
