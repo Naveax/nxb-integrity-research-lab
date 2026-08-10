@@ -26,7 +26,8 @@ Describe 'SUPERBLOCK 2 platform binding V2 contract' {
         $root = Get-NxbPlatformBindingV2TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbPlatformBindingSnapshotV2.ps1') -Raw
         $source | Should -Match ([regex]::Escape('$items = @($Value | ForEach-Object'))
-        $source | Should -Match ([regex]::Escape('Write-Output -NoEnumerate $items'))
+        $source | Should -Match '(?m)^\s*Write-Output\b[^\r\n]*-InputObject\s+\$items\b'
+        $source | Should -Match '(?m)^\s*Write-Output\b[^\r\n]*-NoEnumerate\b'
         $source | Should -Not -Match ([regex]::Escape('return @($Value | ForEach-Object'))
     }
 
