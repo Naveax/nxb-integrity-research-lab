@@ -129,7 +129,7 @@ Capture adapters will be connected only after the planner/panel contract is nati
 
 ```text
 current_state
-wanted_state
+desired_state
 ```
 
 The desired state for the remaining hardening claims is `true`, but the current state remains `false` until evidence gates pass.
@@ -137,7 +137,7 @@ The desired state for the remaining hardening claims is `true`, but the current 
 Targets:
 
 ```text
-pnp_lifecycle_semantics\ npc
+pnp_lifecycle_semantics
 pcie_bdf_semantics
 event_id_semantics
 event_task_opcode_semantics
@@ -146,8 +146,6 @@ firmware_causality
 root_cause_validated
 continuous_trace_completeness
 ```
-
-The accidental `npc` token above is not part of the claim ID; canonical machine-readable authority is `config/semantic-claim-targets.json`.
 
 ## Promotion order
 
