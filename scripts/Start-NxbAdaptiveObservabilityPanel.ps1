@@ -86,9 +86,11 @@ if (-not (Test-Path -LiteralPath $policyFull -PathType Leaf)) { throw "Policy mi
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $resolverPath = Join-Path $scriptRoot 'Resolve-NxbAdaptiveObservabilityPlan.ps1'
+$stateUpdaterPath = Join-Path $scriptRoot 'Update-NxbAdaptiveObservabilityState.ps1'
 $panelHtmlPath = Join-Path $repoRoot 'ui\adaptive-observability-panel.html'
-if (-not (Test-Path -LiteralPath $resolverPath -PathType Leaf)) { throw "Resolver missing: $resolverPath" }
-if (-not (Test-Path -LiteralPath $panelHtmlPath -PathType Leaf)) { throw "Panel HTML missing: $panelHtmlPath" }
+foreach ($requiredPath in @($resolverPath,$stateUpdaterPath,$panelHtmlPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw "Panel component missing: $requiredPath" }
+}
 
 $policy = Get-Content -LiteralPath $policyFull -Raw | ConvertFrom-Json
 if (-not [bool]$policy.panel.local_only) { throw 'Adaptive panel policy must remain local_only.' }
@@ -102,6 +104,7 @@ $stateFull = [IO.Path]::GetFullPath($StateDirectory)
 [IO.Directory]::CreateDirectory($stateFull) | Out-Null
 $overridePath = Join-Path $stateFull 'override.json'
 $planPath = Join-Path $stateFull 'current-plan.json'
+$triggerStatePath = Join-Path $stateFull 'trigger-state.json'
 $processToken = Get-NxbPanelProcessToken
 
 if (-not (Test-Path -LiteralPath $signalsFull -PathType Leaf)) {
@@ -138,11 +141,12 @@ function Get-NxbPanelStatus {
     $operatorMode = $null
     if ($null -ne $override) { $operatorMode = [string]$override.mode }
 
+    $triggerState = & $stateUpdaterPath -PolicyPath $policyFull -SignalsPath $signalsFull -StatePath $triggerStatePath -PassThru
     if ([string]::IsNullOrWhiteSpace($operatorMode)) {
-        $plan = & $resolverPath -PolicyPath $policyFull -SignalsPath $signalsFull -OutputPath $planPath -PassThru
+        $plan = & $resolverPath -PolicyPath $policyFull -SignalsPath $signalsFull -TriggerStatePath $triggerStatePath -OutputPath $planPath -PassThru
     }
     else {
-        $plan = & $resolverPath -PolicyPath $policyFull -SignalsPath $signalsFull -OperatorMode $operatorMode -OutputPath $planPath -PassThru
+        $plan = & $resolverPath -PolicyPath $policyFull -SignalsPath $signalsFull -TriggerStatePath $triggerStatePath -OperatorMode $operatorMode -OutputPath $planPath -PassThru
     }
 
     $overrideStatus = [pscustomobject][ordered]@{ active = $false; mode = $null; expires_utc = $null }
@@ -159,6 +163,10 @@ function Get-NxbPanelStatus {
         utc = [DateTime]::UtcNow.ToString('o')
         policy_id = [string]$currentPolicy.policy_id
         plan = $plan
+        trigger_state = [pscustomobject][ordered]@{
+            active_trigger_ids = @($triggerState.active_trigger_ids)
+            evaluated_utc = [string]$triggerState.evaluated_utc
+        }
         override = $overrideStatus
         claim_targets = @($currentPolicy.claim_targets)
         state_directory = $stateFull
