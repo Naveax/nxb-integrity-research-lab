@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "policy_id": "nxb-default-adaptive-v1",
+  "default_level": "baseline",
+  "levels": {
+    "off": {
+      "rank": 0,
+      "description": "No active collection; control-plane receipts only.",
+      "raw_payload_allowed": false
+    },
+    "baseline": {
+      "rank": 1,
+      "description": "Low-overhead counters, identities, health and loss accounting.",
+      "raw_payload_allowed": false
+    },
+    "focused": {
+      "rank": 2,
+      "description": "Temporarily elevated structural telemetry for selected domains.",
+      "raw_payload_allowed": false
+    },
+    "forensic": {
+      "rank": 3,
+      "description": "Short bounded high-detail capture for owned targets and explicit investigations.",
+      "raw_payload_allowed": true
+    }
+  },
+  "budgets": {
+    "max_concurrent_elevated_domains": 4,
+    "max_capture_seconds": 300,
+    "cooldown_seconds": 30,
+    "max_review_bytes": 67108864
+  },
+  "retention": {
+    "always_keep": [
+      "control_plane_transition",
+      "capture_receipt",
+      "hash_manifest",
+      "loss_accounting",
+      "anomaly_summary",
+      "claim_evidence",
+      "error_boundary"
+    ],
+    "raw_payload_default": false,
+    "hash_raw_identifiers": true,
+    "redact_messages_by_default": true
+  },
+  "domains": {
+    "cpu_scheduler": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 900 },
+    "memory": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 850 },
+    "storage": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 800 },
+    "gpu_present": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 900 },
+    "network": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 800 },
+    "pnp_device": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 750 },
+    "pcie": { "enabled": true, "minimum_level": "baseline", "maximum_level": "focused", "priority": 700 },
+    "power": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 750 },
+    "firmware_security": { "enabled": true, "minimum_level": "baseline", "maximum_level": "focused", "priority": 650 },
+    "kernel_driver": { "enabled": true, "minimum_level": "baseline", "maximum_level": "forensic", "priority": 850 }
+  },
+  "rules": [
+    {
+      "rule_id": "manual-focus",
+      "signal": "manual_focus",
+      "domains": ["cpu_scheduler", "memory", "storage", "gpu_present", "network", "pnp_device", "pcie", "power", "firmware_security", "kernel_driver"],
+      "level": "focused",
+      "ttl_seconds": 120,
+      "priority": 1000
+    },
+    {
+      "rule_id": "manual-forensic",
+      "signal": "manual_forensic",
+      "domains": ["cpu_scheduler", "memory", "storage", "gpu_present", "network", "pnp_device", "power", "kernel_driver"],
+      "level": "forensic",
+      "ttl_seconds": 60,
+      "priority": 1000
+    },
+    {
+      "rule_id": "frame-latency-spike",
+      "signal": "frame_latency_spike",
+      "domains": ["cpu_scheduler", "memory", "gpu_present", "storage", "network", "power", "kernel_driver"],
+      "level": "focused",
+      "ttl_seconds": 90,
+      "priority": 950
+    },
+    {
+      "rule_id": "device-transition",
+      "signal": "device_transition",
+      "domains": ["pnp_device", "pcie", "kernel_driver", "power"],
+      "level": "focused",
+      "ttl_seconds": 90,
+      "priority": 900
+    },
+    {
+      "rule_id": "power-transition",
+      "signal": "power_transition",
+      "domains": ["power", "cpu_scheduler", "kernel_driver"],
+      "level": "focused",
+      "ttl_seconds": 90,
+      "priority": 900
+    },
+    {
+      "rule_id": "error-burst",
+      "signal": "error_burst",
+      "domains": ["kernel_driver", "pnp_device", "storage", "network", "gpu_present"],
+      "level": "forensic",
+      "ttl_seconds": 45,
+      "priority": 925
+    },
+    {
+      "rule_id": "semantic-calibration",
+      "signal": "semantic_calibration",
+      "domains": ["pnp_device", "pcie", "power", "kernel_driver", "firmware_security"],
+      "level": "forensic",
+      "ttl_seconds": 120,
+      "priority": 975
+    }
+  ]
+}
