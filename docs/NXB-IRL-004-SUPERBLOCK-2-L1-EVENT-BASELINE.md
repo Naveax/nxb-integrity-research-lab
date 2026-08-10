@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTED — NATIVE EXACT-HEAD VALIDATION NEXT`
+`IMPLEMENTED — V4 NATIVE EXACT-HEAD VALIDATION NEXT`
 
 L0 canonical predecessor:
 
@@ -82,7 +82,7 @@ Log states remain explicit:
 
 ```text
 available   -> successful bounded query; sampled count may be zero
- disabled    -> known disabled log; sampled count is measured zero
+disabled    -> known disabled log; sampled count is measured zero
 unavailable -> query/list failure; sampled count is null
 ```
 
@@ -103,11 +103,72 @@ Recent activity is excluded from this fingerprint. Two native baselines must the
 
 The Python validator independently rebuilds and hashes the same metadata material.
 
+## Native history
+
+### V1
+
+```text
+head: 87250d31760a9e2564ed001ac78d2727e2356d19
+PSScriptAnalyzer findings: 2
+cause: unused baselineA / baselineB assignments
+native collection: not reached
+```
+
+### V2
+
+```text
+head: bc4625d9dfee825d2cfd82d35d453ab9b72ab615
+PS7 / PS5.1: 20/20 + 20/20
+PSScriptAnalyzer: 0
+L0 binding: PASS
+baseline A: collected
+failure: providers[4].event_definitions[150].keywords must be sorted unique
+```
+
+Root cause: PowerShell and Python string ordering semantics differed.
+
+### V3
+
+```text
+head: 3967abab427a8892ce420bf2cc83af60989b6e53
+PSScriptAnalyzer findings: 4
+cause: four ordinal ordering helpers used unapproved Sort- verb
+native collection: not reached
+```
+
+### V4 candidate
+
+```text
+runtime/test head:
+5da20feddb654ffb5c3e94a115c376a362f37e11
+```
+
+The ordinal algorithm is unchanged. The four ordering helpers now use approved `Get-` verbs:
+
+```text
+Get-NxbPlatformEventV3OrderedDefinitionInventory
+Get-NxbPlatformEventV3OrderedShapeInventory
+Get-NxbPlatformEventV3OrderedLogInventory
+Get-NxbPlatformEventV3OrderedProviderInventory
+```
+
+The focused ordinal test rejects the superseded `Sort-NxbPlatformEventV3` prefix.
+
+## Cross-runtime ordering contract
+
+```text
+keywords            ordinal unique via SortedSet + StringComparer.Ordinal
+event_definitions   id/version + ordinal UTF-8 level/task/opcode
+shapes              id/version + ordinal UTF-8 level/task/opcode
+logs                ordinal UTF-8 log_name
+providers           ordinal UTF-8 provider_name
+```
+
 ## Native gate
 
 ```text
-PowerShell 7 contract:          20/20
-Windows PowerShell 5.1:        20/20
+PowerShell 7 contract:          28/28
+Windows PowerShell 5.1:        28/28
 PSScriptAnalyzer findings:      0
 Python syntax:                  PASS
 canonical L0 review binding:    PASS
@@ -118,6 +179,7 @@ metadata fingerprint A == B:    true
 event definition inventory:     > 0
 attached log inventory:         > 0
 readable recent-log queries:    > 0
+ordering contract:              utf8_ordinal
 ```
 
 Recent sampled-event count is reported but is not required to be identical across A/B.
