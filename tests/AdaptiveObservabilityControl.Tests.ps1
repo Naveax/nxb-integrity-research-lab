@@ -56,14 +56,14 @@ Describe 'NXB adaptive observability control-plane contract' {
 
     It 'bounds simultaneous elevated domains' {
         [int]$policy.budgets.max_concurrent_elevated_domains | Should -BeGreaterThan 0
-        [int]$policy.budgets.max_concurrent_elevated_domains | Should -BeLessOrEqual 4
+        ([int]$policy.budgets.max_concurrent_elevated_domains -le 4) | Should -BeTrue
         $plannerSource | Should -Match ([regex]::Escape('max_concurrent_elevated_domains'))
         $plannerSource | Should -Match ([regex]::Escape('budget_suppressed'))
     }
 
     It 'bounds capture duration and review evidence size' {
-        [int]$policy.budgets.max_capture_seconds | Should -BeLessOrEqual 300
-        [int64]$policy.budgets.max_review_bytes | Should -BeLessOrEqual 67108864
+        ([int]$policy.budgets.max_capture_seconds -le 300) | Should -BeTrue
+        ([int64]$policy.budgets.max_review_bytes -le 67108864) | Should -BeTrue
     }
 
     It 'supports manual focused and forensic escalation' {
