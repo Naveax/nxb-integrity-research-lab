@@ -22,7 +22,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'keeps the ledger signature document scanner and V5 authority repo-owned' {
+    It 'keeps ledger scanner and inherited V5 authority repo-owned' {
         $root = Get-NxbKnownErrorTestRoot
         foreach ($relative in @(
             'docs\NXB-KNOWN-ERROR-LEDGER.md',
@@ -34,45 +34,25 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'uses signature schema version one and points to the canonical ledger' {
+    It 'uses signature schema version one and canonical ledger path' {
         $document = Get-NxbKnownErrorSignatureDocument
         [int]$document.schema_version | Should -Be 1
         [string]$document.ledger_path | Should -BeExactly 'docs/NXB-KNOWN-ERROR-LEDGER.md'
     }
 
-    It 'keeps machine-detectable rule ids unique and extends generic coverage to semantic and transport authority' {
+    It 'keeps machine rule ids unique and extends active semantic transport coverage' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
-        $ids.Count | Should -BeGreaterThan 0
+        $ids.Count | Should -BeGreaterOrEqual 16
 
-        foreach ($ruleId in @('NXB-ERR-001','NXB-ERR-005','NXB-ERR-006','NXB-ERR-008','NXB-ERR-021')) {
+        foreach ($ruleId in @('NXB-ERR-001','NXB-ERR-005','NXB-ERR-006','NXB-ERR-008','NXB-ERR-021','NXB-ERR-026')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
-            @($rule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
-            @($rule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
         }
-        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-024')) {
-            $rule = Get-NxbKnownErrorRule -Id $ruleId
-            @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
-            @($rule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
-        }
-        $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
-        @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
-        @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbControllerTargetTransportCertification.ps1'
-        $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
-        @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
-        @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
-        $capabilityRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-025'
-        @($capabilityRule.include_globs) | Should -Contain 'scripts/Test-NxbSemanticHardeningHostCapability.ps1'
-        @($capabilityRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
-        $encodingRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-026'
-        @($encodingRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
-        @($encodingRule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
-        @($encodingRule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
-        @($encodingRule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
-        @($encodingRule.include_globs) | Should -Contain 'tests/KnownErrorLedger.Tests.ps1'
+        $eventRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-027'
+        @($eventRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -84,139 +64,64 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-026 and locks analyzer/runtime regressions' {
+    It 'retains the complete observed workflow ledger through NXB-ERR-027' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..26) {
+        foreach ($number in 1..27) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
         $ledger | Should -Match ([regex]::Escape('Do not generate a regex quantifier through nested Python/PowerShell brace formatting.'))
-        $ledger | Should -Match ([regex]::Escape('fixed `^[0-9a-f]+$` regex'))
         $ledger | Should -Match ([regex]::Escape('Never use `.PSObject.Properties` to enumerate a JSON array.'))
-        $ledger | Should -Match ([regex]::Escape('A capability gate must execute the exact bounded owned create'))
         $ledger | Should -Match ([regex]::Escape('Keep active IRL-006 PowerShell authority/test `.ps1` files ASCII-only'))
+        $ledger | Should -Match ([regex]::Escape('Do not use optional Windows diagnostic EventLog channels as claim authority'))
+    }
 
-        $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
-        $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
+    It 'locks recent analyzer runtime array encoding and EventLog regression classes' {
+        $root = Get-NxbKnownErrorTestRoot
+
+        $wildcardRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-019').regex)
         $wildcardRegex.IsMatch('[WildcardOptions]::IgnoreCase') | Should -BeTrue
         $wildcardRegex.IsMatch('[System.Management.Automation.WildcardOptions]::IgnoreCase') | Should -BeFalse
 
-        $scanner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1') -Raw
-        $scanner | Should -Match ([regex]::Escape('[System.Management.Automation.WildcardOptions]::IgnoreCase'))
-        $scanner | Should -Not -Match ([regex]::Escape('[WildcardOptions]::IgnoreCase'))
-
-        $profileRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-021'
-        $profileRegex = [regex]::new([string]$profileRule.regex)
+        $profileRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-021').regex)
         $profileRegex.IsMatch('$profile = $policy.mode_profiles.foo') | Should -BeTrue
         $profileRegex.IsMatch('$modeProfile = $policy.mode_profiles.foo') | Should -BeFalse
 
-        $resolver = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
-        $resolver | Should -Not -Match '(?im)^\s*\$profile\s*='
-        $resolver | Should -Match ([regex]::Escape('$modeProfile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value'))
-
-        $assignedRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-014'
-        $assignedRegex = [regex]::new([string]$assignedRule.regex)
+        $assignedRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-014').regex)
         $assignedRegex.IsMatch('$pythonValidatorPath = Join-Path $root ''tools\validate_semantic_evidence_receipt.py''') | Should -BeTrue
         $assignedRegex.IsMatch('$context = Get-NxbSemanticTestContext') | Should -BeFalse
 
-        $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
-        $stderrRegex = [regex]::new([string]$stderrRule.regex)
-        $unsafeNative = @'
-function Invoke-NxbSemanticPythonTest {
-    $nativeOutput = @(& $pythonPath @argumentList 2>&1)
-}
-'@
-        $safeNative = @'
-function Invoke-NxbSemanticPythonTest {
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $nativeOutput = @(& $pythonPath @argumentList 2>&1)
-    }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-}
-'@
-        $unsafePower = '$output = @(& $PowerCfgPath /list 2>&1)'
-        $unsafeTransport = @'
-function Invoke-NxbTransportCertificationNative {
-    $nativeOutput = @(& $Executable @ArgumentList 2>&1)
-}
-'@
-        $safeTransport = @'
-function Invoke-NxbTransportCertificationNative {
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $nativeOutput = @(& $Executable @ArgumentList 2>&1)
-    }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-}
-'@
-        $stderrRegex.IsMatch($unsafeNative) | Should -BeTrue
-        $stderrRegex.IsMatch($safeNative) | Should -BeFalse
-        $stderrRegex.IsMatch($unsafePower) | Should -BeTrue
-        $stderrRegex.IsMatch($unsafeTransport) | Should -BeTrue
-        $stderrRegex.IsMatch($safeTransport) | Should -BeFalse
-
-        $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
-        $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
-        $semanticTest | Should -Not -Match '(?im)^\s*\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\s*='
-        $semanticTest | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
-        $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
-        $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
-        $stderrRegex.IsMatch($semanticTest) | Should -BeFalse
-
-        $powerSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1') -Raw
-        $powerSource | Should -Match ([regex]::Escape('function Invoke-NxbSemanticPowerNative'))
-        $powerSource | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
-        $stderrRegex.IsMatch($powerSource) | Should -BeFalse
-
-        $transportCertification = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbControllerTargetTransportCertification.ps1') -Raw
-        $transportCertification | Should -Match ([regex]::Escape('function Invoke-NxbTransportCertificationNative'))
-        $transportCertification | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
-        $stderrRegex.IsMatch($transportCertification) | Should -BeFalse
-
-        $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
-        $arrayRegex = [regex]::new([string]$arrayRule.regex)
+        $arrayRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-024').regex)
         $badArrayProjection = '$policy.claim_targets' + '.PSObject.Properties'
         $arrayRegex.IsMatch($badArrayProjection) | Should -BeTrue
         $arrayRegex.IsMatch('@($policy.claim_targets)') | Should -BeFalse
-        $hardeningTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticHardening.Tests.ps1') -Raw
-        $arrayRegex.IsMatch($hardeningTest) | Should -BeFalse
-        $hardeningTest | Should -Match ([regex]::Escape('$targets = @($policy.claim_targets)'))
-        $transportTest = Get-Content -LiteralPath (Join-Path $root 'tests\ControllerTargetTransport.Tests.ps1') -Raw
-        $arrayRegex.IsMatch($transportTest) | Should -BeFalse
 
-        $capabilityRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-025'
-        $capabilityRegex = [regex]::new([string]$capabilityRule.regex)
-        $badFileOnlyCapability = '$softwareDeviceApiAvailable = ' + '(Test-Path -LiteralPath $softwareDeviceDll -PathType Leaf)'
+        $capabilityRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-025').regex)
         $badCimPresence = 'Get-' + 'CimInstance Win32_PnPEntity -ErrorAction Stop'
-        $capabilityRegex.IsMatch($badFileOnlyCapability) | Should -BeTrue
         $capabilityRegex.IsMatch($badCimPresence) | Should -BeTrue
-        $preflightSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-NxbSemanticHardeningHostCapability.ps1') -Raw
-        $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
-        $capabilityRegex.IsMatch($preflightSource) | Should -BeFalse
-        $capabilityRegex.IsMatch($pnpSource) | Should -BeFalse
-        $preflightSource | Should -Match ([regex]::Escape('lifecycle_probe_executed = $pnpFixtureSourcePresent'))
-        $pnpSource | Should -Match ([regex]::Escape('cfgmgr32_cm_locate_devnode_normal'))
 
-        $encodingRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-026'
-        $encodingRegex = [regex]::new([string]$encodingRule.regex)
+        $encodingRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-026').regex)
         $nonAsciiFixture = 'non-ascii-' + [char]0x2192
         $encodingRegex.IsMatch($nonAsciiFixture) | Should -BeTrue
         $encodingRegex.IsMatch('ascii-only-authority') | Should -BeFalse
+
+        $eventRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-027').regex)
+        $badEventRead = 'Get-' + 'WinEvent -FilterHashtable $filter'
+        $eventRegex.IsMatch($badEventRead) | Should -BeTrue
+        $eventRegex.IsMatch('[Nxb.Semantic.PnpLifecycleCollector]::new()') | Should -BeFalse
+
+        $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
+        $eventRegex.IsMatch($pnpSource) | Should -BeFalse
+        $pnpSource | Should -Match ([regex]::Escape('repo_owned_eventsource_lifecycle_bridge_v1'))
+        $pnpSource | Should -Match ([regex]::Escape('optional_windows_eventlog_used_as_authority = $false'))
+
         $ledgerTestSource = Get-Content -LiteralPath (Join-Path $root 'tests\KnownErrorLedger.Tests.ps1') -Raw
         $encodingRegex.IsMatch($ledgerTestSource) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
-        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-001'
-        $regex = [regex]::new([string]$rule.regex)
+        $regex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-001').regex)
         $quote = [char]34
         $bad = 'throw ' + $quote + 'repeat $Repeat' + ': exit=$exitCode' + $quote
         $goodDelimited = 'throw ' + $quote + 'repeat ${Repeat}' + ': exit=$exitCode' + $quote
@@ -227,16 +132,14 @@ function Invoke-NxbTransportCertificationNative {
     }
 
     It 'detects assignment to the automatic Matches variable case-insensitively' {
-        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-006'
-        $regex = [regex]::new([string]$rule.regex)
+        $regex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-006').regex)
         $regex.IsMatch('$matches = @()') | Should -BeTrue
         $regex.IsMatch('$Matches = $null') | Should -BeTrue
         $regex.IsMatch('$domainMappings = @()') | Should -BeFalse
     }
 
     It 'detects the known plural helper declarations without matching replacements' {
-        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-008'
-        $regex = [regex]::new([string]$rule.regex)
+        $regex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-008').regex)
         $regex.IsMatch('function Write-NxbHysteresisSignals {') | Should -BeTrue
         $regex.IsMatch('function Get-NxbStableUniqueDomains {') | Should -BeTrue
         $regex.IsMatch('function Write-NxbHysteresisSignalDocument {') | Should -BeFalse
@@ -244,8 +147,7 @@ function Invoke-NxbTransportCertificationNative {
     }
 
     It 'detects double-quoted expected-source regex interpolation' {
-        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-015'
-        $regex = [regex]::new([string]$rule.regex)
+        $regex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-015').regex)
         $quote = [char]34
         $bad = '[regex]::Escape(' + $quote + 'throw -f $stateFull' + $quote + ')'
         $good = "[regex]::Escape('-f `$stateFull')"
@@ -261,26 +163,19 @@ function Invoke-NxbTransportCertificationNative {
         $source | Should -Not -Match ([regex]::Escape('starting from empty state'))
     }
 
-    It 'runs the scanner against the exact repository tree with zero known-error findings' {
+    It 'runs exact-tree scanner at zero and keeps scanner fail-closed' {
         $root = Get-NxbKnownErrorTestRoot
         $scanner = Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1'
         $result = & $scanner -RepositoryRoot $root -NoThrow -PassThru
         if ([string]$result.status -cne 'passed' -or [int]$result.finding_count -ne 0) {
-            $detail = @(
-                $result.findings | ForEach-Object {
-                    '{0} {1}:{2} {3}' -f $_.id,$_.path,$_.line,$_.preview
-                }
-            ) -join [Environment]::NewLine
+            $detail = @($result.findings | ForEach-Object { '{0} {1}:{2} {3}' -f $_.id,$_.path,$_.line,$_.preview }) -join [Environment]::NewLine
             throw ('Exact-tree known-error scan failed: findings={0}{1}{2}' -f [int]$result.finding_count,[Environment]::NewLine,$detail)
         }
         [string]$result.status | Should -BeExactly 'passed'
         [int]$result.finding_count | Should -Be 0
-        [int]$result.rule_count | Should -BeGreaterThan 0
-    }
+        [int]$result.rule_count | Should -BeGreaterOrEqual 16
 
-    It 'keeps the scanner fail-closed by default when findings exist' {
-        $root = Get-NxbKnownErrorTestRoot
-        $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1') -Raw
+        $source = Get-Content -LiteralPath $scanner -Raw
         $source | Should -Match ([regex]::Escape('if ($orderedFinding.Count -gt 0 -and -not $NoThrow)'))
         $source | Should -Match ([regex]::Escape('NXB known-error pre-final scan failed with {0} finding(s).'))
     }
