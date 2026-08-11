@@ -93,7 +93,7 @@ Describe 'NXB known-error ledger pre-final contract' {
     It 'detects double-quoted expected-source regex interpolation' {
         $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-015'
         $regex = [regex]::new([string]$rule.regex)
-        $bad = '[regex]::Escape("throw -f $stateFull")'
+        $bad = '[regex]::Escape("throw -f $stateFull")'.Replace('\"','"')
         $good = "[regex]::Escape('-f `$stateFull')"
         $regex.IsMatch($bad) | Should -BeTrue
         $regex.IsMatch($good) | Should -BeFalse
@@ -119,7 +119,7 @@ Describe 'NXB known-error ledger pre-final contract' {
     It 'keeps the scanner fail-closed by default when findings exist' {
         $root = Get-NxbKnownErrorTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1') -Raw
-        $source | Should -Match ([regex]::Escape("if ($orderedFinding.Count -gt 0 -and -not $NoThrow)"))
+        $source | Should -Match ([regex]::Escape('if ($orderedFinding.Count -gt 0 -and -not $NoThrow)'))
         $source | Should -Match ([regex]::Escape('NXB known-error pre-final scan failed with {0} finding(s).'))
     }
 }
