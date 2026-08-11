@@ -184,6 +184,7 @@ $spoolPath = Join-Path $rawRoot 'controller-spool.jsonl'
 $cursorPath = Join-Path $rawRoot 'controller-spool-cursor.json'
 $reviewPath = Join-Path $reviewRoot 'controller-target-transport-experiment.json'
 $transcript = [Collections.Generic.List[object]]::new()
+if ($transcript.Count -ne 0) { throw 'Transport transcript must start empty before the first authenticated request.' }
 $startedUtc = [DateTime]::UtcNow
 $targetProcess = $null
 $connection = $null
