@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Tracing;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -65,9 +67,7 @@ namespace Nxb.Semantic
             uint ulFlags);
 
         [DllImport("Setupapi.dll", SetLastError = true)]
-        internal static extern IntPtr SetupDiCreateDeviceInfoList(
-            IntPtr classGuid,
-            IntPtr hwndParent);
+        internal static extern IntPtr SetupDiCreateDeviceInfoList(IntPtr classGuid, IntPtr hwndParent);
 
         [DllImport("Setupapi.dll", EntryPoint = "SetupDiCreateDeviceInfoW", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -82,10 +82,7 @@ namespace Nxb.Semantic
 
         [DllImport("Setupapi.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool SetupDiCallClassInstaller(
-            uint installFunction,
-            IntPtr deviceInfoSet,
-            ref SP_DEVINFO_DATA deviceInfoData);
+        internal static extern bool SetupDiCallClassInstaller(uint installFunction, IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData);
 
         [DllImport("Setupapi.dll", EntryPoint = "SetupDiGetDeviceInstanceIdW", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -102,12 +99,139 @@ namespace Nxb.Semantic
 
         [DllImport("Newdev.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool DiUninstallDevice(
-            IntPtr hwndParent,
-            IntPtr deviceInfoSet,
-            ref SP_DEVINFO_DATA deviceInfoData,
-            uint flags,
-            out int needReboot);
+        internal static extern bool DiUninstallDevice(IntPtr hwndParent, IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, uint flags, out int needReboot);
+    }
+
+    [EventSource(Name = "NXB-Semantic-PnP-Fixture")]
+    internal sealed class PnpLifecycleEventSource : EventSource
+    {
+        internal static readonly PnpLifecycleEventSource Log = new PnpLifecycleEventSource();
+
+        private PnpLifecycleEventSource() { }
+
+        [Event(1001, Level = EventLevel.Informational, Task = (EventTask)1, Opcode = EventOpcode.Start)]
+        internal void FixtureCreateConfirmed(string correlationToken, string backend)
+        {
+            if (IsEnabled()) { WriteEvent(1001, correlationToken, backend); }
+        }
+
+        [Event(1002, Level = EventLevel.Informational, Task = (EventTask)1, Opcode = EventOpcode.Stop)]
+        internal void FixtureRemoveConfirmed(string correlationToken, string backend)
+        {
+            if (IsEnabled()) { WriteEvent(1002, correlationToken, backend); }
+        }
+    }
+
+    public sealed class PnpLifecycleEvidenceRecord
+    {
+        public string ProviderName { get; internal set; }
+        public int EventId { get; internal set; }
+        public int Version { get; internal set; }
+        public int Level { get; internal set; }
+        public int Task { get; internal set; }
+        public int Opcode { get; internal set; }
+        public string CorrelationToken { get; internal set; }
+        public string Backend { get; internal set; }
+    }
+
+    public sealed class PnpLifecycleCollector : EventListener
+    {
+        private readonly object syncRoot = new object();
+        private readonly List<PnpLifecycleEvidenceRecord> records = new List<PnpLifecycleEvidenceRecord>();
+
+        public PnpLifecycleCollector()
+        {
+            PnpLifecycleEventSource source = PnpLifecycleEventSource.Log;
+            EnableEvents(source, EventLevel.Informational);
+        }
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            base.OnEventSourceCreated(eventSource);
+            if (eventSource != null && String.Equals(eventSource.Name, "NXB-Semantic-PnP-Fixture", StringComparison.Ordinal))
+            {
+                EnableEvents(eventSource, EventLevel.Informational);
+            }
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData == null || eventData.EventSource == null || !String.Equals(eventData.EventSource.Name, "NXB-Semantic-PnP-Fixture", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string correlationToken = String.Empty;
+            string backend = String.Empty;
+            if (eventData.Payload != null)
+            {
+                if (eventData.Payload.Count > 0 && eventData.Payload[0] != null) { correlationToken = Convert.ToString(eventData.Payload[0]); }
+                if (eventData.Payload.Count > 1 && eventData.Payload[1] != null) { backend = Convert.ToString(eventData.Payload[1]); }
+            }
+
+            PnpLifecycleEvidenceRecord record = new PnpLifecycleEvidenceRecord
+            {
+                ProviderName = eventData.EventSource.Name,
+                EventId = eventData.EventId,
+                Version = eventData.Version,
+                Level = (int)eventData.Level,
+                Task = (int)eventData.Task,
+                Opcode = (int)eventData.Opcode,
+                CorrelationToken = correlationToken,
+                Backend = backend
+            };
+            lock (syncRoot) { records.Add(record); }
+        }
+
+        public PnpLifecycleEvidenceRecord[] Snapshot(string correlationToken)
+        {
+            List<PnpLifecycleEvidenceRecord> result = new List<PnpLifecycleEvidenceRecord>();
+            lock (syncRoot)
+            {
+                foreach (PnpLifecycleEvidenceRecord record in records)
+                {
+                    if (String.IsNullOrEmpty(correlationToken) || String.Equals(record.CorrelationToken, correlationToken, StringComparison.Ordinal))
+                    {
+                        result.Add(record);
+                    }
+                }
+            }
+            return result.ToArray();
+        }
+    }
+
+    public static class PnpLifecycleEvidence
+    {
+        public const string ProviderName = "NXB-Semantic-PnP-Fixture";
+        public const int CreateEventId = 1001;
+        public const int RemoveEventId = 1002;
+
+        public static void EmitCreateIfPresent(string instanceId, string correlationToken, string backend)
+        {
+            ValidateArguments(instanceId, correlationToken, backend);
+            if (!PnpFixtureLease.IsPresent(instanceId))
+            {
+                throw new InvalidOperationException("PnP create evidence cannot be emitted before native presence is confirmed.");
+            }
+            PnpLifecycleEventSource.Log.FixtureCreateConfirmed(correlationToken, backend);
+        }
+
+        public static void EmitRemoveIfAbsent(string instanceId, string correlationToken, string backend)
+        {
+            ValidateArguments(instanceId, correlationToken, backend);
+            if (PnpFixtureLease.IsPresent(instanceId))
+            {
+                throw new InvalidOperationException("PnP remove evidence cannot be emitted while the native fixture remains present.");
+            }
+            PnpLifecycleEventSource.Log.FixtureRemoveConfirmed(correlationToken, backend);
+        }
+
+        private static void ValidateArguments(string instanceId, string correlationToken, string backend)
+        {
+            if (String.IsNullOrWhiteSpace(instanceId)) { throw new ArgumentException("instanceId"); }
+            if (String.IsNullOrWhiteSpace(correlationToken)) { throw new ArgumentException("correlationToken"); }
+            if (String.IsNullOrWhiteSpace(backend)) { throw new ArgumentException("backend"); }
+        }
     }
 
     public sealed class PnpFixtureLease : IDisposable
@@ -135,30 +259,16 @@ namespace Nxb.Semantic
 
         public static bool IsPresent(string instanceId)
         {
-            if (String.IsNullOrWhiteSpace(instanceId))
-            {
-                return false;
-            }
-
+            if (String.IsNullOrWhiteSpace(instanceId)) { return false; }
             uint devInst;
-            uint result = PnpNativeMethods.CM_Locate_DevNodeW(
-                out devInst,
-                instanceId,
-                PnpNativeMethods.CM_LOCATE_DEVNODE_NORMAL);
+            uint result = PnpNativeMethods.CM_Locate_DevNodeW(out devInst, instanceId, PnpNativeMethods.CM_LOCATE_DEVNODE_NORMAL);
             return result == PnpNativeMethods.CR_SUCCESS;
         }
 
         public static PnpFixtureLease Create(string instanceSeed)
         {
-            if (String.IsNullOrWhiteSpace(instanceSeed))
-            {
-                throw new ArgumentException("instanceSeed");
-            }
-
-            try
-            {
-                return CreateSoftwareDevice(instanceSeed);
-            }
+            if (String.IsNullOrWhiteSpace(instanceSeed)) { throw new ArgumentException("instanceSeed"); }
+            try { return CreateSoftwareDevice(instanceSeed); }
             catch (Exception exception) when (IsFallbackEligible(exception))
             {
                 return CreateSetupApiRootDevice(instanceSeed, exception.HResult);
@@ -167,11 +277,7 @@ namespace Nxb.Semantic
 
         private static bool IsFallbackEligible(Exception exception)
         {
-            if (exception is DllNotFoundException || exception is EntryPointNotFoundException)
-            {
-                return true;
-            }
-
+            if (exception is DllNotFoundException || exception is EntryPointNotFoundException) { return true; }
             return exception.HResult == unchecked((int)0x8007007E);
         }
 
@@ -198,68 +304,33 @@ namespace Nxb.Semantic
                 {
                     callbackResult = result;
                     actualId = id;
-                    try
-                    {
-                        ready.Set();
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
+                    try { ready.Set(); } catch (ObjectDisposedException) { }
                 };
 
                 IntPtr handle;
-                int immediateResult = PnpNativeMethods.SwDeviceCreate(
-                    "NXBSEM",
-                    "HTREE\\ROOT\\0",
-                    ref info,
-                    0,
-                    IntPtr.Zero,
-                    callback,
-                    IntPtr.Zero,
-                    out handle);
+                int immediateResult = PnpNativeMethods.SwDeviceCreate("NXBSEM", "HTREE\\ROOT\\0", ref info, 0, IntPtr.Zero, callback, IntPtr.Zero, out handle);
                 if (immediateResult < 0)
                 {
-                    if (handle != IntPtr.Zero)
-                    {
-                        PnpNativeMethods.SwDeviceClose(handle);
-                    }
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
                     Marshal.ThrowExceptionForHR(immediateResult);
                 }
-
                 if (!ready.Wait(TimeSpan.FromSeconds(10)))
                 {
-                    if (handle != IntPtr.Zero)
-                    {
-                        PnpNativeMethods.SwDeviceClose(handle);
-                    }
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
                     throw new TimeoutException("SwDeviceCreate callback timed out.");
                 }
-
                 GC.KeepAlive(callback);
                 if (callbackResult < 0)
                 {
-                    if (handle != IntPtr.Zero)
-                    {
-                        PnpNativeMethods.SwDeviceClose(handle);
-                    }
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
                     Marshal.ThrowExceptionForHR(callbackResult);
                 }
-
                 if (String.IsNullOrWhiteSpace(actualId))
                 {
-                    if (handle != IntPtr.Zero)
-                    {
-                        PnpNativeMethods.SwDeviceClose(handle);
-                    }
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
                     throw new InvalidOperationException("SwDeviceCreate callback returned no instance id.");
                 }
-
-                return new PnpFixtureLease
-                {
-                    softwareDeviceHandle = handle,
-                    InstanceId = actualId,
-                    Backend = "software_device_api"
-                };
+                return new PnpFixtureLease { softwareDeviceHandle = handle, InstanceId = actualId, Backend = "software_device_api" };
             }
         }
 
@@ -283,33 +354,18 @@ namespace Nxb.Semantic
             {
                 Guid classGuid = Guid.Empty;
                 string generatedRootId = "NXBSEMANTIC-" + NormalizeSeed(instanceSeed);
-                if (!PnpNativeMethods.SetupDiCreateDeviceInfoW(
-                    deviceInfoSet,
-                    generatedRootId,
-                    ref classGuid,
-                    "NXB Semantic Ephemeral Root Device",
-                    IntPtr.Zero,
-                    PnpNativeMethods.DICD_GENERATE_ID,
-                    ref deviceInfoData))
+                if (!PnpNativeMethods.SetupDiCreateDeviceInfoW(deviceInfoSet, generatedRootId, ref classGuid, "NXB Semantic Ephemeral Root Device", IntPtr.Zero, PnpNativeMethods.DICD_GENERATE_ID, ref deviceInfoData))
                 {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiCreateDeviceInfoW failed.");
                 }
 
                 string instanceId = GetSetupApiInstanceId(deviceInfoSet, ref deviceInfoData);
-                if (String.IsNullOrWhiteSpace(instanceId))
-                {
-                    throw new InvalidOperationException("SetupAPI root fixture returned no instance id.");
-                }
-
-                if (!PnpNativeMethods.SetupDiCallClassInstaller(
-                    PnpNativeMethods.DIF_REGISTERDEVICE,
-                    deviceInfoSet,
-                    ref deviceInfoData))
+                if (String.IsNullOrWhiteSpace(instanceId)) { throw new InvalidOperationException("SetupAPI root fixture returned no instance id."); }
+                if (!PnpNativeMethods.SetupDiCallClassInstaller(PnpNativeMethods.DIF_REGISTERDEVICE, deviceInfoSet, ref deviceInfoData))
                 {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "DIF_REGISTERDEVICE failed.");
                 }
                 registered = true;
-
                 return new PnpFixtureLease
                 {
                     setupDeviceInfoSet = deviceInfoSet,
@@ -329,60 +385,33 @@ namespace Nxb.Semantic
                     int lastError;
                     bool rebootRequired;
                     uninstallCompleted = TryUninstallSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError, out rebootRequired);
-                    if (!uninstallCompleted)
-                    {
-                        cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
-                    }
-                    else if (rebootRequired)
-                    {
-                        cleanupFailure = new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error.");
-                    }
+                    if (!uninstallCompleted) { cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error."); }
+                    else if (rebootRequired) { cleanupFailure = new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error."); }
                     registered = !uninstallCompleted;
                 }
-
-                if (!registered)
+                if (!registered && !PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet) && cleanupFailure == null)
                 {
-                    if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet) && cleanupFailure == null)
-                    {
-                        cleanupFailure = new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed after creation error.");
-                    }
+                    cleanupFailure = new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed after creation error.");
                 }
-
-                if (cleanupFailure != null)
-                {
-                    throw new AggregateException("SetupAPI fallback creation and cleanup both failed.", creationFailure, cleanupFailure);
-                }
+                if (cleanupFailure != null) { throw new AggregateException("SetupAPI fallback creation and cleanup both failed.", creationFailure, cleanupFailure); }
                 throw;
             }
         }
 
-        private static bool TryUninstallSetupDevice(
-            IntPtr deviceInfoSet,
-            ref SP_DEVINFO_DATA deviceInfoData,
-            out int lastError,
-            out bool rebootRequired)
+        private static bool TryUninstallSetupDevice(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, out int lastError, out bool rebootRequired)
         {
             lastError = 0;
             rebootRequired = false;
             for (int attempt = 1; attempt <= CleanupAttempts; attempt++)
             {
                 int nativeNeedReboot;
-                if (PnpNativeMethods.DiUninstallDevice(
-                    IntPtr.Zero,
-                    deviceInfoSet,
-                    ref deviceInfoData,
-                    0,
-                    out nativeNeedReboot))
+                if (PnpNativeMethods.DiUninstallDevice(IntPtr.Zero, deviceInfoSet, ref deviceInfoData, 0, out nativeNeedReboot))
                 {
                     rebootRequired = nativeNeedReboot != 0;
                     return true;
                 }
-
                 lastError = Marshal.GetLastWin32Error();
-                if (attempt < CleanupAttempts)
-                {
-                    Thread.Sleep(100);
-                }
+                if (attempt < CleanupAttempts) { Thread.Sleep(100); }
             }
             return false;
         }
@@ -392,25 +421,11 @@ namespace Nxb.Semantic
             StringBuilder builder = new StringBuilder();
             foreach (char character in seed.ToUpperInvariant())
             {
-                if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9'))
-                {
-                    builder.Append(character);
-                }
-                else
-                {
-                    builder.Append('-');
-                }
-
-                if (builder.Length >= 80)
-                {
-                    break;
-                }
+                if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')) { builder.Append(character); }
+                else { builder.Append('-'); }
+                if (builder.Length >= 80) { break; }
             }
-
-            if (builder.Length == 0)
-            {
-                builder.Append(Guid.NewGuid().ToString("N").ToUpperInvariant());
-            }
+            if (builder.Length == 0) { builder.Append(Guid.NewGuid().ToString("N").ToUpperInvariant()); }
             return builder.ToString();
         }
 
@@ -418,30 +433,15 @@ namespace Nxb.Semantic
         {
             uint requiredSize;
             StringBuilder buffer = new StringBuilder(512);
-            if (PnpNativeMethods.SetupDiGetDeviceInstanceIdW(
-                deviceInfoSet,
-                ref deviceInfoData,
-                buffer,
-                (uint)buffer.Capacity,
-                out requiredSize))
+            if (PnpNativeMethods.SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref deviceInfoData, buffer, (uint)buffer.Capacity, out requiredSize))
             {
                 return buffer.ToString();
             }
-
             int error = Marshal.GetLastWin32Error();
             const int ERROR_INSUFFICIENT_BUFFER = 122;
-            if (error != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
-            {
-                throw new Win32Exception(error, "SetupDiGetDeviceInstanceIdW failed.");
-            }
-
+            if (error != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) { throw new Win32Exception(error, "SetupDiGetDeviceInstanceIdW failed."); }
             buffer = new StringBuilder((int)requiredSize);
-            if (!PnpNativeMethods.SetupDiGetDeviceInstanceIdW(
-                deviceInfoSet,
-                ref deviceInfoData,
-                buffer,
-                (uint)buffer.Capacity,
-                out requiredSize))
+            if (!PnpNativeMethods.SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref deviceInfoData, buffer, (uint)buffer.Capacity, out requiredSize))
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiGetDeviceInstanceIdW failed.");
             }
@@ -450,11 +450,7 @@ namespace Nxb.Semantic
 
         public void Close()
         {
-            if (Closed)
-            {
-                return;
-            }
-
+            if (Closed) { return; }
             if (softwareDeviceHandle != IntPtr.Zero)
             {
                 PnpNativeMethods.SwDeviceClose(softwareDeviceHandle);
@@ -476,24 +472,16 @@ namespace Nxb.Semantic
                     CleanupRebootRequired = rebootRequired;
                     rebootRequiredAfterSuccessfulUninstall = rebootRequired;
                 }
-
                 if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(setupDeviceInfoSet))
                 {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed.");
                 }
                 setupDeviceInfoSet = IntPtr.Zero;
             }
-
             Closed = true;
-            if (rebootRequiredAfterSuccessfulUninstall)
-            {
-                throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot.");
-            }
+            if (rebootRequiredAfterSuccessfulUninstall) { throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot."); }
         }
 
-        public void Dispose()
-        {
-            Close();
-        }
+        public void Dispose() { Close(); }
     }
 }
