@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-irl006-part3-controller-target-transport-v1",
+  "scope": "loopback-controller-target-certification-only",
+  "protocol": "newline-json-hmac-sha256-v1",
+  "bind_address": "127.0.0.1",
+  "maximum_frame_bytes": 16384,
+  "maximum_session_seconds": 300,
+  "event_count": 24,
+  "queue": {
+    "maximum_frames": 8,
+    "high_watermark": 6,
+    "low_watermark": 2
+  },
+  "spool": {
+    "maximum_records": 64,
+    "maximum_bytes": 262144
+  },
+  "recovery": {
+    "restart_after_accepted_event": 12,
+    "maximum_reconnect_attempts": 3
+  },
+  "authentication": {
+    "algorithm": "HMACSHA256",
+    "certification_test_key_hex": "dcd3ff56e9826b21e361f918bd512eb39ba80fa4c328162f84dc48b36c445ba0",
+    "production_secret_claimed": false
+  },
+  "required_controls": [
+    "invalid_auth_rejected_without_sequence_advance",
+    "duplicate_rejected_without_sequence_advance",
+    "gap_detected_without_sequence_advance",
+    "bounded_queue_never_overflows",
+    "backpressure_observed",
+    "pending_events_spooled_locally",
+    "spool_replayed_after_drain",
+    "target_restart_recovers_checkpoint",
+    "emergency_stop_rejects_later_data"
+  ],
+  "review_privacy": {
+    "authentication_key_reviewable": false,
+    "payload_body_reviewable": true,
+    "payload_class": "synthetic-certification-event-only"
+  }
+}
