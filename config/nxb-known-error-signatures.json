@@ -70,6 +70,16 @@
       "description": "Bare WildcardOptions engine enum type that is not a PowerShell type accelerator",
       "include_globs": ["scripts/Invoke-NxbKnownErrorScan.ps1"],
       "regex": "(?im)\\[WildcardOptions\\]::"
+    },
+    {
+      "id": "NXB-ERR-021",
+      "description": "Assignment to the automatic PROFILE variable through case-insensitive profile spelling",
+      "include_globs": [
+        "scripts/*NxbAdaptive*.ps1",
+        "tests/Adaptive*.Tests.ps1",
+        "tests/KnownErrorLedger.Tests.ps1"
+      ],
+      "regex": "(?im)^\\s*\\$profile\\s*="
     }
   ]
 }
