@@ -72,8 +72,12 @@ $policy = Get-Content -LiteralPath $policyFull -Raw | ConvertFrom-Json
 $signals = Get-Content -LiteralPath $signalsFull -Raw | ConvertFrom-Json
 $previousState = $null
 if (Test-Path -LiteralPath $stateFull -PathType Leaf) {
-    try { $previousState = Get-Content -LiteralPath $stateFull -Raw | ConvertFrom-Json }
-    catch { Write-Verbose -Message 'Previous adaptive trigger state is unreadable; starting from empty state.' }
+    try {
+        $previousState = Get-Content -LiteralPath $stateFull -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('Adaptive trigger state is unreadable: {0}' -f $stateFull)
+    }
 }
 
 $now = $NowUtc.ToUniversalTime()
