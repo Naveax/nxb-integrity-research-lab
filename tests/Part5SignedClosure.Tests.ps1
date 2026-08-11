@@ -194,10 +194,12 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $transportSource = Get-Content -LiteralPath $context.transport -Raw
         $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'))
         $transportSource | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'))
+        $transportSource | Should -Match ([regex]::Escape('if ($transcript.Count -ne 0) { throw ''Transport transcript must start empty before the first authenticated request.'' }'))
         $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Records'))
         $v2Source = Get-Content -LiteralPath $context.certification_v2 -Raw
         $v2Source | Should -Match ([regex]::Escape('$scan.rule_count -lt 22'))
         $v2Source | Should -Match ([regex]::Escape('$result.known_error_rule_count -lt 22'))
+        $v2Source | Should -Match ([regex]::Escape('$initialTranscriptInvariant'))
         $v2Source | Should -Match ([regex]::Escape('ERR-033=true'))
     }
 }
