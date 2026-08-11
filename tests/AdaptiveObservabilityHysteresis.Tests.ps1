@@ -31,15 +31,29 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
     It 'keeps hysteresis state repo-owned and connects it to resolver and panel' {
         $root = Get-NxbAdaptiveHysteresisRoot
         $stateScript = Join-Path $root 'scripts\Update-NxbAdaptiveObservabilityState.ps1'
+        $testPath = Join-Path $root 'tests\AdaptiveObservabilityHysteresis.Tests.ps1'
         Test-Path -LiteralPath $stateScript -PathType Leaf | Should -BeTrue
         $resolver = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
         $panel = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-NxbAdaptiveObservabilityPanel.ps1') -Raw
-        $testSource = Get-Content -LiteralPath (Join-Path $root 'tests\AdaptiveObservabilityHysteresis.Tests.ps1') -Raw
+        $stateSource = Get-Content -LiteralPath $stateScript -Raw
+        $tokens = $null
+        $parseErrors = $null
+        $testAst = [Management.Automation.Language.Parser]::ParseFile($testPath,[ref]$tokens,[ref]$parseErrors)
+        @($parseErrors).Count | Should -Be 0
+        $functionNames = @(
+            $testAst.FindAll(
+                { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] },
+                $true
+            ) | ForEach-Object { [string]$_.Name }
+        )
         $resolver | Should -Match ([regex]::Escape('[string]$TriggerStatePath'))
         $panel | Should -Match ([regex]::Escape('$stateUpdaterPath'))
         $panel | Should -Match ([regex]::Escape('-TriggerStatePath $triggerStatePath'))
-        $testSource | Should -Not -Match ([regex]::Escape('function Write-NxbHysteresisSignals'))
-        $testSource | Should -Match ([regex]::Escape('function Write-NxbHysteresisSignalDocument'))
+        $functionNames | Should -Not -Contain 'Write-NxbHysteresisSignals'
+        $functionNames | Should -Contain 'Write-NxbHysteresisSignalDocument'
+        $stateSource | Should -Match ([regex]::Escape('if ($Value -is [DateTimeOffset])'))
+        $stateSource | Should -Match ([regex]::Escape('if ($Value -is [DateTime])'))
+        $stateSource | Should -Match ([regex]::Escape('return ([DateTime]$Value).ToUniversalTime()'))
     }
 
     It 'activates a matching trigger and establishes its hold window' {
