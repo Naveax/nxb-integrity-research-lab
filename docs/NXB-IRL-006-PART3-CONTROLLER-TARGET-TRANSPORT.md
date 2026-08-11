@@ -26,153 +26,105 @@ No property is promoted from source inspection alone. The native experiment and 
 
 The certification protocol is `newline-json-hmac-sha256-v1` over a TCP listener restricted to `127.0.0.1`.
 
-Each frame binds the following canonical material:
+Each frame binds schema version, session identifier, sender role, sequence number, frame kind, payload SHA-256, and the base64 payload representation. The authentication tag is HMAC-SHA256 over canonical frame material. Controller requests and target responses are both authenticated. PowerShell verification uses fixed-time byte comparison and preserves `byte[]` cardinality explicitly; the independent Python validator recomputes HMAC separately.
 
-- schema version
-- session identifier
-- sender role (`controller` or `target`)
-- monotonically tracked sequence number
-- frame kind
-- SHA-256 of the payload JSON
-- base64 representation of the payload JSON
-
-The authentication tag is HMAC-SHA256 over this canonical material. Controller requests and target responses are both authenticated. PowerShell verification converts the provided and independently computed tags to bytes and uses `CryptographicOperations.FixedTimeEquals`; the independent Python validator uses its own HMAC recomputation. The review evidence contains the deterministic synthetic protocol transcript but does not expose the certification key itself.
-
-## Sequence semantics
+## Sequence and durability semantics
 
 Authentication is evaluated before request-sequence classification.
 
-For an authenticated controller request:
-
-- `sequence < next_expected_sequence` is a duplicate and is rejected without advancing the request sequence.
-- `sequence > next_expected_sequence` is an observed gap and is rejected without advancing the request sequence.
+- `sequence < next_expected_sequence` is a duplicate and is rejected without advancing request state.
+- `sequence > next_expected_sequence` is a gap and is rejected without advancing request state.
 - only `sequence == next_expected_sequence` is eligible to advance.
 
-Target responses have a separate monotonically increasing response sequence. The independent Python validator recomputes authentication and independently walks both request and response sequence state from the transcript.
+Target responses have a separate monotonically increasing sequence. Before an ACK or REJECT becomes visible on the socket, the target advances its response sequence and atomically checkpoints the complete request/queue/counter/stop state. This durable-before-wire ordering makes the process-kill recovery test meaningful.
 
-## Durable acknowledgement ordering
+## Bounded queue, backpressure and spool
 
-The target does not acknowledge an in-memory-only transition. Before any authenticated ACK or REJECT is written to the socket, the target increments the response sequence and atomically persists the complete current state, including request sequence, queue/counter mutations, emergency-stop state, and the next response sequence.
-
-The wire response is emitted only after that checkpoint succeeds. This ordering makes the process-kill recovery test meaningful: once the controller has observed an acknowledgement, the corresponding target state must already be recoverable from disk.
-
-## Bounded queue and backpressure
-
-The certification contract uses:
-
-- maximum queue depth: 8 frames
-- high watermark: 6 frames
-- low watermark: 2 frames
-
-When the high watermark is reached the target returns authenticated backpressure state. The controller stops feeding new pending synthetic events directly and writes the remainder to the bounded local spool. The experiment must finish with zero target queue-overflow events and an observed maximum queue depth no greater than the configured maximum.
-
-## Local spool
-
-The controller spool is a bounded local JSONL file with independent record and byte ceilings. A replay cursor records how many spooled records have been acknowledged.
-
-The native experiment requires:
-
-- at least one pending event is spooled,
-- the spool stays inside both budgets,
-- every spooled event is replayed after queue drainage,
-- the cursor reaches the total record count,
-- authenticated replay transcript labels independently account for every spooled event,
-- the spool file is removed after successful replay and cleanup is verified.
-
-The spool itself is local working evidence and is not packaged into the final review ZIP.
+The certification contract uses maximum queue depth 8, high watermark 6, and low watermark 2. Reaching the high watermark produces authenticated backpressure. The controller stops feeding pending events directly and writes the remainder to a bounded local JSONL spool with both record and byte ceilings. Every spooled event must later be replayed, its cursor must reach the total count, authenticated transcript labels must independently account for every replay, and the local spool must be deleted after success.
 
 ## Interrupted-transfer recovery
 
-The target persists its checkpoint state atomically through a temporary file followed by replacement of the canonical state file. Response acknowledgements follow the durable-before-wire rule above.
+After the configured twelfth accepted logical event, the experiment closes the controller connection, forcibly terminates the target PowerShell process, starts generation two against the same state directory, requires exact request/response checkpoint recovery, reconnects, sends an authenticated `resume`, and continues replay from the persisted controller spool cursor.
 
-After the configured twelfth accepted logical event, the native experiment:
-
-1. closes the controller connection,
-2. forcibly terminates the first target PowerShell process,
-3. starts a new target process against the same state directory,
-4. requires target generation to advance from 1 to 2,
-5. compares the recovered request and response sequence checkpoints with the controller's current state,
-6. reconnects over a new loopback socket,
-7. sends an authenticated `resume` frame,
-8. continues replay from the persisted controller spool cursor.
-
-This is a real process interruption, not a simulated boolean restart.
+This is a real process interruption, not a simulated restart flag.
 
 ## Emergency stop
 
-After every configured synthetic event has been accepted, the controller sends an authenticated `emergency_stop` frame. The target must arm the stop state and advance that control message normally.
+After all configured synthetic events are accepted, an authenticated `emergency_stop` is armed. A later otherwise-valid authenticated event at the next expected sequence must be rejected as `emergency_stop_active` without advancing request state. The still-current sequence is then used for authenticated shutdown.
 
-The controller then sends an otherwise valid authenticated event at the next expected sequence. The target must reject it as `emergency_stop_active` without advancing the request sequence. An authenticated `shutdown` frame using that still-current sequence is then allowed to terminate the certification target cleanly.
+## Independent transport validation
 
-## Independent validation
+`tools/validate_controller_target_transport.py` independently verifies request/response HMACs, payload hashes, request sequence semantics, response sequence continuity, event accounting, queue/backpressure state, spool replay labels, generation-two recovery, and emergency-stop behavior.
 
-`tools/validate_controller_target_transport.py` independently verifies:
+It also requires nine fail-closed evidence mutations. Semantic sequence/emergency-stop mutations are re-signed so rejection must occur for the intended semantic reason rather than because authentication was accidentally broken.
 
-- every expected-valid controller request HMAC,
-- the deliberately invalid request HMAC,
-- every target response HMAC,
-- request sequence semantics,
-- response sequence continuity,
-- accepted event count,
-- duplicate and gap controls,
-- queue bounds and backpressure,
-- spool accounting and authenticated replay labels,
-- generation-two restart/resume evidence,
-- emergency-stop denial,
-- final target counters and shutdown state.
+## Inherited Part 2 authority
 
-It also requires nine fail-closed evidence mutations. Authentication-specific mutations intentionally retain invalid HMAC. Sequence and emergency-stop semantic mutations are re-signed with the certification key so those negative controls must fail for their intended semantic reason rather than merely failing authentication.
+Part 3 re-runs `scripts/Invoke-NxbSemanticHardeningCertificationV2.ps1` on the same exact Part 3 Git head and requires inherited semantic hardening to return `requested=8 / validated=8` before the transport experiment can be certified.
 
-## Inherited authority
+### Portable V1 native failure
 
-Part 3 is not independent from the previous production-roadmap block. The repo-owned Part 3 certifier re-runs:
+Part 3 Portable V1 was frozen at:
 
-`scripts/Invoke-NxbSemanticHardeningCertificationV2.ps1`
+```text
+f0e6f66aee676dd703089d2705fe856ab8a1db6b
+```
 
-on the same exact Part 3 Git head and requires inherited Part 2 semantic hardening to return `requested=8 / validated=8` before the transport experiment can be certified.
+The native Windows run passed the exact-head gate, Part 3 static/source gates, inherited Part 1, and the full IRL-005 V5 chain. It then failed inside inherited Part 2 when the PnP semantic experiment attempted the owned fixture lifecycle.
 
-This also means the Part 2 `NXB-ERR-024` repair is naturally re-tested during the eventual Part 3 native authority run.
+The failure exposed `NXB-ERR-025`: the host preflight treated `CfgMgr32.dll` file presence as proof that the Software Device lifecycle was executable, but the real `SwDeviceCreate` callback failed with `0x8007007E`. The same transcript also showed the optional `Win32_PnPEntity` CIM surface returning `Not supported`.
+
+### V2 PnP capability repair
+
+V2 replaces that shallow authority with one shared repo-owned native fixture implementation:
+
+- primary backend: Software Device API (`SwDeviceCreate` / `SwDeviceClose`),
+- fallback only for the bounded unavailable-surface class: SetupAPI root-enumerated owned synthetic device,
+- present-state probe: `CM_Locate_DevNode(..., CM_LOCATE_DEVNODE_NORMAL)`, not CIM,
+- preflight must execute create → present → remove → absent before PASS,
+- SetupAPI cleanup uses `DiUninstallDevice` with `NeedReboot` captured; any required reboot blocks certification,
+- cleanup is bounded and independently checked for absence,
+- only sanitized HRESULT material is recorded; localized error text stays outside review evidence,
+- create/remove event evidence uses bounded polling rather than a single fixed sleep.
+
+No physical PnP device is selected, disabled, removed, or reconfigured by this fixture.
 
 ## Known-error discipline
 
-Part 3 inherits `NXB-ERR-001` through `NXB-ERR-024`.
+Part 3 now inherits `NXB-ERR-001` through `NXB-ERR-025`. The active machine-signature set contains 14 statically detectable rules. In addition to the earlier transport protections, ERR-025 rejects both the old file-only Software Device capability assignment and `Get-CimInstance Win32_PnPEntity` in the native semantic PnP path.
 
-The machine signature set extends the applicable generic rules to `scripts/*NxbControllerTarget*.ps1` and `tests/ControllerTarget*.Tests.ps1`. In particular:
-
-- ERR-015 covers literal source assertions in the Part 3 Pester contract.
-- ERR-022 covers the Part 3 native stderr-capture helper.
-- ERR-024 covers any reintroduction of the invalid `claim_targets.PSObject.Properties` JSON-array projection.
-
-Pre-final review also replaced the state-changing helper name `Start-NxbTransportTargetProcess` with `Invoke-NxbTransportTargetProcessStart` rather than suppressing the PSScriptAnalyzer ShouldProcess rule. The same review hardened HMAC comparison to fixed-time byte equality and repaired the acknowledgement/checkpoint ordering so durable state is committed before a wire response is observable.
+The ledger contract remains 12 tests on both PowerShell runtimes; Part 2 semantic-hardening contract remains 12 tests; Part 3 transport contract remains 16 tests. Test-count drift is not used as a substitute for broader assertions.
 
 ## Review evidence
 
-The final Part 3 review ZIP is deliberately JSON-only and contains exactly:
+The final Part 3 review ZIP remains JSON-only and contains exactly:
 
 - `controller-target-transport-experiment.json`
 - `controller-target-transport-validation.json`
 - `known-error-scan.json`
 - `controller-target-transport-certification-receipt.json`
 
-Target state, local spool, spool cursor, ready documents, and other raw-local working artifacts remain outside the review ZIP.
+Raw target state, local spool, cursor, readiness files, Part 2 raw native evidence, and other working artifacts stay outside the Part 3 review ZIP.
 
 ## Repo-owned authority
 
-Top Part 3 gate:
+Top gate:
 
 `scripts/Invoke-NxbControllerTargetTransportCertification.ps1`
 
-Target chain:
+Authority chain:
 
 ```text
 exact clean head
 → parser + PSScriptAnalyzer + Python syntax
-→ exact-tree known-error scan
-→ Part 3 PS7 + PS5.1 source contract
+→ exact-tree known-error scan through ERR-025
+→ Part 3 PS7 + PS5.1 16-test source contract
 → inherited Part 2 native re-certification on the same exact head
+→ exact PnP lifecycle capability probe and cleanup
+→ inherited Part 2 requested=8 / validated=8
 → real loopback controller/target experiment
 → target process interruption + durable recovery
-→ independent 9/9 transport validation
+→ independent transport 9/9
 → independent negative controls 9/9
 → bounded JSON-only review ZIP
 → final exact-tree zero-error scan
