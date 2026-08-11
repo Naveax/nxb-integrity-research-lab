@@ -64,6 +64,12 @@
       "description": "Double-quoted Regex.Escape expected-source literal containing a PowerShell variable",
       "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
+    },
+    {
+      "id": "NXB-ERR-019",
+      "description": "Bare WildcardOptions engine enum type that is not a PowerShell type accelerator",
+      "include_globs": ["scripts/Invoke-NxbKnownErrorScan.ps1"],
+      "regex": "(?im)\\[WildcardOptions\\]::"
     }
   ]
 }
