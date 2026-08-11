@@ -49,6 +49,10 @@ def canonical_material(frame: Dict[str, Any]) -> str:
     )
 
 
+def sign_frame(frame: Dict[str, Any], key: bytes) -> None:
+    frame["auth_tag"] = hmac.new(key, canonical_material(frame).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 def auth_valid(frame: Dict[str, Any], key: bytes) -> bool:
     if frame.get("schema_version") != 1:
         return False
@@ -206,6 +210,13 @@ def validate_document(document: Dict[str, Any], config: Dict[str, Any]) -> Dict[
     spool_sha = str(spool.get("sha256", ""))
     if len(spool_sha) != 64 or any(ch not in "0123456789abcdef" for ch in spool_sha):
         fail("spool SHA-256 is invalid")
+    replay_labels = sorted(label for label in labels if label.startswith("spool_replay_"))
+    if len(replay_labels) != int(spool.get("record_count", -1)):
+        fail("spool replay transcript label count does not match spooled record count")
+    if any(len(labels[label]) != 1 for label in replay_labels):
+        fail("one or more spool replay transcript labels are duplicated")
+    if int(document.get("spool_replayed_event_count", -1)) != len(replay_labels):
+        fail("review spool replay count does not match authenticated transcript replay labels")
 
     recovery = document.get("recovery") or {}
     if recovery.get("restart_performed") is not True:
@@ -257,6 +268,7 @@ def validate_document(document: Dict[str, Any], config: Dict[str, Any]) -> Dict[
         "response_sequence_count": expected_response_sequence - 1,
         "final_expected_request_sequence": expected_request_sequence,
         "backpressure_ack_count": backpressure_ack_count,
+        "spool_replay_label_count": len(replay_labels),
     }
 
 
@@ -270,6 +282,7 @@ def expect_rejection(document: Dict[str, Any], config: Dict[str, Any], mutation_
 
 def run_negative_controls(document: Dict[str, Any], config: Dict[str, Any]) -> int:
     mutations: List[tuple[str, Dict[str, Any]]] = []
+    key = bytes.fromhex(str((config.get("authentication") or {})["certification_test_key_hex"]))
 
     request_auth = copy.deepcopy(document)
     for entry in request_auth["transcript"]:
@@ -285,7 +298,9 @@ def run_negative_controls(document: Dict[str, Any], config: Dict[str, Any]) -> i
     mutations.append(("tampered_response_auth", response_auth))
 
     response_sequence = copy.deepcopy(document)
-    response_sequence["transcript"][1]["response"]["sequence"] = 999
+    response_sequence_frame = response_sequence["transcript"][1]["response"]
+    response_sequence_frame["sequence"] = 999
+    sign_frame(response_sequence_frame, key)
     mutations.append(("response_sequence_gap", response_sequence))
 
     control_false = copy.deepcopy(document)
@@ -307,6 +322,7 @@ def run_negative_controls(document: Dict[str, Any], config: Dict[str, Any]) -> i
     post_stop = copy.deepcopy(document)
     post_entry = next(entry for entry in post_stop["transcript"] if entry.get("label") == "post_stop_event_negative")
     post_entry["response"]["kind"] = "ack"
+    sign_frame(post_entry["response"], key)
     mutations.append(("post_stop_ack", post_stop))
 
     accepted_count = copy.deepcopy(document)
