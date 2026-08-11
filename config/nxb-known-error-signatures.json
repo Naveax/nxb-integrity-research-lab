@@ -115,6 +115,12 @@
       "description": "Mandatory object-array parameter rejects an expected empty PnP evidence collection",
       "include_globs": ["scripts/Invoke-NxbSemanticPnpEventExperiment.ps1"],
       "regex": "(?im)\\[Parameter\\(Mandatory\\)\\]\\[object\\[\\]\\]\\$Record\\b"
+    },
+    {
+      "id": "NXB-ERR-031",
+      "description": "Direct Hyper-V VMFirmware EnableSecureBoot readback assumes a property name that can vary by host module object shape",
+      "include_globs": ["scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1"],
+      "regex": "(?im)\\(\\s*Get-VMFirmware\\b[^\\r\\n]*\\)\\.EnableSecureBoot\\b"
     }
   ]
 }
