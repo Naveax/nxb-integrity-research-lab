@@ -9,7 +9,7 @@ function ConvertFrom-NxbTransportHex {
     for ($index = 0; $index -lt $bytes.Length; $index++) {
         $bytes[$index] = [Convert]::ToByte($Hex.Substring($index * 2,2),16)
     }
-    return $bytes
+    return ,$bytes
 }
 
 function Get-NxbTransportSha256Text {
