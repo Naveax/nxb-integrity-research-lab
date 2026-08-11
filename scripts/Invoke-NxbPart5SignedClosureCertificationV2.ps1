@@ -108,11 +108,15 @@ if ([regex]::IsMatch($rootTraceSource,$unsafeDictionaryWalker)) {
 $transportSource = Get-Content -LiteralPath $transportPath -Raw
 $goodTranscriptSignature = '[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'
 $badTranscriptSignature = '[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'
+$initialTranscriptInvariant = 'if ($transcript.Count -ne 0) { throw ''Transport transcript must start empty before the first authenticated request.'' }'
 if ($transportSource.IndexOf($goodTranscriptSignature,[StringComparison]::Ordinal) -lt 0) {
     throw 'ERR-033 repair missing: transport transcript does not explicitly allow the valid empty initial collection.'
 }
 if ($transportSource.IndexOf($badTranscriptSignature,[StringComparison]::Ordinal) -ge 0) {
     throw 'ERR-033 regression: mandatory transport transcript rejects the valid empty initial collection.'
+}
+if ($transportSource.IndexOf($initialTranscriptInvariant,[StringComparison]::Ordinal) -lt 0) {
+    throw 'ERR-033 repair missing: transport transcript zero-cardinality invariant is absent.'
 }
 if ($transportSource.IndexOf('[Parameter(Mandatory)][object[]]$Records',[StringComparison]::Ordinal) -lt 0) {
     throw 'ERR-033 boundary drift: non-empty spool-record contract was unexpectedly loosened.'
