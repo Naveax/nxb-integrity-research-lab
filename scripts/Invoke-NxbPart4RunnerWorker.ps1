@@ -25,13 +25,29 @@ function Get-NxbPart4ReceiptCount {
 
 function Sync-NxbPart4ReceiptCheckpoint {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][object]$Checkpoint,[Parameter(Mandatory)][string]$ReceiptRoot)
+    param(
+        [Parameter(Mandatory)][object]$Checkpoint,
+        [Parameter(Mandatory)][object]$Manifest,
+        [Parameter(Mandatory)][string]$ReceiptRoot
+    )
     $completed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($taskId in @($Checkpoint.completed_task_ids)) { [void]$completed.Add([string]$taskId) }
     foreach ($receiptFile in @(Get-ChildItem -LiteralPath $ReceiptRoot -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
         $receipt = Read-NxbPart4Json -Path $receiptFile.FullName
-        if ([string]$receipt.run_id -cne [string]$Checkpoint.run_id) { throw ('Receipt run binding mismatch: {0}' -f $receiptFile.Name) }
-        [void]$completed.Add([string]$receipt.task_id)
+        foreach ($name in @('run_id','exact_head','config_sha256','scope_sha256')) {
+            if ([string]$receipt.PSObject.Properties[$name].Value -cne [string]$Manifest.PSObject.Properties[$name].Value) {
+                throw ('Receipt binding mismatch: file={0} field={1}' -f $receiptFile.Name,$name)
+            }
+        }
+        $receiptTaskId = [string]$receipt.task_id
+        $attemptProperty = $Checkpoint.attempts.PSObject.Properties[$receiptTaskId]
+        if ($null -eq $attemptProperty) { throw ('Receipt task is absent from checkpoint attempt map: {0}' -f $receiptTaskId) }
+        if ([int]$receipt.attempt -gt [int]$attemptProperty.Value) { $attemptProperty.Value = [int]$receipt.attempt }
+        $domain = [string]$receipt.domain
+        $domainProperty = $Checkpoint.domain_last_served_tick.PSObject.Properties[$domain]
+        if ($null -eq $domainProperty) { throw ('Receipt domain is absent from checkpoint fairness map: {0}' -f $domain) }
+        if ([int]$receipt.committed_tick -gt [int]$domainProperty.Value) { $domainProperty.Value = [int]$receipt.committed_tick }
+        [void]$completed.Add($receiptTaskId)
     }
     $Checkpoint.completed_task_ids = @($completed | ForEach-Object { [string]$_ } | Sort-Object)
     $Checkpoint.budget_consumed = @($Checkpoint.completed_task_ids).Count
@@ -55,7 +71,7 @@ $checkpoint = Read-NxbPart4Json -Path $checkpointPath
 if ((Get-NxbPart4FileSha256 -Path $policyPath) -cne [string]$manifest.config_sha256) { throw 'Worker policy hash mismatch.' }
 
 $checkpointCountBeforeReconcile = @($checkpoint.completed_task_ids).Count
-Sync-NxbPart4ReceiptCheckpoint -Checkpoint $checkpoint -ReceiptRoot $receiptRoot
+Sync-NxbPart4ReceiptCheckpoint -Checkpoint $checkpoint -Manifest $manifest -ReceiptRoot $receiptRoot
 $checkpointCountAfterReconcile = @($checkpoint.completed_task_ids).Count
 if ($checkpointCountAfterReconcile -gt $checkpointCountBeforeReconcile) {
     Write-NxbPart4WorkerEvent -Path $eventPath -InputObject ([pscustomobject][ordered]@{
