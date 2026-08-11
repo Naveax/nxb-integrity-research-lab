@@ -7,8 +7,10 @@
       "description": "Ambiguous non-scope PowerShell variable immediately followed by colon in a double-quoted string",
       "include_globs": [
         "scripts/*NxbAdaptive*.ps1",
+        "scripts/*NxbSemantic*.ps1",
         "scripts/Invoke-NxbKnownErrorScan.ps1",
         "tests/Adaptive*.Tests.ps1",
+        "tests/Semantic*.Tests.ps1",
         "tests/KnownErrorLedger.Tests.ps1"
       ],
       "regex": "(?m)\"[^\"\\r\\n]*\\$(?!(?:env|global|script|local|private|using):)[A-Za-z_][A-Za-z0-9_]*:[^\"\\r\\n]*\""
@@ -24,8 +26,10 @@
       "description": "Empty catch block",
       "include_globs": [
         "scripts/*NxbAdaptive*.ps1",
+        "scripts/*NxbSemantic*.ps1",
         "scripts/Invoke-NxbKnownErrorScan.ps1",
         "tests/Adaptive*.Tests.ps1",
+        "tests/Semantic*.Tests.ps1",
         "tests/KnownErrorLedger.Tests.ps1"
       ],
       "regex": "(?ims)catch\\s*\\{\\s*\\}"
@@ -35,8 +39,10 @@
       "description": "Assignment to PowerShell automatic Matches variable",
       "include_globs": [
         "scripts/*NxbAdaptive*.ps1",
+        "scripts/*NxbSemantic*.ps1",
         "scripts/Invoke-NxbKnownErrorScan.ps1",
         "tests/Adaptive*.Tests.ps1",
+        "tests/Semantic*.Tests.ps1",
         "tests/KnownErrorLedger.Tests.ps1"
       ],
       "regex": "(?im)^\\s*\\$matches\\s*="
@@ -44,13 +50,13 @@
     {
       "id": "NXB-ERR-007",
       "description": "New-Nxb test/helper function likely to trigger ShouldProcess analyzer rule",
-      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+New-Nxb[^\\r\\n]*(?:Test|Fixture|Plan)[A-Za-z0-9_-]*\\b"
     },
     {
       "id": "NXB-ERR-008",
       "description": "Known plural-noun helper declarations",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1", "tests/Adaptive*.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1", "scripts/*NxbSemantic*.ps1", "tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+(?:Write-Nxb(?:HysteresisSignals|AdaptiveTestSignals)|Get-NxbStableUniqueDomains)\\b"
     },
     {
@@ -62,7 +68,7 @@
     {
       "id": "NXB-ERR-015",
       "description": "Double-quoted Regex.Escape expected-source literal containing a PowerShell variable",
-      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
     },
     {
@@ -76,7 +82,9 @@
       "description": "Assignment to the automatic PROFILE variable through case-insensitive profile spelling",
       "include_globs": [
         "scripts/*NxbAdaptive*.ps1",
+        "scripts/*NxbSemantic*.ps1",
         "tests/Adaptive*.Tests.ps1",
+        "tests/Semantic*.Tests.ps1",
         "tests/KnownErrorLedger.Tests.ps1"
       ],
       "regex": "(?im)^\\s*\\$profile\\s*="
