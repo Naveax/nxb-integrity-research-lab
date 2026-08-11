@@ -4,63 +4,66 @@ This ledger is a mandatory pre-final checklist for NXB validation authorities.
 
 ## Mandatory workflow
 
-Before publishing a new portable validator, declaring a native authority frozen, marking a gate certified, or giving a final completion result:
+Before publishing a portable validator, freezing a native authority, or declaring a gate complete:
 
 1. Run `scripts/Invoke-NxbKnownErrorScan.ps1` against the exact candidate tree.
-2. The scan must report zero active findings.
-3. Run the ledger contract tests on PowerShell 7 and Windows PowerShell 5.1.
-4. If review of a native transcript, static scan, analyzer, parser, Pester, Python validator, evidence audit, portable publication check, or GitHub integration step reveals a new recurring error class, add it to this ledger **and** to `config/nxb-known-error-signatures.json` when it is statically detectable.
-5. Fix the complete same-class surface before issuing the next authority. Do not fix only the first visible occurrence.
-6. Never weaken an independent validator or evidence boundary merely to make a gate pass.
+2. Require zero active findings.
+3. Run the ledger contract under PowerShell 7 and Windows PowerShell 5.1.
+4. Classify every new recurring native/static/workflow failure before repair.
+5. Add a human-ledger entry and a machine signature when the class is statically detectable.
+6. Sweep the complete same-class and near-class surface before issuing the next authority.
+7. Never weaken an independent validator or evidence boundary merely to obtain PASS.
 
-Statuses:
-
-- `observed-native`: appeared in a user/native validation transcript.
-- `caught-preflight`: found during self-review before native execution.
-- `workflow`: repository/publication/integration failure rather than target runtime behavior.
+Statuses: `observed-native`, `caught-preflight`, and `workflow`.
 
 ## Error classes
 
-| ID | Status | Class | Failure mode | Required prevention |
-|---|---|---|---|---|
-| NXB-ERR-001 | observed-native | PowerShell variable-colon interpolation | A double-quoted string such as `$Repeat: ...` is parsed as a scoped-variable reference and fails parsing. | Delimit as `${Repeat}:` or use `-f`; scan double-quoted source for ambiguous `$name:` forms. |
-| NXB-ERR-002 | observed-native | Global provider enumeration abort | `Get-WinEvent -ListProvider * -ErrorAction Stop` lets one malformed provider abort otherwise-readable provider discovery. | Use bounded partial enumeration with `-ErrorAction SilentlyContinue -ErrorVariable`, explicit error accounting, and fail closed only when no readable metadata remains. |
-| NXB-ERR-003 | caught-preflight | Array cardinality / `-NoEnumerate` nesting | Returning an array with `Write-Output -NoEnumerate` can create a nested array at a caller using `@(...)`, breaking membership/count logic. | Preserve intended cardinality explicitly; test scalar/1/many cases. |
-| NXB-ERR-004 | observed-native | Cross-runtime ordering drift | Culture/default sort differences can change fingerprints between PS7/PS5.1 or PowerShell/Python. | Use ordinal ordering and an explicit canonical material format (`ordinal_tsv_v1` or equivalent); independently recompute fingerprints. |
-| NXB-ERR-005 | caught-preflight | Empty catch / analyzer suppression | Empty `catch {}` blocks hide bounded failures and trigger analyzer concerns. | Record bounded status/reason or rethrow; never leave an empty catch in authority code. |
-| NXB-ERR-006 | observed-native | Assignment to automatic `$Matches` | `$matches` is case-insensitively the PowerShell automatic `$Matches` variable. | Never assign to `$matches`; use a semantic name such as `$domainMappings`. |
-| NXB-ERR-007 | observed-native | `New-*` test helper without ShouldProcess | PSScriptAnalyzer treats custom `New-*` functions as state-changing and requires `ShouldProcess`. | Test helpers that only compute/write bounded fixtures should use an approved non-state-changing verb when appropriate, or implement ShouldProcess when genuinely mutating. |
-| NXB-ERR-008 | observed-native | Plural noun in custom function | Names such as `Write-...Signals` / `Get-...Domains` trigger `PSUseSingularNouns`. | Use approved singular nouns and scan all active authority functions, not only the first reported file. |
-| NXB-ERR-009 | observed-native | Regression assertion self-match | A test reads its own full source and asserts a forbidden literal is absent, but the assertion string itself contains that literal. | For function-name regressions, inspect AST `FunctionDefinitionAst` nodes instead of raw self-source text. |
-| NXB-ERR-010 | observed-native | JSON DateTime timezone round-trip loss | PS7.5+ can materialize ISO JSON values as `DateTime`; casting to culture-formatted string before reparsing can lose Kind/offset and expire hold/cooldown early. | Handle `DateTimeOffset` and `DateTime` directly in UTC; use invariant `RoundtripKind` only for string inputs; test persisted-state round trips. |
-| NXB-ERR-011 | caught-preflight | Existing state fail-open | An unreadable existing trigger-state file silently reset to empty state, allowing hold/cooldown authority to be bypassed. | Existing authoritative state must fail closed when unreadable; only a truly absent state starts empty. |
-| NXB-ERR-012 | observed-native | Same-path publication copy | Portable wrapper attempted `Copy-Item` from a review ZIP to the identical destination path and failed after the repo-owned gate had passed. | Compare normalized source/destination paths before copying; support resume/finalize from existing exact-head PASS evidence. |
-| NXB-ERR-013 | caught-preflight | Static test-count drift | Certification expected 20 tests while a draft contract contained 21. | Count contract tests before freezing authority; certification and test suite counts must be derived/locked consistently. |
-| NXB-ERR-014 | observed-native | Assigned-but-unused analyzer finding / Pester cross-scope assignment | PSScriptAnalyzer can report `PSUseDeclaredVarsMoreThanAssignments` when a value is assigned in `BeforeAll` and consumed only from later `It` blocks; IRL-006 Portable V1 exposed this on `$pythonValidatorPath`. The older variant was a genuinely assigned-but-unused result object. | Do not keep shared path/expected-value assignments as loose `BeforeAll` variables. Return a test context object and consume it inside each `It` scope; derive receipts from actually used result objects. Scanner rejects the known semantic shared-variable assignment names and the ledger contract locks the context pattern. |
-| NXB-ERR-015 | observed-native | Double-quoted expected-source interpolation in test | A regex/source assertion such as `[regex]::Escape("... $stateFull ...")` expands the test-scope variable instead of matching literal source text. | Expected source-code literals containing `$` must be single-quoted, escaped, or validated through AST. Scanner rejects double-quoted `regex::Escape` arguments containing `$variable`. |
-| NXB-ERR-016 | workflow | Stale GitHub contents blob SHA | Sequential `update_file` with an old blob SHA returns HTTP 409. | Fetch current blob before sequential mutation and use the returned `content_sha` for the next update. Never interpret 409 as content state. |
-| NXB-ERR-017 | caught-preflight | Locale-dependent diagnostic material in fingerprint | Raw provider/error text can vary by OS locale and destabilize evidence fingerprints. | Keep localized error text out of canonical material; include bounded counts/status codes instead. |
-| NXB-ERR-018 | caught-preflight | Inline parser-risk expressions in compatibility authority | Dense inline expressions in hashtable/string contexts can create PS5.1 parser/analyzer risk. | Precompute nontrivial values into named variables when cross-runtime compatibility is required. |
-| NXB-ERR-019 | observed-native | Unqualified PowerShell engine enum type | The scanner used `[WildcardOptions]::IgnoreCase`; `WildcardOptions` is not a PowerShell type accelerator, so runtime resolution failed with `Unable to find type [WildcardOptions]`. | Fully qualify non-accelerated engine types. This surface must use `System.Management.Automation.WildcardPattern` and `System.Management.Automation.WildcardOptions`; scan the scanner for the bare `[WildcardOptions]::` form. |
-| NXB-ERR-020 | workflow | Opaque exact-tree scanner assertion | The ledger Pester test asserted only `status = passed`, so a real scanner failure surfaced as `Expected: passed / But was: failed` without the finding ID, path, line or preview. | Before generic assertions, format and throw every scanner finding as `id path:line preview`; native transcripts must expose the exact failing signatures. |
-| NXB-ERR-021 | observed-native | Assignment to automatic `$PROFILE` through `$profile` | PowerShell variable names are case-insensitive; assigning `$profile = ...` overwrites the built-in `$PROFILE` automatic variable and triggers `PSAvoidAssignmentToAutomaticVariable`. | Never assign to `$profile`; use a semantic name such as `$modeProfile`. Scanner rejects assignment to `$profile` across active adaptive authority scripts/tests, and source contracts lock the replacement. |
-| NXB-ERR-022 | observed-native | Native stderr merge under inherited Stop preference | IRL-006 Portable V2 ran Python negative controls with `2>&1` while the process inherited `$ErrorActionPreference = 'Stop'`. Windows PowerShell 5.1 promoted expected native stderr to terminating `RemoteException`. The same boundary can also make direct native utility calls abort before their exit-code handling is reached. | Native helpers that merge stderr must snapshot the prior ErrorAction preference, scope `Continue` around the native `2>&1` call, capture `$LASTEXITCODE` immediately, restore the preference in `finally`, and normalize captured records to strings. Part 2 additionally forbids direct `powercfg` stderr merges and routes them through the guarded native helper. |
-| NXB-ERR-023 | caught-preflight | Generated portable dynamic-regex quantifier escaping | An external portable wrapper generated from Python twice produced the PowerShell format string `^[0-9a-f]{0}$` instead of a length-dependent quantifier because Python f-string braces and PowerShell `-f` braces were escaped at the wrong layer. | Do not generate a regex quantifier through nested Python/PowerShell brace formatting. Validate hex as `Text.Length -eq Length` plus a fixed `^[0-9a-f]+$` regex, and run a post-generation assertion against the actual emitted wrapper before hashing/publishing it. |
-| NXB-ERR-024 | observed-native | JSON array projected through `PSObject.Properties` | Part 2 Portable V1 loaded `claim_targets` as a JSON array, then the Pester contract used `$policy.claim_targets.PSObject.Properties`, producing metadata-property count 15 instead of eight targets. | Enumerate JSON arrays directly with `@($policy.claim_targets)` and filter elements by explicit `name`. The scanner rejects `.claim_targets.PSObject.Properties`. |
-| NXB-ERR-025 | observed-native | Shallow native capability preflight | Part 3 Portable V1 passed the Part 2 host gate because expected native surfaces existed, then `SwDeviceCreate` failed with `0x8007007E`; the same host also did not support `Win32_PnPEntity` CIM enumeration. | The gate must execute the exact bounded owned create -> present -> remove -> absent lifecycle before PASS. Use `CM_Locate_DevNode(...NORMAL)` for present state and a bounded SetupAPI root fallback only for the unavailable-surface class. |
-| NXB-ERR-026 | observed-native | BOM-less non-ASCII PowerShell authority/test source | Part 3 Portable V2 reached the repaired PnP lifecycle preflight, then PSScriptAnalyzer reported `PSUseBOMForUnicodeEncodedFile` on a UTF-8-without-BOM ledger test containing a literal Unicode arrow. | Keep active IRL-006 PowerShell authority/test `.ps1` files ASCII-only when using the GitHub text publication path. Generate needed Unicode test material from ASCII source such as `[char]0x2192`. The scanner rejects non-ASCII on active surfaces. |
-| NXB-ERR-027 | observed-native | Optional Windows diagnostic EventLog used as mandatory PnP semantic authority | Part 3 Portable V3 proved the native owned PnP lifecycle but the semantic experiment still required matching events from optional Windows diagnostic/analytic/debug logs. The host returned no matching events and several channels required forward-only `-Oldest` reads, so lifecycle success was incorrectly coupled to host logging configuration. | Do not use optional Windows diagnostic EventLog channels as claim authority for the owned PnP fixture. Emit deterministic repo-owned EventSource metadata only after CfgMgr32 confirms create/present or remove/absent state. Keep A/B intersection, task/opcode, identity-correlation and idle-negative checks in the independent validator. The scanner forbids `Get-WinEvent` in the active PnP experiment. |
+| ID | Status | Class | Required prevention |
+|---|---|---|---|
+| NXB-ERR-001 | observed-native | PowerShell variable-colon interpolation | Delimit `${name}:` or use `-f`; reject ambiguous `$name:` inside double-quoted source. |
+| NXB-ERR-002 | observed-native | Global provider enumeration abort | Use bounded partial provider discovery and explicit error accounting; do not let one malformed provider abort the set. |
+| NXB-ERR-003 | caught-preflight | Array cardinality / nested enumeration | Preserve intended scalar/array cardinality explicitly and test 0/1/many cases. |
+| NXB-ERR-004 | observed-native | Cross-runtime ordering drift | Use ordinal ordering and explicit canonical material; independently recompute fingerprints. |
+| NXB-ERR-005 | caught-preflight | Empty catch / analyzer suppression | Record bounded failure state or rethrow; never leave empty catches. |
+| NXB-ERR-006 | observed-native | Assignment to automatic `$Matches` | Use semantic variable names; scanner rejects assignment to `$matches`. |
+| NXB-ERR-007 | observed-native | `New-*` helper without ShouldProcess | Use an approved non-mutating verb or implement ShouldProcess when mutation is real. |
+| NXB-ERR-008 | observed-native | Plural noun helper | Use singular approved nouns and scan the entire active authority surface. |
+| NXB-ERR-009 | observed-native | Regression assertion self-match | Avoid raw full-source forbidden-literal assertions that contain their own forbidden fixture; use AST or constructed fixtures. |
+| NXB-ERR-010 | observed-native | JSON DateTime timezone round-trip loss | Preserve `DateTimeOffset`/UTC semantics and use invariant round-trip parsing for strings. |
+| NXB-ERR-011 | caught-preflight | Existing state fail-open | Existing unreadable authoritative state must fail closed; only absent state may initialize empty. |
+| NXB-ERR-012 | observed-native | Same-path publication copy | Normalize source/destination paths before copy and support finalize from existing PASS evidence. |
+| NXB-ERR-013 | caught-preflight | Static test-count drift | Lock source test counts before freeze and keep certifier expectations synchronized. |
+| NXB-ERR-014 | observed-native | Assigned-but-unused analyzer / Pester cross-scope state | Return context objects and consume values inside each `It`; avoid loose shared path assignments. |
+| NXB-ERR-015 | observed-native | Double-quoted expected-source interpolation | Source-code literals containing `$` must be single-quoted, escaped, constructed, or validated through AST. |
+| NXB-ERR-016 | workflow | Stale GitHub contents blob SHA | Fetch the current blob or use the latest returned content SHA for sequential updates. |
+| NXB-ERR-017 | caught-preflight | Locale-dependent fingerprint material | Keep localized diagnostic text out of canonical fingerprints; use stable counts/codes. |
+| NXB-ERR-018 | caught-preflight | PS5.1 parser-risk inline expressions | Precompute nontrivial compatibility values into named variables. |
+| NXB-ERR-019 | observed-native | Unqualified engine enum type | Fully qualify non-accelerated PowerShell engine types such as `System.Management.Automation.WildcardOptions`. |
+| NXB-ERR-020 | workflow | Opaque scanner failure | Emit finding ID, path, line, and preview before generic scanner assertions. |
+| NXB-ERR-021 | observed-native | Assignment to automatic `$PROFILE` | Never assign `$profile`; use a semantic variable such as `$modeProfile`. |
+| NXB-ERR-022 | observed-native | Native stderr merge under inherited Stop preference | Scope `Continue` around expected native stderr capture, snapshot/restore preferences, and capture `$LASTEXITCODE` immediately. |
+| NXB-ERR-023 | caught-preflight | Generated portable regex quantifier escaping | Avoid nested brace formatting; validate hex by length plus fixed regex and assert the emitted wrapper. |
+| NXB-ERR-024 | observed-native | JSON array projected through `PSObject.Properties` | Enumerate `@($policy.claim_targets)` directly and inspect element fields; scanner rejects the incorrect projection. |
+| NXB-ERR-025 | observed-native | Shallow native capability preflight | Execute the exact bounded create/present/remove/absent lifecycle before PASS; use CfgMgr32 presence authority and bounded SetupAPI fallback. |
+| NXB-ERR-026 | observed-native | BOM-less non-ASCII PowerShell authority/test source | Keep active IRL-006 `.ps1` authority/test source ASCII-only on the GitHub text publication path; generate Unicode fixtures at runtime. |
+| NXB-ERR-027 | observed-native | Optional Windows EventLog used as mandatory PnP authority | Use repo-owned EventSource metadata after native lifecycle confirmation; optional diagnostic channels are not claim authority. |
+| NXB-ERR-028 | observed-native | Cross-runtime ASCII text-regex false positive | Prove ASCII cleanliness from raw bytes and fail on any byte above `0x7F`; do not use Unicode-range `Should -Not -Match` encoding assertions. |
+| NXB-ERR-029 | observed-native | Brittle ledger prose assertion drift | Ledger contracts must bind stable error IDs, machine rules, and behavioral regression fixtures, not exact explanatory sentences that may be edited without changing semantics. |
 
 ## Current IRL-005 application
 
-The IRL-005 adaptive observability branch must run the known-error scanner before its V4 child certification. A scanner PASS does not replace parser, PSScriptAnalyzer, Pester, Python replay, evidence-boundary audit, or native validation; it is an additional mandatory gate.
+IRL-005 must run the exact-tree known-error scanner before its V4/V5 authority chain. A scanner PASS is additive; it never replaces parser, PSScriptAnalyzer, Pester, independent Python replay, evidence-boundary audit, or native validation.
 
 ## IRL-006 inheritance
 
-NXB-IRL-006 inherits the complete `NXB-ERR-001` through `NXB-ERR-027` ledger before semantic evidence promotion work continues. Generic machine signatures include the active adaptive, semantic, and controller/target authority surfaces where each class applies. `NXB-ERR-022` rejects unguarded native stderr merges. `NXB-ERR-023` remains human-ledger-only because it occurs while generating external portable artifacts. `NXB-ERR-024` rejects the incorrect JSON-array projection. `NXB-ERR-025` rejects shallow PnP capability authority. `NXB-ERR-026` enforces ASCII-only active PowerShell authority/test source. `NXB-ERR-027` rejects Windows EventLog reads in the PnP semantic authority. The inherited ledger contract remains 12 tests per PowerShell runtime.
+NXB-IRL-006 inherits `NXB-ERR-001` through `NXB-ERR-029`. Active Part 1/2/3/4/5 authorities must carry the applicable machine signatures forward. `NXB-ERR-023` remains human-ledger-only because it occurs while generating an external portable. The ledger contract remains exactly 12 tests per PowerShell runtime.
 
-Part 3 Portable V1 exposed `NXB-ERR-025`; V2 proved that repair and exposed `NXB-ERR-026`; V3 proved both repairs and then exposed `NXB-ERR-027`. In the V3 native run, the exact-head and 15-rule fast gates passed, Part 1 and inherited IRL-005 V5 passed, and the Part 2 PnP lifecycle preflight succeeded via `setupapi_root_fallback` with `cleanup_reboot=false`. The later PnP experiment failed only because optional Windows event channels produced no bounded matching create evidence. The repaired path keeps the native lifecycle unchanged and replaces only the brittle event-evidence authority with a repo-owned EventSource bridge bound to independently confirmed native state transitions.
+Native history relevant to the current stack:
 
-The IRL-006 Part 1 certification must produce zero exact-tree known-error findings before its dual-runtime semantic contract and inherited IRL-005 V5 authority. Part 2 repeats the inherited scan before its dual-runtime contract and before final publication evidence. External portable publication additionally performs post-generation assertions for ERR-023-class defects.
+- Part 3 Portable V1 exposed ERR-025.
+- Part 3 Portable V2 proved ERR-025 and exposed ERR-026.
+- Part 3 Portable V3 proved ERR-025/026 and exposed ERR-027.
+- Combined Part 2+3+4 Portable V1 exposed ERR-028 in the PS5.1 ASCII assertion.
+- Combined Part 2+3+4 Portable V2 proved the 17-rule fast gate and then exposed ERR-029 because the ledger test expected stale prose for ERR-024 even though the rule semantics and machine signature were intact.
 
-When a new error class is discovered, append it here before issuing the next portable authority.
+When a genuinely new recurring class is discovered, append it here before issuing the next portable authority.
