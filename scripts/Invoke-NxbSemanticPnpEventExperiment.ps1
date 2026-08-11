@@ -27,14 +27,17 @@ function Get-NxbSemanticPnpSha256Text {
     finally { $sha.Dispose() }
 }
 
+function Get-NxbSemanticPnpHResultText {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][int]$HResult)
+    $value = ([int64]$HResult -band 0xFFFFFFFFL)
+    return ('0x{0:X8}' -f $value)
+}
+
 function Test-NxbSemanticPnpPresence {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$InstanceId)
-    foreach ($device in @(Get-CimInstance Win32_PnPEntity -ErrorAction Stop)) {
-        $candidate = [string]$device.PNPDeviceID
-        if ($candidate.Equals($InstanceId,[StringComparison]::OrdinalIgnoreCase)) { return $true }
-    }
-    return $false
+    return [Nxb.Semantic.PnpFixtureLease]::IsPresent($InstanceId)
 }
 
 function Wait-NxbSemanticPnpPresence {
@@ -126,115 +129,23 @@ function Get-NxbSemanticPnpIdKey {
     return ('{0}|{1}|{2}' -f $Shape.provider_name,$Shape.log_name,$Shape.id)
 }
 
+function Write-NxbSemanticPnpJson {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][object]$InputObject)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $fullPath
+    if (-not [string]::IsNullOrWhiteSpace($parent)) { [IO.Directory]::CreateDirectory($parent) | Out-Null }
+    [IO.File]::WriteAllText($fullPath,(($InputObject | ConvertTo-Json -Depth 32) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+}
+
 if ($env:OS -cne 'Windows_NT') { throw 'PnP semantic experiment requires Windows.' }
 if ($PSVersionTable.PSEdition -cne 'Core') { throw 'PnP semantic experiment requires PowerShell 7.' }
-if (-not (Test-NxbSemanticPnpAdministrator)) { throw 'PnP software-device experiment requires elevated PowerShell 7.' }
+if (-not (Test-NxbSemanticPnpAdministrator)) { throw 'PnP fixture experiment requires elevated PowerShell 7.' }
 
-if ($null -eq ('Nxb.Semantic.SoftwareDeviceLease' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Threading;
-
-namespace Nxb.Semantic {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    internal struct SW_DEVICE_CREATE_INFO {
-        internal uint cbSize;
-        [MarshalAs(UnmanagedType.LPWStr)] internal string pszInstanceId;
-        internal IntPtr pszzHardwareIds;
-        internal IntPtr pszzCompatibleIds;
-        internal IntPtr pContainerId;
-        internal uint CapabilityFlags;
-        [MarshalAs(UnmanagedType.LPWStr)] internal string pszDeviceDescription;
-        [MarshalAs(UnmanagedType.LPWStr)] internal string pszDeviceLocation;
-        internal IntPtr pSecurityDescriptor;
-    }
-
-    internal static class NativeMethods {
-        [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
-        internal delegate void SW_DEVICE_CREATE_CALLBACK(IntPtr hSwDevice, int createResult, IntPtr context, [MarshalAs(UnmanagedType.LPWStr)] string deviceInstanceId);
-
-        [DllImport("Cfgmgr32.dll", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Winapi)]
-        internal static extern int SwDeviceCreate(
-            string pszEnumeratorName,
-            string pszParentDeviceInstance,
-            ref SW_DEVICE_CREATE_INFO pCreateInfo,
-            uint cPropertyCount,
-            IntPtr pProperties,
-            SW_DEVICE_CREATE_CALLBACK pCallback,
-            IntPtr pContext,
-            out IntPtr phSwDevice);
-
-        [DllImport("Cfgmgr32.dll", CallingConvention = CallingConvention.Winapi)]
-        internal static extern void SwDeviceClose(IntPtr hSwDevice);
-    }
-
-    public sealed class SoftwareDeviceLease : IDisposable {
-        private IntPtr handle;
-        public string InstanceId { get; private set; }
-        public bool Closed { get; private set; }
-
-        private SoftwareDeviceLease(IntPtr value, string instanceId) {
-            handle = value;
-            InstanceId = instanceId;
-        }
-
-        public static SoftwareDeviceLease Create(string instanceSeed) {
-            if (String.IsNullOrWhiteSpace(instanceSeed)) throw new ArgumentException("instanceSeed");
-            var info = new SW_DEVICE_CREATE_INFO {
-                cbSize = (uint)Marshal.SizeOf(typeof(SW_DEVICE_CREATE_INFO)),
-                pszInstanceId = instanceSeed,
-                pszzHardwareIds = IntPtr.Zero,
-                pszzCompatibleIds = IntPtr.Zero,
-                pContainerId = IntPtr.Zero,
-                CapabilityFlags = 0x00000001u | 0x00000002u | 0x00000004u,
-                pszDeviceDescription = "NXB Semantic Ephemeral Software Device",
-                pszDeviceLocation = null,
-                pSecurityDescriptor = IntPtr.Zero
-            };
-
-            var ready = new ManualResetEventSlim(false);
-            int callbackResult = unchecked((int)0x80004005);
-            string actualId = null;
-            NativeMethods.SW_DEVICE_CREATE_CALLBACK callback = (device, result, context, id) => {
-                callbackResult = result;
-                actualId = id;
-                ready.Set();
-            };
-
-            IntPtr handle;
-            int hr = NativeMethods.SwDeviceCreate("NXBSEM", "HTREE\\ROOT\\0", ref info, 0, IntPtr.Zero, callback, IntPtr.Zero, out handle);
-            if (hr < 0) Marshal.ThrowExceptionForHR(hr);
-            if (!ready.Wait(TimeSpan.FromSeconds(10))) {
-                if (handle != IntPtr.Zero) NativeMethods.SwDeviceClose(handle);
-                throw new TimeoutException("SwDeviceCreate callback timed out.");
-            }
-            GC.KeepAlive(callback);
-            ready.Dispose();
-            if (callbackResult < 0) {
-                if (handle != IntPtr.Zero) NativeMethods.SwDeviceClose(handle);
-                Marshal.ThrowExceptionForHR(callbackResult);
-            }
-            if (String.IsNullOrWhiteSpace(actualId)) {
-                if (handle != IntPtr.Zero) NativeMethods.SwDeviceClose(handle);
-                throw new InvalidOperationException("SwDeviceCreate callback returned no instance id.");
-            }
-            return new SoftwareDeviceLease(handle, actualId);
-        }
-
-        public void Close() {
-            if (Closed) return;
-            if (handle != IntPtr.Zero) {
-                NativeMethods.SwDeviceClose(handle);
-                handle = IntPtr.Zero;
-            }
-            Closed = true;
-        }
-
-        public void Dispose() { Close(); }
-    }
-}
-'@
+$fixtureSource = Join-Path $PSScriptRoot 'NxbSemanticPnpFixture.cs'
+if (-not (Test-Path -LiteralPath $fixtureSource -PathType Leaf)) { throw 'Repo-owned PnP fixture source is missing.' }
+if ($null -eq ('Nxb.Semantic.PnpFixtureLease' -as [type])) {
+    Add-Type -Path $fixtureSource -ErrorAction Stop
 }
 
 $startedUtc = [DateTime]::UtcNow
@@ -249,20 +160,27 @@ foreach ($repeat in @('A','B')) {
     $createStart = [DateTime]::UtcNow
     $lease = $null
     $actualId = $null
+    $fixtureBackend = $null
+    $primaryFailureHResult = 0
     $presentObserved = $false
     $removedObserved = $false
     try {
-        $lease = [Nxb.Semantic.SoftwareDeviceLease]::Create($seed)
+        $lease = [Nxb.Semantic.PnpFixtureLease]::Create($seed)
         $actualId = [string]$lease.InstanceId
+        $fixtureBackend = [string]$lease.Backend
+        $primaryFailureHResult = [int]$lease.PrimarySoftwareDeviceFailureHResult
+        if ($fixtureBackend -notin @('software_device_api','setupapi_root_fallback')) {
+            throw ('Unexpected PnP fixture backend: {0}' -f $fixtureBackend)
+        }
         $presentObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $true
-        if (-not $presentObserved) { throw 'Ephemeral software device was not observed present.' }
+        if (-not $presentObserved) { throw 'Owned ephemeral PnP fixture was not observed present.' }
         Start-Sleep -Milliseconds $SettleMilliseconds
         $createEnd = [DateTime]::UtcNow
 
         $removeStart = [DateTime]::UtcNow
         $lease.Close()
         $removedObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $false
-        if (-not $removedObserved) { throw 'Ephemeral software device was not observed removed after handle close.' }
+        if (-not $removedObserved) { throw 'Owned ephemeral PnP fixture was not observed removed after close.' }
         Start-Sleep -Milliseconds $SettleMilliseconds
         $removeEnd = [DateTime]::UtcNow
 
@@ -272,10 +190,13 @@ foreach ($repeat in @('A','B')) {
 
         $repeatResult.Add([pscustomobject][ordered]@{
             repeat = $repeat
+            fixture_backend = $fixtureBackend
+            primary_software_device_failure_hresult = if ($primaryFailureHResult -eq 0) { $null } else { Get-NxbSemanticPnpHResultText -HResult $primaryFailureHResult }
             device_id_sha256 = Get-NxbSemanticPnpSha256Text -Text $actualId
             direct_state = [pscustomobject][ordered]@{
                 create_present_observed = $presentObserved
                 close_remove_observed = $removedObserved
+                presence_probe = 'cfgmgr32_cm_locate_devnode_normal'
             }
             idle_event_shapes = $idleShape
             create_event_shapes = $createShape
@@ -289,13 +210,16 @@ foreach ($repeat in @('A','B')) {
         if ($null -ne $lease) { $lease.Dispose() }
         if (-not [string]::IsNullOrWhiteSpace($actualId)) {
             $cleanupAbsent = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $false -TimeoutSeconds 10
-            if (-not $cleanupAbsent) { throw 'Ephemeral software-device cleanup verification failed.' }
+            if (-not $cleanupAbsent) { throw 'Owned ephemeral PnP fixture cleanup verification failed.' }
         }
     }
 }
 
 $repeatA = $repeatResult[0]
 $repeatB = $repeatResult[1]
+if ([string]$repeatA.fixture_backend -cne [string]$repeatB.fixture_backend) {
+    throw ('PnP fixture backend drifted between repeats: A={0} B={1}' -f $repeatA.fixture_backend,$repeatB.fixture_backend)
+}
 $createIdA = @($repeatA.create_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
 $createIdB = @($repeatB.create_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
 $removeIdA = @($repeatA.remove_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
@@ -320,7 +244,9 @@ $result = [pscustomobject][ordered]@{
     status = if ($pnpValidated -and $eventIdValidated -and $taskOpcodeValidated) { 'passed' } else { 'failed' }
     started_utc = $startedUtc.ToString('o')
     ended_utc = $endedUtc.ToString('o')
-    scope = 'owned-ephemeral-software-device-lifecycle-a-b'
+    scope = 'owned-ephemeral-pnp-fixture-lifecycle-a-b'
+    fixture_backend = [string]$repeatA.fixture_backend
+    cim_presence_probe_used = $false
     repeats = @($repeatResult)
     negative_controls = [pscustomobject][ordered]@{
         matched_idle_windows = 2
@@ -337,23 +263,26 @@ $result = [pscustomobject][ordered]@{
         common_create_full_shapes = $commonCreateShape
         common_remove_full_shapes = $commonRemoveShape
     }
-    cleanup_verified = $true
     claims = [pscustomobject][ordered]@{
         pnp_lifecycle_semantics = $pnpValidated
         event_id_semantics = $eventIdValidated
         event_task_opcode_semantics = $taskOpcodeValidated
-        physical_device_mutation_used = $false
-        generalized_pnp_semantics_claimed = $false
+    }
+    cleanup_verified = $pnpValidated
+    review_boundary = [pscustomobject][ordered]@{
+        raw_device_instance_id_reviewable = $false
+        raw_event_payload_reviewable = $false
+        formatted_event_message_reviewable = $false
+        primary_failure_localized_text_reviewable = $false
     }
 }
 
-$fullPath = [IO.Path]::GetFullPath($OutputPath)
-$parent = Split-Path -Parent $fullPath
-if (-not [string]::IsNullOrWhiteSpace($parent)) { [IO.Directory]::CreateDirectory($parent) | Out-Null }
-[IO.File]::WriteAllText($fullPath,(($result | ConvertTo-Json -Depth 20) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+$outputFull = [IO.Path]::GetFullPath($OutputPath)
+if (Test-Path -LiteralPath $outputFull) { throw ('PnP semantic output already exists: {0}' -f $outputFull) }
+Write-NxbSemanticPnpJson -Path $outputFull -InputObject $result
 if ([string]$result.status -cne 'passed') {
-    throw ('PnP/event semantic experiment failed: pnp={0} event_id={1} task_opcode={2}' -f $pnpValidated,$eventIdValidated,$taskOpcodeValidated)
+    throw ('PnP semantic experiment failed: pnp={0} event_id={1} task_opcode={2}' -f $pnpValidated,$eventIdValidated,$taskOpcodeValidated)
 }
-Write-Information -InformationAction Continue -MessageData ('NXB PnP/event semantic experiment passed: create_ids={0} remove_ids={1}' -f $commonCreateId.Count,$commonRemoveId.Count)
+Write-Information -InformationAction Continue -MessageData ('NXB semantic PnP/event experiment passed: backend={0} create_ids={1} remove_ids={2} create_shapes={3} remove_shapes={4}' -f $result.fixture_backend,$commonCreateId.Count,$commonRemoveId.Count,$commonCreateShape.Count,$commonRemoveShape.Count)
 if ($PassThru) { return $result }
-Write-Output $fullPath
+Write-Output $outputFull
