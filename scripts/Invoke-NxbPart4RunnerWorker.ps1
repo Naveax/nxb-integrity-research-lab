@@ -33,7 +33,7 @@ function Sync-NxbPart4ReceiptCheckpoint {
         if ([string]$receipt.run_id -cne [string]$Checkpoint.run_id) { throw ('Receipt run binding mismatch: {0}' -f $receiptFile.Name) }
         [void]$completed.Add([string]$receipt.task_id)
     }
-    $Checkpoint.completed_task_ids = @($completed.ToArray() | Sort-Object)
+    $Checkpoint.completed_task_ids = @($completed | ForEach-Object { [string]$_ } | Sort-Object)
     $Checkpoint.budget_consumed = @($Checkpoint.completed_task_ids).Count
 }
 
@@ -54,7 +54,16 @@ $checkpoint = Read-NxbPart4Json -Path $checkpointPath
 [void](Test-NxbPart4CheckpointBinding -Checkpoint $checkpoint -Manifest $manifest)
 if ((Get-NxbPart4FileSha256 -Path $policyPath) -cne [string]$manifest.config_sha256) { throw 'Worker policy hash mismatch.' }
 
+$checkpointCountBeforeReconcile = @($checkpoint.completed_task_ids).Count
 Sync-NxbPart4ReceiptCheckpoint -Checkpoint $checkpoint -ReceiptRoot $receiptRoot
+$checkpointCountAfterReconcile = @($checkpoint.completed_task_ids).Count
+if ($checkpointCountAfterReconcile -gt $checkpointCountBeforeReconcile) {
+    Write-NxbPart4WorkerEvent -Path $eventPath -InputObject ([pscustomobject][ordered]@{
+        kind='receipt_reconciled'; run_id=[string]$manifest.run_id;
+        recovered_count=($checkpointCountAfterReconcile - $checkpointCountBeforeReconcile);
+        completed_before=$checkpointCountBeforeReconcile; completed_after=$checkpointCountAfterReconcile; tick=[int]$checkpoint.tick
+    })
+}
 $checkpoint.stop_mode = 'none'
 $checkpoint.checkpoint_sequence = [int]$checkpoint.checkpoint_sequence + 1
 Write-NxbPart4Checkpoint -Path $checkpointPath -Checkpoint $checkpoint
@@ -102,7 +111,7 @@ while (@($checkpoint.completed_task_ids).Count -lt @($manifest.tasks).Count) {
 
     Write-NxbPart4WorkerEvent -Path $eventPath -InputObject ([pscustomobject][ordered]@{
         kind='attempt_started'; run_id=[string]$manifest.run_id; task_id=$taskId; domain=$domain; shard=[int]$task.shard;
-        tick=[int]$checkpoint.tick; attempt=$attempt; scheduler_score=[int]$selected.score
+        tick=[int]$checkpoint.tick; attempt=$attempt; scheduler_score=[int]$selected.score; ready_queue_depth=[int]$ready.Count
     })
 
     $failOnce = @($policy.fault_injection.fail_once_task_ids) -contains $taskId
