@@ -67,6 +67,12 @@ Describe 'NXB known-error ledger pre-final contract' {
         $capabilityRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-025'
         @($capabilityRule.include_globs) | Should -Contain 'scripts/Test-NxbSemanticHardeningHostCapability.ps1'
         @($capabilityRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
+        $encodingRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-026'
+        @($encodingRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
+        @($encodingRule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
+        @($encodingRule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
+        @($encodingRule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
+        @($encodingRule.include_globs) | Should -Contain 'tests/KnownErrorLedger.Tests.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -78,17 +84,18 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-025 and locks analyzer/runtime regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-026 and locks analyzer/runtime regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..25) {
+        foreach ($number in 1..26) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
         $ledger | Should -Match ([regex]::Escape('Do not generate a regex quantifier through nested Python/PowerShell brace formatting.'))
         $ledger | Should -Match ([regex]::Escape('fixed `^[0-9a-f]+$` regex'))
         $ledger | Should -Match ([regex]::Escape('Never use `.PSObject.Properties` to enumerate a JSON array.'))
-        $ledger | Should -Match ([regex]::Escape('A capability gate must execute the exact bounded owned create → present → remove → absent lifecycle before PASS.'))
+        $ledger | Should -Match ([regex]::Escape('A capability gate must execute the exact bounded owned create'))
+        $ledger | Should -Match ([regex]::Escape('Keep active IRL-006 PowerShell authority/test `.ps1` files ASCII-only'))
 
         $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
         $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
@@ -197,6 +204,14 @@ function Invoke-NxbTransportCertificationNative {
         $capabilityRegex.IsMatch($pnpSource) | Should -BeFalse
         $preflightSource | Should -Match ([regex]::Escape('lifecycle_probe_executed = $pnpFixtureSourcePresent'))
         $pnpSource | Should -Match ([regex]::Escape('cfgmgr32_cm_locate_devnode_normal'))
+
+        $encodingRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-026'
+        $encodingRegex = [regex]::new([string]$encodingRule.regex)
+        $nonAsciiFixture = 'non-ascii-' + [char]0x2192
+        $encodingRegex.IsMatch($nonAsciiFixture) | Should -BeTrue
+        $encodingRegex.IsMatch('ascii-only-authority') | Should -BeFalse
+        $ledgerTestSource = Get-Content -LiteralPath (Join-Path $root 'tests\KnownErrorLedger.Tests.ps1') -Raw
+        $encodingRegex.IsMatch($ledgerTestSource) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
