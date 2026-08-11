@@ -74,6 +74,34 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
             return $path
         }
 
+        function Invoke-NxbSemanticPythonTest {
+            param(
+                [Parameter(Mandatory)][string]$ValidatorPath,
+                [Parameter(Mandatory)][string]$ReceiptPath,
+                [Parameter(Mandatory)][string]$ExpectedHead,
+                [Parameter(Mandatory)][string]$ExpectedPolicy,
+                [Parameter()][string]$ExpectedMachine
+            )
+            $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+            if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
+            $pythonPath = [string]$pythonCommand.Source
+            $argumentList = @(
+                $ValidatorPath,
+                $ReceiptPath,
+                '--expected-head',$ExpectedHead,
+                '--expected-policy-sha256',$ExpectedPolicy
+            )
+            if (-not [string]::IsNullOrWhiteSpace($ExpectedMachine)) {
+                $argumentList += @('--expected-machine-id-sha256',$ExpectedMachine)
+            }
+            $nativeOutput = @(& $pythonPath @argumentList 2>&1)
+            $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+            return [pscustomobject]@{
+                exit_code = $exitCode
+                output = ($nativeOutput -join "`n")
+            }
+        }
+
         $root = Get-NxbSemanticTestRoot
         $validatorPath = Join-Path $root 'scripts\Test-NxbSemanticEvidenceReceipt.ps1'
         $pythonValidatorPath = Join-Path $root 'tools\validate_semantic_evidence_receipt.py'
@@ -118,12 +146,9 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
     }
 
     It 'accepts the same fixture in the independent Python validator with matching identity' {
-        $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
-        if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
-        $pythonPath = [string]$pythonCommand.Source
-        $pythonOutput = & $pythonPath $pythonValidatorPath $fixturePath --expected-head $expectedHead --expected-policy-sha256 $expectedPolicy --expected-machine-id-sha256 $expectedMachine
-        $LASTEXITCODE | Should -Be 0
-        $pythonResult = $pythonOutput | ConvertFrom-Json
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $fixturePath -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy -ExpectedMachine $expectedMachine
+        [int]$pythonCheck.exit_code | Should -Be 0
+        $pythonResult = [string]$pythonCheck.output | ConvertFrom-Json
         [string]$pythonResult.status | Should -BeExactly 'passed'
         [bool]$pythonResult.promotable | Should -BeTrue
         [string]$pythonResult.receipt_fingerprint_sha256 | Should -BeExactly 'c1731bc3d7f45107b45a7bb11c06a62de4036199c0795ed749279d25a53baecb'
@@ -141,6 +166,9 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $receipt.authority.exact_head = '6666666666666666666666666666666666666666'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
         { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*exact-head mismatch*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        [int]$pythonCheck.exit_code | Should -Not -Be 0
+        [string]$pythonCheck.output | Should -Match 'exact-head mismatch'
     }
 
     It 'rejects a receipt bound to a different policy fingerprint' {
@@ -169,6 +197,9 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $receipt.evidence.artifact_count = 0
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
         { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*requires at least one evidence artifact*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        [int]$pythonCheck.exit_code | Should -Not -Be 0
+        [string]$pythonCheck.output | Should -Match 'requires at least one evidence artifact'
     }
 
     It 'rejects validated promotion when negative controls did not pass' {
@@ -211,6 +242,9 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $receipt.capture.scope = 'tampered-scope'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt -KeepFingerprint
         { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*fingerprint mismatch*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        [int]$pythonCheck.exit_code | Should -Not -Be 0
+        [string]$pythonCheck.output | Should -Match 'fingerprint mismatch'
     }
 
     It 'accepts a structurally valid failed receipt but never marks it promotable' {
@@ -224,6 +258,10 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $result = & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy -PassThru
         [string]$result.status | Should -BeExactly 'passed'
         [bool]$result.promotable | Should -BeFalse
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        [int]$pythonCheck.exit_code | Should -Be 0
+        $pythonResult = [string]$pythonCheck.output | ConvertFrom-Json
+        [bool]$pythonResult.promotable | Should -BeFalse
     }
 
     It 'accepts a structurally valid unavailable receipt but never marks it promotable' {
