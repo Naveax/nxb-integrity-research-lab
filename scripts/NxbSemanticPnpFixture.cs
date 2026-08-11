@@ -104,6 +104,7 @@ namespace Nxb.Semantic
 
     public sealed class PnpFixtureLease : IDisposable
     {
+        private const int CleanupAttempts = 3;
         private IntPtr softwareDeviceHandle;
         private IntPtr setupDeviceInfoSet;
         private SP_DEVINFO_DATA setupDeviceInfoData;
@@ -187,7 +188,13 @@ namespace Nxb.Semantic
                 {
                     callbackResult = result;
                     actualId = id;
-                    ready.Set();
+                    try
+                    {
+                        ready.Set();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
                 };
 
                 IntPtr handle;
@@ -202,6 +209,10 @@ namespace Nxb.Semantic
                     out handle);
                 if (immediateResult < 0)
                 {
+                    if (handle != IntPtr.Zero)
+                    {
+                        PnpNativeMethods.SwDeviceClose(handle);
+                    }
                     Marshal.ThrowExceptionForHR(immediateResult);
                 }
 
@@ -274,6 +285,12 @@ namespace Nxb.Semantic
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiCreateDeviceInfoW failed.");
                 }
 
+                string instanceId = GetSetupApiInstanceId(deviceInfoSet, ref deviceInfoData);
+                if (String.IsNullOrWhiteSpace(instanceId))
+                {
+                    throw new InvalidOperationException("SetupAPI root fixture returned no instance id.");
+                }
+
                 if (!PnpNativeMethods.SetupDiCallClassInstaller(
                     PnpNativeMethods.DIF_REGISTERDEVICE,
                     deviceInfoSet,
@@ -282,12 +299,6 @@ namespace Nxb.Semantic
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "DIF_REGISTERDEVICE failed.");
                 }
                 registered = true;
-
-                string instanceId = GetSetupApiInstanceId(deviceInfoSet, ref deviceInfoData);
-                if (String.IsNullOrWhiteSpace(instanceId))
-                {
-                    throw new InvalidOperationException("SetupAPI root fixture returned no instance id.");
-                }
 
                 return new PnpFixtureLease
                 {
@@ -299,25 +310,55 @@ namespace Nxb.Semantic
                     PrimarySoftwareDeviceFailureHResult = primaryFailureHResult
                 };
             }
-            catch
+            catch (Exception creationFailure)
             {
+                Exception cleanupFailure = null;
                 if (registered)
                 {
-                    try
+                    int lastError;
+                    if (!TryRemoveSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError))
                     {
-                        PnpNativeMethods.SetupDiCallClassInstaller(
-                            PnpNativeMethods.DIF_REMOVE,
-                            deviceInfoSet,
-                            ref deviceInfoData);
+                        cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
                     }
-                    catch
+                    else
                     {
+                        registered = false;
                     }
                 }
 
-                PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                if (!registered)
+                {
+                    PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                }
+
+                if (cleanupFailure != null)
+                {
+                    throw new AggregateException("SetupAPI fallback creation and cleanup both failed.", creationFailure, cleanupFailure);
+                }
                 throw;
             }
+        }
+
+        private static bool TryRemoveSetupDevice(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, out int lastError)
+        {
+            lastError = 0;
+            for (int attempt = 1; attempt <= CleanupAttempts; attempt++)
+            {
+                if (PnpNativeMethods.SetupDiCallClassInstaller(
+                    PnpNativeMethods.DIF_REMOVE,
+                    deviceInfoSet,
+                    ref deviceInfoData))
+                {
+                    return true;
+                }
+
+                lastError = Marshal.GetLastWin32Error();
+                if (attempt < CleanupAttempts)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+            return false;
         }
 
         private static string NormalizeSeed(string seed)
@@ -396,34 +437,21 @@ namespace Nxb.Semantic
 
             if (setupDeviceInfoSet != IntPtr.Zero && setupDeviceInfoSet != PnpNativeMethods.INVALID_HANDLE_VALUE)
             {
-                Exception removalFailure = null;
                 if (setupDeviceRegistered)
                 {
-                    if (!PnpNativeMethods.SetupDiCallClassInstaller(
-                        PnpNativeMethods.DIF_REMOVE,
-                        setupDeviceInfoSet,
-                        ref setupDeviceInfoData))
+                    int removalError;
+                    if (!TryRemoveSetupDevice(setupDeviceInfoSet, ref setupDeviceInfoData, out removalError))
                     {
-                        removalFailure = new Win32Exception(Marshal.GetLastWin32Error(), "DIF_REMOVE failed.");
+                        throw new Win32Exception(removalError, "DIF_REMOVE failed after bounded retries.");
                     }
-                    else
-                    {
-                        setupDeviceRegistered = false;
-                    }
+                    setupDeviceRegistered = false;
                 }
 
-                bool destroyed = PnpNativeMethods.SetupDiDestroyDeviceInfoList(setupDeviceInfoSet);
-                int destroyError = destroyed ? 0 : Marshal.GetLastWin32Error();
+                if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(setupDeviceInfoSet))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed.");
+                }
                 setupDeviceInfoSet = IntPtr.Zero;
-
-                if (removalFailure != null)
-                {
-                    throw removalFailure;
-                }
-                if (!destroyed)
-                {
-                    throw new Win32Exception(destroyError, "SetupDiDestroyDeviceInfoList failed.");
-                }
             }
 
             Closed = true;
