@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/adaptive-observability-policy.schema.json",
+  "title": "NXB Adaptive Observability Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "default_mode",
+    "maximum_mode",
+    "budgets",
+    "privacy",
+    "mode_profiles",
+    "triggers",
+    "claim_targets",
+    "panel"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "policy_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "default_mode": { "$ref": "#/$defs/mode" },
+    "maximum_mode": { "$ref": "#/$defs/mode" },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_disk_mb_per_hour",
+        "max_event_rate_per_second",
+        "max_session_seconds",
+        "max_concurrent_domains",
+        "pretrigger_seconds",
+        "posttrigger_seconds"
+      ],
+      "properties": {
+        "max_disk_mb_per_hour": { "type": "integer", "minimum": 16, "maximum": 65536 },
+        "max_event_rate_per_second": { "type": "integer", "minimum": 10, "maximum": 1000000 },
+        "max_session_seconds": { "type": "integer", "minimum": 10, "maximum": 86400 },
+        "max_concurrent_domains": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "pretrigger_seconds": { "type": "integer", "minimum": 0, "maximum": 300 },
+        "posttrigger_seconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_identifiers", "formatted_messages", "payload_fields", "network_payload"],
+      "properties": {
+        "raw_identifiers": { "type": "boolean" },
+        "formatted_messages": { "type": "boolean" },
+        "payload_fields": { "type": "boolean" },
+        "network_payload": { "type": "boolean" }
+      }
+    },
+    "mode_profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["off", "minimal", "normal", "deep", "forensic"],
+      "properties": {
+        "off": { "$ref": "#/$defs/profile" },
+        "minimal": { "$ref": "#/$defs/profile" },
+        "normal": { "$ref": "#/$defs/profile" },
+        "deep": { "$ref": "#/$defs/profile" },
+        "forensic": { "$ref": "#/$defs/profile" }
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/trigger" }
+    },
+    "claim_targets": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "panel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "local_only", "bind_address", "port", "manual_override_max_seconds"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "local_only": { "const": true },
+        "bind_address": { "enum": ["127.0.0.1", "localhost"] },
+        "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+        "manual_override_max_seconds": { "type": "integer", "minimum": 30, "maximum": 86400 }
+      }
+    }
+  },
+  "$defs": {
+    "mode": {
+      "enum": ["off", "minimal", "normal", "deep", "forensic"]
+    },
+    "domain": {
+      "enum": [
+        "cpu", "memory", "storage", "gpu", "network", "pnp", "pcie",
+        "kernel", "registry", "power", "thermal", "firmware", "security", "correlation"
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domains", "detail", "max_event_rate_per_second", "max_disk_mb_per_hour"],
+      "properties": {
+        "domains": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/domain" }
+        },
+        "detail": { "enum": ["none", "summary", "structural", "semantic", "payload"] },
+        "max_event_rate_per_second": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "max_disk_mb_per_hour": { "type": "integer", "minimum": 0, "maximum": 65536 }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "enabled", "source", "signal", "operator", "threshold", "minimum_mode",
+        "domains", "hold_seconds", "cooldown_seconds", "priority"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "enabled": { "type": "boolean" },
+        "source": { "enum": ["operator", "anomaly", "experiment", "domain_error", "claim_gate"] },
+        "signal": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "operator": { "enum": ["eq", "ne", "gt", "ge", "lt", "le", "present", "changed"] },
+        "threshold": {},
+        "minimum_mode": { "$ref": "#/$defs/mode" },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/domain" }
+        },
+        "hold_seconds": { "type": "integer", "minimum": 0, "maximum": 3600 },
+        "cooldown_seconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "target_requested", "validated", "scope", "evidence_receipt_sha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "target_requested": { "type": "boolean" },
+        "validated": { "type": "boolean" },
+        "scope": { "type": ["string", "null"] },
+        "evidence_receipt_sha256": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          ]
+        }
+      }
+    }
+  }
+}
