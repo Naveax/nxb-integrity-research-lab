@@ -172,7 +172,8 @@ function Invoke-NxbTransportCertificationNative {
 
         $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
         $arrayRegex = [regex]::new([string]$arrayRule.regex)
-        $arrayRegex.IsMatch('$policy.claim_targets.PSObject.Properties') | Should -BeTrue
+        $badArrayProjection = '$policy.claim_targets' + '.PSObject.Properties'
+        $arrayRegex.IsMatch($badArrayProjection) | Should -BeTrue
         $arrayRegex.IsMatch('@($policy.claim_targets)') | Should -BeFalse
         $hardeningTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticHardening.Tests.ps1') -Raw
         $arrayRegex.IsMatch($hardeningTest) | Should -BeFalse
