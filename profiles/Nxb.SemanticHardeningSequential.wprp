@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder
+  Version="1.0"
+  Author="NXB Integrity Research Lab"
+  Team="Observability"
+  Company="NXB Integrity Research Lab"
+  Comments="Part 2 bounded sequential semantic-control profile. Sequential file mode is intentional so capacity exhaustion stops capture instead of overwriting earlier events."
+  Tag="NXB-IRL-006-PART2">
+  <Profiles>
+    <SystemCollector Id="NxbSemanticHardeningSystemFile" Name="NT Kernel Logger">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="512" FileMode="Sequential" />
+    </SystemCollector>
+    <SystemCollector Id="NxbSemanticHardeningSystemMemory" Name="NT Kernel Logger">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+    </SystemCollector>
+    <EventCollector Id="NxbSemanticHardeningEventFile" Name="NXB Semantic Hardening Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+      <MaximumFileSize Value="512" FileMode="Sequential" />
+    </EventCollector>
+    <EventCollector Id="NxbSemanticHardeningEventMemory" Name="NXB Semantic Hardening Event Collector">
+      <BufferSize Value="256" />
+      <Buffers Value="64" />
+    </EventCollector>
+
+    <SystemProvider Id="NxbSemanticHardeningSystemProvider">
+      <Keywords>
+        <Keyword Value="Loader" />
+        <Keyword Value="NetworkTrace" />
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="Registry" />
+      </Keywords>
+    </SystemProvider>
+
+    <EventProvider Id="NxbSemanticHardeningDxgKrnl" Name="Microsoft-Windows-DxgKrnl" Strict="false">
+      <Keywords>
+        <Keyword Value="0x0000000000008000" />
+        <Keyword Value="0x0000000000010000" />
+        <Keyword Value="0x0000000008000000" />
+      </Keywords>
+    </EventProvider>
+    <EventProvider Id="NxbSemanticHardeningDxgi" Name="Microsoft-Windows-DXGI" Strict="false">
+      <Keywords><Keyword Value="0x0000000000000002" /></Keywords>
+    </EventProvider>
+    <EventProvider Id="NxbSemanticHardeningKernelNetwork" Name="Microsoft-Windows-Kernel-Network" Strict="false" />
+    <EventProvider Id="NxbSemanticHardeningWinsockAfd" Name="Microsoft-Windows-Winsock-AFD" Strict="false" />
+    <EventProvider Id="NxbSemanticHardeningDnsClient" Name="Microsoft-Windows-DNS-Client" Strict="false" />
+    <EventProvider Id="NxbSemanticHardeningKernelProcess" Name="Microsoft-Windows-Kernel-Process" Strict="false" />
+    <EventProvider Id="NxbSemanticHardeningKernelRegistry" Name="Microsoft-Windows-Kernel-Registry" Strict="false" />
+    <EventProvider Id="NxbSemanticHardeningKernelPnp" Name="Microsoft-Windows-Kernel-PnP" Strict="false" />
+
+    <Profile Id="NxbSemanticHardeningSequential.Verbose.File" Name="NxbSemanticHardeningSequential" DetailLevel="Verbose" LoggingMode="File" Description="Bounded sequential Part 2 semantic-control capture">
+      <ProblemCategories><ProblemCategory Value="First Level Triage" /></ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbSemanticHardeningSystemFile"><SystemProviderId Value="NxbSemanticHardeningSystemProvider" /></SystemCollectorId>
+        <EventCollectorId Value="NxbSemanticHardeningEventFile">
+          <EventProviders>
+            <EventProviderId Value="NxbSemanticHardeningDxgKrnl" />
+            <EventProviderId Value="NxbSemanticHardeningDxgi" />
+            <EventProviderId Value="NxbSemanticHardeningKernelNetwork" />
+            <EventProviderId Value="NxbSemanticHardeningWinsockAfd" />
+            <EventProviderId Value="NxbSemanticHardeningDnsClient" />
+            <EventProviderId Value="NxbSemanticHardeningKernelProcess" />
+            <EventProviderId Value="NxbSemanticHardeningKernelRegistry" />
+            <EventProviderId Value="NxbSemanticHardeningKernelPnp" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile Id="NxbSemanticHardeningSequential.Verbose.Memory" Name="NxbSemanticHardeningSequential" DetailLevel="Verbose" LoggingMode="Memory" Description="Part 2 semantic-control memory-mode companion">
+      <ProblemCategories><ProblemCategory Value="First Level Triage" /></ProblemCategories>
+      <Collectors>
+        <SystemCollectorId Value="NxbSemanticHardeningSystemMemory"><SystemProviderId Value="NxbSemanticHardeningSystemProvider" /></SystemCollectorId>
+        <EventCollectorId Value="NxbSemanticHardeningEventMemory">
+          <EventProviders>
+            <EventProviderId Value="NxbSemanticHardeningDxgKrnl" />
+            <EventProviderId Value="NxbSemanticHardeningDxgi" />
+            <EventProviderId Value="NxbSemanticHardeningKernelNetwork" />
+            <EventProviderId Value="NxbSemanticHardeningWinsockAfd" />
+            <EventProviderId Value="NxbSemanticHardeningDnsClient" />
+            <EventProviderId Value="NxbSemanticHardeningKernelProcess" />
+            <EventProviderId Value="NxbSemanticHardeningKernelRegistry" />
+            <EventProviderId Value="NxbSemanticHardeningKernelPnp" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
