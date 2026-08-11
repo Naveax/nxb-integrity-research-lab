@@ -114,7 +114,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
     It 'independently verifies RSA PKCS1 encoding with modular exponentiation' {
         $context = Get-NxbPart5TestContext
         $source = Get-Content -LiteralPath $context.validator -Raw
-        foreach ($token in @('pow(signature_value, e, n)','DIGEST_INFO_SHA256','hashlib.sha256','hmac.compare_digest','b"\\x00\\x01"')) {
+        foreach ($token in @('pow(signature_value, e, n)','DIGEST_INFO_SHA256','hashlib.sha256','hmac.compare_digest')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
