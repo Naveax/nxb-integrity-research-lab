@@ -16,6 +16,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
                 validator = Join-Path $fullRoot 'tools\validate_part5_signed_closure.py'
                 inherited = Join-Path $fullRoot 'scripts\Invoke-NxbPart4CombinedCertification.ps1'
                 pnp = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1'
+                power = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
                 ledger = Join-Path $fullRoot 'docs\NXB-KNOWN-ERROR-LEDGER.md'
                 signatures = Join-Path $fullRoot 'config\nxb-known-error-signatures.json'
             }
@@ -24,7 +25,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
 
     It 'keeps every Part 5 authority component repo-owned' {
         $context = Get-NxbPart5TestContext
-        foreach ($path in @($context.policy,$context.schema,$context.common,$context.certification,$context.certification_v2,$context.validator,$context.inherited,$context.pnp,$context.ledger,$context.signatures)) {
+        foreach ($path in @($context.policy,$context.schema,$context.common,$context.certification,$context.certification_v2,$context.validator,$context.inherited,$context.pnp,$context.power,$context.ledger,$context.signatures)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -161,11 +162,12 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $source | Should -Not -Match '(?i)private[-_ ]key\.(?:pem|der|json)|pkcs8'
     }
 
-    It 'inherits ERR-030 keeps Part 5 PowerShell ASCII-clean and requires V2 zero-error binding' {
+    It 'inherits ERR-030 and ERR-031 keeps Part 5 PowerShell ASCII-clean and requires V2 zero-error binding' {
         $context = Get-NxbPart5TestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
         $ledger | Should -Match ([regex]::Escape('NXB-ERR-030'))
-        foreach ($path in @($context.common,$context.certification,$context.certification_v2,$context.pnp)) {
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-031'))
+        foreach ($path in @($context.common,$context.certification,$context.certification_v2,$context.pnp,$context.power)) {
             $nonAscii = 0
             foreach ($byteValue in [IO.File]::ReadAllBytes($path)) { if ([int]$byteValue -gt 0x7F) { $nonAscii++ } }
             $nonAscii | Should -Be 0
@@ -177,9 +179,13 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $pnpSource = Get-Content -LiteralPath $context.pnp -Raw
         $pnpSource | Should -Match ([regex]::Escape('[AllowEmptyCollection()][object[]]$Record'))
         $pnpSource | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
+        $powerSource = Get-Content -LiteralPath $context.power -Raw
+        $powerSource | Should -Match ([regex]::Escape('function Get-NxbSemanticFirmwareSecureBootState'))
+        $powerSource | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
+        $powerSource | Should -Not -Match '(?im)\(\s*Get-VMFirmware\b[^\r\n]*\)\.EnableSecureBoot\b'
         $v2Source = Get-Content -LiteralPath $context.certification_v2 -Raw
-        $v2Source | Should -Match ([regex]::Escape('$scan.rule_count -lt 19'))
-        $v2Source | Should -Match ([regex]::Escape('$result.known_error_rule_count -lt 19'))
-        $v2Source | Should -Match ([regex]::Escape('ERR-030=true'))
+        $v2Source | Should -Match ([regex]::Escape('$scan.rule_count -lt 20'))
+        $v2Source | Should -Match ([regex]::Escape('$result.known_error_rule_count -lt 20'))
+        $v2Source | Should -Match ([regex]::Escape('ERR-031=true'))
     }
 }
