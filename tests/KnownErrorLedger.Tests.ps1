@@ -56,22 +56,31 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-020 and locks the enum-type regression' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-021 and locks automatic-variable regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..20) {
+        foreach ($number in 1..21) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
 
-        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
-        $regex = [regex]::new([string]$rule.regex)
-        $regex.IsMatch('[WildcardOptions]::IgnoreCase') | Should -BeTrue
-        $regex.IsMatch('[System.Management.Automation.WildcardOptions]::IgnoreCase') | Should -BeFalse
+        $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
+        $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
+        $wildcardRegex.IsMatch('[WildcardOptions]::IgnoreCase') | Should -BeTrue
+        $wildcardRegex.IsMatch('[System.Management.Automation.WildcardOptions]::IgnoreCase') | Should -BeFalse
 
         $scanner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1') -Raw
         $scanner | Should -Match ([regex]::Escape('[System.Management.Automation.WildcardOptions]::IgnoreCase'))
         $scanner | Should -Not -Match ([regex]::Escape('[WildcardOptions]::IgnoreCase'))
+
+        $profileRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-021'
+        $profileRegex = [regex]::new([string]$profileRule.regex)
+        $profileRegex.IsMatch('$profile = $policy.mode_profiles.foo') | Should -BeTrue
+        $profileRegex.IsMatch('$modeProfile = $policy.mode_profiles.foo') | Should -BeFalse
+
+        $resolver = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
+        $resolver | Should -Not -Match '(?im)^\s*\$profile\s*='
+        $resolver | Should -Match ([regex]::Escape('$modeProfile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
