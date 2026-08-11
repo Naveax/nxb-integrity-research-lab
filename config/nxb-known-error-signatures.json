@@ -73,6 +73,12 @@
       "description": "Native stderr merge under inherited Stop preference without a scoped ErrorAction guard",
       "include_globs": ["tests/Semantic*.Tests.ps1","scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1"],
       "regex": "(?ims)(?:function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)|\\$[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*@\\(&\\s+\\$PowerCfgPath\\b[^\\r\\n]*2>&1\\))"
+    },
+    {
+      "id": "NXB-ERR-024",
+      "description": "Treating a JSON array as PSObject.Properties instead of enumerating its elements",
+      "include_globs": ["scripts/*NxbSemantic*.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "regex": "(?im)\\.claim_targets\\.PSObject\\.Properties\\b"
     }
   ]
 }
