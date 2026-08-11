@@ -54,6 +54,8 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $stateSource | Should -Match ([regex]::Escape('if ($Value -is [DateTimeOffset])'))
         $stateSource | Should -Match ([regex]::Escape('if ($Value -is [DateTime])'))
         $stateSource | Should -Match ([regex]::Escape('return ([DateTime]$Value).ToUniversalTime()'))
+        $stateSource | Should -Match ([regex]::Escape("throw ('Adaptive trigger state is unreadable: {0}' -f $stateFull)"))
+        $stateSource | Should -Not -Match ([regex]::Escape('starting from empty state'))
     }
 
     It 'activates a matching trigger and establishes its hold window' {
