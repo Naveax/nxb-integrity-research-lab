@@ -7,7 +7,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 CLAIMS = (
     "pnp_lifecycle_semantics",
@@ -124,7 +124,7 @@ def validate_receipt(
     expected_head: str,
     expected_policy_sha256: str,
     expected_repository: str,
-    expected_machine_id_sha256: str | None,
+    expected_machine_id_sha256: Optional[str],
 ) -> dict[str, Any]:
     raw = path.read_bytes()
     try:
