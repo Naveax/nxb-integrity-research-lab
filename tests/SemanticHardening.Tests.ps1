@@ -45,16 +45,18 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         @($claims | Sort-Object -Unique).Count | Should -Be 8
     }
 
-    It 'uses one owned PnP fixture with Software Device primary SetupAPI fallback and CfgMgr32 presence checks' {
+    It 'uses one owned PnP fixture with Software Device primary SetupAPI fallback CfgMgr32 presence checks and reboot-aware cleanup' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.pnp -Raw
         $fixtureSource = Get-Content -LiteralPath $context.pnp_fixture -Raw
         foreach ($token in @(
             'SwDeviceCreate','SwDeviceClose','HTREE\\ROOT\\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
-            'DIF_REGISTERDEVICE','DIF_REMOVE','CM_Locate_DevNodeW','0x8007007E','setupapi_root_fallback'
+            'DIF_REGISTERDEVICE','DiUninstallDevice','CleanupRebootRequired','CM_Locate_DevNodeW','0x8007007E','setupapi_root_fallback'
         )) {
             $fixtureSource | Should -Match ([regex]::Escape($token))
         }
+        $fixtureSource | Should -Match ([regex]::Escape('CleanupAttempts = 3'))
+        $fixtureSource | Should -Match ([regex]::Escape('DiUninstallDevice reported that cleanup requires a reboot.'))
         $source | Should -Match ([regex]::Escape('Nxb.Semantic.PnpFixtureLease'))
         $source | Should -Match ([regex]::Escape('fixture_backend'))
         $source | Should -Match ([regex]::Escape('cim_presence_probe_used = $false'))
@@ -173,6 +175,8 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $preflightSource | Should -Match ([regex]::Escape('lifecycle_probe_executed = $pnpFixtureSourcePresent'))
         $preflightSource | Should -Match ([regex]::Escape('file_presence_used_as_capability_authority = $false'))
         $preflightSource | Should -Match ([regex]::Escape('physical_pnp_device_modified = $false'))
+        $preflightSource | Should -Match ([regex]::Escape('cleanup_reboot_required = $pnpFixtureCleanupRebootRequired'))
+        $preflightSource | Should -Match ([regex]::Escape("$blockers.Add('pnp_fixture_cleanup_requires_reboot')"))
         $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.'))
 
         foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.top_certification,$context.host_preflight)) {
