@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.invalid/schemas/nxb-part4-run-manifest.schema.json",
+  "title": "NXB Part 4 run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","repository","exact_head","config_sha256","scope_sha256","run_id","shard_count","tasks"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-irl006-part4-resumable-runner-v1"},
+    "repository": {"const": "Naveax/nxb-integrity-research-lab"},
+    "exact_head": {"type":"string","pattern":"^[0-9a-f]{40}$"},
+    "config_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "scope_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "run_id": {"type":"string","pattern":"^run-[0-9a-f]{32}$"},
+    "shard_count": {"type":"integer","minimum":1,"maximum":64},
+    "tasks": {
+      "type":"array",
+      "minItems":1,
+      "maxItems":256,
+      "items": {
+        "type":"object",
+        "additionalProperties":false,
+        "required":["task_id","domain","base_priority","shard","synthetic_payload_sha256"],
+        "properties": {
+          "task_id":{"type":"string","pattern":"^task-[0-9]{3}$"},
+          "domain":{"type":"string","minLength":1},
+          "base_priority":{"type":"integer","minimum":1,"maximum":9},
+          "shard":{"type":"integer","minimum":0,"maximum":63},
+          "synthetic_payload_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}
