@@ -132,7 +132,7 @@ foreach ($trigger in $activeTriggers) {
 }
 
 $effectiveMode = $ModeOrder[$effectiveRank]
-$profile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value
+$modeProfile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value
 
 # Domain candidates intentionally preserve semantic priority: highest-priority active
 # triggers first, then the selected mode profile as a fallback. The global domain
@@ -141,7 +141,7 @@ $domainCandidates = [Collections.Generic.List[string]]::new()
 foreach ($trigger in $activeTriggers) {
     foreach ($domain in @($trigger.domains)) { $domainCandidates.Add([string]$domain) }
 }
-foreach ($domain in @($profile.domains)) { $domainCandidates.Add([string]$domain) }
+foreach ($domain in @($modeProfile.domains)) { $domainCandidates.Add([string]$domain) }
 
 $orderedDomains = @(Get-NxbStableUniqueDomain -Domains $domainCandidates.ToArray())
 $maxDomains = [int]$policy.budgets.max_concurrent_domains
@@ -150,9 +150,9 @@ if ($orderedDomains.Count -gt $maxDomains) {
     $reasons.Add('budget:max_concurrent_domains')
 }
 
-$eventRate = [Math]::Min([int]$profile.max_event_rate_per_second,[int]$policy.budgets.max_event_rate_per_second)
-$diskBudget = [Math]::Min([int]$profile.max_disk_mb_per_hour,[int]$policy.budgets.max_disk_mb_per_hour)
-$detail = [string]$profile.detail
+$eventRate = [Math]::Min([int]$modeProfile.max_event_rate_per_second,[int]$policy.budgets.max_event_rate_per_second)
+$diskBudget = [Math]::Min([int]$modeProfile.max_disk_mb_per_hour,[int]$policy.budgets.max_disk_mb_per_hour)
+$detail = [string]$modeProfile.detail
 if ($detail -ceq 'payload' -and -not [bool]$policy.privacy.payload_fields) {
     $detail = 'semantic'
     $reasons.Add('privacy:payload_fields_clamped')
