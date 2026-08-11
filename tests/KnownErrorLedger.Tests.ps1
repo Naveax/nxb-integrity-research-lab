@@ -127,7 +127,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         $pnpSource | Should -Match ([regex]::Escape('[AllowEmptyCollection()][object[]]$Record'))
         $pnpSource | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
         $firmwareSource | Should -Match ([regex]::Escape('function Get-NxbSemanticFirmwareSecureBootState'))
-        $firmwareSource | Should -Match ([regex]::Escape("foreach (`$propertyName in @('SecureBoot','EnableSecureBoot'))"))
+        $firmwareSource | Should -Match ([regex]::Escape('foreach ($propertyName in @(''SecureBoot'',''EnableSecureBoot''))'))
         $firmwareSource | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
     }
 
