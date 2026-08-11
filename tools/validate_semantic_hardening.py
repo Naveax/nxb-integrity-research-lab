@@ -95,20 +95,51 @@ def require_declared_set(mapping: Dict[str, Any], key: str, expected: Iterable[s
 
 def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
     require_status(document, "pnp")
+    allowed_backends = {"software_device_api", "setupapi_root_fallback"}
+    document_backend = document.get("fixture_backend")
+    if document_backend not in allowed_backends:
+        fail(f"pnp fixture backend is invalid: {document_backend}")
+    if document.get("cim_presence_probe_used") is not False:
+        fail("pnp must use the CfgMgr32 present-state probe rather than CIM")
+
     repeats = document.get("repeats")
     if not isinstance(repeats, list) or len(repeats) != 2:
         fail("pnp requires exactly two repeats")
     if [item.get("repeat") for item in repeats] != ["A", "B"]:
         fail("pnp repeat ordering must be A/B")
+    repeat_backends = [item.get("fixture_backend") for item in repeats]
+    if any(backend not in allowed_backends for backend in repeat_backends):
+        fail("pnp repeat contains an invalid fixture backend")
+    if repeat_backends != [document_backend, document_backend]:
+        fail("pnp fixture backend must be stable across A/B repeats")
+
     for item in repeats:
         direct = item.get("direct_state") or {}
         if require_bool(direct.get("create_present_observed"), "pnp.create_present_observed") is not True:
             fail("pnp create/present direct-state control failed")
         if require_bool(direct.get("close_remove_observed"), "pnp.close_remove_observed") is not True:
             fail("pnp close/remove direct-state control failed")
+        if direct.get("presence_probe") != "cfgmgr32_cm_locate_devnode_normal":
+            fail("pnp direct-state control did not use CfgMgr32 CM_Locate_DevNode NORMAL")
+        primary_failure = item.get("primary_software_device_failure_hresult")
+        if document_backend == "software_device_api" and primary_failure is not None:
+            fail("software-device primary backend unexpectedly records a primary failure")
+        if document_backend == "setupapi_root_fallback":
+            if not isinstance(primary_failure, str) or len(primary_failure) != 10 or not primary_failure.startswith("0x"):
+                fail("SetupAPI fallback must record a sanitized primary Software Device HRESULT")
         idle = item.get("idle_event_shapes")
         if not isinstance(idle, list) or len(idle) != 0:
             fail("pnp matched idle window contains fixture-identity events")
+
+    review_boundary = document.get("review_boundary") or {}
+    if review_boundary.get("raw_device_instance_id_reviewable") is not False:
+        fail("pnp raw instance identifier crossed the review boundary")
+    if review_boundary.get("raw_event_payload_reviewable") is not False:
+        fail("pnp raw event payload crossed the review boundary")
+    if review_boundary.get("formatted_event_message_reviewable") is not False:
+        fail("pnp formatted event message crossed the review boundary")
+    if review_boundary.get("primary_failure_localized_text_reviewable") is not False:
+        fail("pnp localized primary failure text crossed the review boundary")
 
     create_id_a = shape_set(repeats[0].get("create_event_shapes"), event_id_key, "pnp create A")
     create_id_b = shape_set(repeats[1].get("create_event_shapes"), event_id_key, "pnp create B")
@@ -379,6 +410,8 @@ def main() -> None:
             label: {"sha256": file_sha256(path), "file_name": path.name}
             for label, path in sorted(paths.items())
         },
+        "pnp_fixture_backend": documents["pnp"].get("fixture_backend"),
+        "pnp_cim_presence_probe_used": documents["pnp"].get("cim_presence_probe_used"),
         "scope_boundary": "bounded-owned-experiments-only",
         "generalized_system_semantics_claimed": False,
     }
