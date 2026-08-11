@@ -81,32 +81,34 @@ function Get-NxbPart5Nonce {
     return [Convert]::ToBase64String($bytes)
 }
 
-function Invoke-NxbPart5EphemeralSignature {
+function Get-NxbPart5EphemeralAuthority {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][ValidateRange(3072,8192)][int]$KeySizeBits)
+    $rsa = [Security.Cryptography.RSA]::Create()
+    $rsa.KeySize = $KeySizeBits
+    $public = $rsa.ExportParameters($false)
+    $modulusB64 = [Convert]::ToBase64String($public.Modulus)
+    $exponentB64 = [Convert]::ToBase64String($public.Exponent)
+    return [pscustomobject][ordered]@{
+        rsa = $rsa
+        modulus_b64 = $modulusB64
+        exponent_b64 = $exponentB64
+        fingerprint_sha256 = Get-NxbPart5PublicKeyFingerprint -ModulusB64 $modulusB64 -ExponentB64 $exponentB64
+        actual_key_size_bits = [int]$rsa.KeySize
+        private_key_persisted = $false
+    }
+}
+
+function Invoke-NxbPart5RsaSignature {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$CanonicalMaterial,
-        [Parameter(Mandatory)][ValidateRange(3072,8192)][int]$KeySizeBits
+        [Parameter(Mandatory)][Security.Cryptography.RSA]$Rsa,
+        [Parameter(Mandatory)][string]$CanonicalMaterial
     )
-    $rsa = [Security.Cryptography.RSA]::Create()
-    try {
-        $rsa.KeySize = $KeySizeBits
-        $public = $rsa.ExportParameters($false)
-        $modulusB64 = [Convert]::ToBase64String($public.Modulus)
-        $exponentB64 = [Convert]::ToBase64String($public.Exponent)
-        $fingerprint = Get-NxbPart5PublicKeyFingerprint -ModulusB64 $modulusB64 -ExponentB64 $exponentB64
-        $signature = $rsa.SignData(
-            [Text.Encoding]::UTF8.GetBytes($CanonicalMaterial),
-            [Security.Cryptography.HashAlgorithmName]::SHA256,
-            [Security.Cryptography.RSASignaturePadding]::Pkcs1
-        )
-        return [pscustomobject][ordered]@{
-            modulus_b64 = $modulusB64
-            exponent_b64 = $exponentB64
-            fingerprint_sha256 = $fingerprint
-            signature_b64 = [Convert]::ToBase64String($signature)
-            actual_key_size_bits = [int]$rsa.KeySize
-            private_key_persisted = $false
-        }
-    }
-    finally { $rsa.Dispose() }
+    $signature = $Rsa.SignData(
+        [Text.Encoding]::UTF8.GetBytes($CanonicalMaterial),
+        [Security.Cryptography.HashAlgorithmName]::SHA256,
+        [Security.Cryptography.RSASignaturePadding]::Pkcs1
+    )
+    return [Convert]::ToBase64String($signature)
 }
