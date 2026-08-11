@@ -127,6 +127,12 @@
       "description": "Nested ordered dictionary evidence is traversed only through PSObject.Properties, causing valid dictionary keys to fall through to sentinel defaults",
       "include_globs": ["scripts/Invoke-NxbSemanticRootTraceExperiment.ps1"],
       "regex": "(?ims)foreach\\s*\\(\\$segment\\s+in\\s+\\$Path\\.Split\\('\\.'\\)\\)\\s*\\{\\s*if\\s*\\(\\$null\\s+-eq\\s+\\$current\\)\\s*\\{\\s*return\\s+\\$DefaultValue\\s*\\}\\s*\\$property\\s*=\\s*\\$current\\.PSObject\\.Properties\\[\\$segment\\]"
+    },
+    {
+      "id": "NXB-ERR-033",
+      "description": "Mandatory mutable transport transcript rejects the valid empty initial transcript before the first loopback request can be recorded",
+      "include_globs": ["scripts/Invoke-NxbControllerTargetTransportExperiment.ps1"],
+      "regex": "(?im)\\[Parameter\\(Mandatory\\)\\]\\[Collections\\.Generic\\.List\\[object\\]\\]\\$Transcript\\b"
     }
   ]
 }
