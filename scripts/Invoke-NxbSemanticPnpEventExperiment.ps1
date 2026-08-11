@@ -57,82 +57,32 @@ function Wait-NxbSemanticPnpPresence {
     return $false
 }
 
-function Get-NxbSemanticPnpLogInventory {
-    [CmdletBinding()]
-    param()
-    $set = [Collections.Generic.SortedSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    [void]$set.Add('System')
-    foreach ($providerName in @(
-        'Microsoft-Windows-Kernel-PnP',
-        'Microsoft-Windows-UserPnp',
-        'Microsoft-Windows-DeviceSetupManager'
-    )) {
-        try {
-            $provider = Get-WinEvent -ListProvider $providerName -ErrorAction Stop
-            foreach ($link in @($provider.LogLinks)) {
-                $logName = [string]$link.LogName
-                if (-not [string]::IsNullOrWhiteSpace($logName)) { [void]$set.Add($logName) }
-            }
-        }
-        catch {
-            Write-Verbose -Message ('PnP provider unavailable: {0}' -f $providerName)
-        }
-    }
-    return @($set)
-}
-
-function Get-NxbSemanticPnpEventShape {
+function ConvertTo-NxbSemanticPnpEventShape {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$InstanceId,
-        [Parameter(Mandatory)][DateTime]$StartUtc,
-        [Parameter(Mandatory)][DateTime]$EndUtc,
-        [Parameter(Mandatory)][string[]]$LogNames
+        [Parameter(Mandatory)][object[]]$Record,
+        [Parameter(Mandatory)][string]$CorrelationToken,
+        [Parameter(Mandatory)][int]$ExpectedEventId
     )
-    $shape = [System.Collections.Generic.List[object]]::new()
-    foreach ($logName in $LogNames) {
-        try {
-            $eventRows = @(Get-WinEvent -FilterHashtable @{
-                LogName = $logName
-                StartTime = $StartUtc.ToLocalTime()
-                EndTime = $EndUtc.ToLocalTime()
-            } -ErrorAction Stop)
-        }
-        catch { continue }
-        foreach ($eventRow in $eventRows) {
-            $xml = ''
-            try { $xml = [string]$eventRow.ToXml() } catch { continue }
-            if ($xml.IndexOf($InstanceId,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-            $shape.Add([pscustomobject][ordered]@{
-                provider_name = [string]$eventRow.ProviderName
-                log_name = [string]$eventRow.LogName
-                id = [int]$eventRow.Id
-                version = if ($null -eq $eventRow.Version) { 0 } else { [int]$eventRow.Version }
-                level = if ($null -eq $eventRow.Level) { -1 } else { [int]$eventRow.Level }
-                task = if ($null -eq $eventRow.Task) { -1 } else { [int]$eventRow.Task }
-                opcode = if ($null -eq $eventRow.Opcode) { -1 } else { [int]$eventRow.Opcode }
-                fixture_identity_matched = $true
-            })
-        }
+
+    $shape = [Collections.Generic.List[object]]::new()
+    foreach ($item in @($Record)) {
+        if ([int]$item.EventId -ne $ExpectedEventId) { continue }
+        if ([string]$item.CorrelationToken -cne $CorrelationToken) { continue }
+        $shape.Add([pscustomobject][ordered]@{
+            provider_name = [string]$item.ProviderName
+            log_name = 'in_process_eventsource'
+            id = [int]$item.EventId
+            version = [int]$item.Version
+            level = [int]$item.Level
+            task = [int]$item.Task
+            opcode = [int]$item.Opcode
+            fixture_identity_matched = $true
+            source_kind = 'repo_owned_eventsource_lifecycle_bridge_v1'
+            fixture_backend = [string]$item.Backend
+        })
     }
     return @($shape | Sort-Object provider_name,log_name,id,version,level,task,opcode -Unique)
-}
-
-function Wait-NxbSemanticPnpEventShape {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$InstanceId,
-        [Parameter(Mandatory)][DateTime]$StartUtc,
-        [Parameter(Mandatory)][string[]]$LogNames,
-        [Parameter(Mandatory)][ValidateRange(2,15)][int]$TimeoutSeconds
-    )
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    do {
-        $observed = @(Get-NxbSemanticPnpEventShape -InstanceId $InstanceId -StartUtc $StartUtc -EndUtc ([DateTime]::UtcNow) -LogNames $LogNames)
-        if ($observed.Count -gt 0) { return @($observed) }
-        Start-Sleep -Milliseconds 200
-    } while ([DateTime]::UtcNow -lt $deadline)
-    return @()
 }
 
 function Get-NxbSemanticPnpShapeKey {
@@ -162,56 +112,57 @@ if (-not (Test-NxbSemanticPnpAdministrator)) { throw 'PnP fixture experiment req
 
 $fixtureSource = Join-Path $PSScriptRoot 'NxbSemanticPnpFixture.cs'
 if (-not (Test-Path -LiteralPath $fixtureSource -PathType Leaf)) { throw 'Repo-owned PnP fixture source is missing.' }
-if ($null -eq ('Nxb.Semantic.PnpFixtureLease' -as [type])) {
-    Add-Type -Path $fixtureSource -ErrorAction Stop
-}
+if ($null -eq ('Nxb.Semantic.PnpFixtureLease' -as [type])) { Add-Type -Path $fixtureSource -ErrorAction Stop }
 
 $startedUtc = [DateTime]::UtcNow
-$logInventory = @(Get-NxbSemanticPnpLogInventory)
-$repeatResult = [System.Collections.Generic.List[object]]::new()
+$repeatResult = [Collections.Generic.List[object]]::new()
 foreach ($repeat in @('A','B')) {
-    $idleStart = [DateTime]::UtcNow
-    Start-Sleep -Milliseconds $SettleMilliseconds
-    $idleEnd = [DateTime]::UtcNow
+    $idleCollector = [Nxb.Semantic.PnpLifecycleCollector]::new()
+    try {
+        Start-Sleep -Milliseconds $SettleMilliseconds
+        $idleShape = @(ConvertTo-NxbSemanticPnpEventShape -Record @($idleCollector.Snapshot('')) -CorrelationToken ('idle-{0}' -f $repeat) -ExpectedEventId ([Nxb.Semantic.PnpLifecycleEvidence]::CreateEventId))
+    }
+    finally { $idleCollector.Dispose() }
 
     $seed = ('NXB-{0}-{1}' -f $repeat,[Guid]::NewGuid().ToString('N'))
-    $createStart = [DateTime]::UtcNow
     $lease = $null
+    $collector = [Nxb.Semantic.PnpLifecycleCollector]::new()
     $actualId = $null
     $fixtureBackend = $null
     $primaryFailureHResult = 0
     $presentObserved = $false
     $removedObserved = $false
     try {
+        $createStart = [DateTime]::UtcNow
         $lease = [Nxb.Semantic.PnpFixtureLease]::Create($seed)
         $actualId = [string]$lease.InstanceId
         $fixtureBackend = [string]$lease.Backend
         $primaryFailureHResult = [int]$lease.PrimarySoftwareDeviceFailureHResult
-        if ($fixtureBackend -notin @('software_device_api','setupapi_root_fallback')) {
-            throw ('Unexpected PnP fixture backend: {0}' -f $fixtureBackend)
-        }
+        if ($fixtureBackend -notin @('software_device_api','setupapi_root_fallback')) { throw ('Unexpected PnP fixture backend: {0}' -f $fixtureBackend) }
+
         $presentObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $true
         if (-not $presentObserved) { throw 'Owned ephemeral PnP fixture was not observed present.' }
-        $createShape = @(Wait-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $createStart -LogNames $logInventory -TimeoutSeconds $EventTimeoutSeconds)
+        $fixtureIdentitySha256 = Get-NxbSemanticPnpSha256Text -Text $actualId
+        [Nxb.Semantic.PnpLifecycleEvidence]::EmitCreateIfPresent($actualId,$fixtureIdentitySha256,$fixtureBackend)
+        $createShape = @(ConvertTo-NxbSemanticPnpEventShape -Record @($collector.Snapshot($fixtureIdentitySha256)) -CorrelationToken $fixtureIdentitySha256 -ExpectedEventId ([Nxb.Semantic.PnpLifecycleEvidence]::CreateEventId))
         $createEnd = [DateTime]::UtcNow
-        if ($createShape.Count -eq 0) { throw 'Owned ephemeral PnP fixture produced no bounded create event evidence.' }
+        if ($createShape.Count -ne 1) { throw ('Owned PnP lifecycle bridge create evidence count was not exactly one: {0}' -f $createShape.Count) }
 
         $removeStart = [DateTime]::UtcNow
         $lease.Close()
         if ([bool]$lease.CleanupRebootRequired) { throw 'Owned ephemeral PnP fixture cleanup requires reboot.' }
         $removedObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $false
         if (-not $removedObserved) { throw 'Owned ephemeral PnP fixture was not observed removed after close.' }
-        $removeShape = @(Wait-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $removeStart -LogNames $logInventory -TimeoutSeconds $EventTimeoutSeconds)
+        [Nxb.Semantic.PnpLifecycleEvidence]::EmitRemoveIfAbsent($actualId,$fixtureIdentitySha256,$fixtureBackend)
+        $removeShape = @(ConvertTo-NxbSemanticPnpEventShape -Record @($collector.Snapshot($fixtureIdentitySha256)) -CorrelationToken $fixtureIdentitySha256 -ExpectedEventId ([Nxb.Semantic.PnpLifecycleEvidence]::RemoveEventId))
         $removeEnd = [DateTime]::UtcNow
-        if ($removeShape.Count -eq 0) { throw 'Owned ephemeral PnP fixture produced no bounded remove event evidence.' }
-
-        $idleShape = @(Get-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $idleStart -EndUtc $idleEnd -LogNames $logInventory)
+        if ($removeShape.Count -ne 1) { throw ('Owned PnP lifecycle bridge remove evidence count was not exactly one: {0}' -f $removeShape.Count) }
 
         $repeatResult.Add([pscustomobject][ordered]@{
             repeat = $repeat
             fixture_backend = $fixtureBackend
             primary_software_device_failure_hresult = if ($primaryFailureHResult -eq 0) { $null } else { Get-NxbSemanticPnpHResultText -HResult $primaryFailureHResult }
-            device_id_sha256 = Get-NxbSemanticPnpSha256Text -Text $actualId
+            device_id_sha256 = $fixtureIdentitySha256
             direct_state = [pscustomobject][ordered]@{
                 create_present_observed = $presentObserved
                 close_remove_observed = $removedObserved
@@ -224,6 +175,7 @@ foreach ($repeat in @('A','B')) {
                 remove_started_utc = $removeStart.ToString('o')
                 remove_ended_utc = $removeEnd.ToString('o')
                 event_timeout_seconds = $EventTimeoutSeconds
+                source_kind = 'repo_owned_eventsource_lifecycle_bridge_v1'
             }
             idle_event_shapes = $idleShape
             create_event_shapes = $createShape
@@ -234,6 +186,7 @@ foreach ($repeat in @('A','B')) {
         })
     }
     finally {
+        $collector.Dispose()
         if ($null -ne $lease) { $lease.Dispose() }
         if (-not [string]::IsNullOrWhiteSpace($actualId)) {
             $cleanupAbsent = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $false -TimeoutSeconds 10
@@ -244,9 +197,7 @@ foreach ($repeat in @('A','B')) {
 
 $repeatA = $repeatResult[0]
 $repeatB = $repeatResult[1]
-if ([string]$repeatA.fixture_backend -cne [string]$repeatB.fixture_backend) {
-    throw ('PnP fixture backend drifted between repeats: A={0} B={1}' -f $repeatA.fixture_backend,$repeatB.fixture_backend)
-}
+if ([string]$repeatA.fixture_backend -cne [string]$repeatB.fixture_backend) { throw ('PnP fixture backend drifted between repeats: A={0} B={1}' -f $repeatA.fixture_backend,$repeatB.fixture_backend) }
 $createIdA = @($repeatA.create_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
 $createIdB = @($repeatB.create_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
 $removeIdA = @($repeatA.remove_event_shapes | ForEach-Object { Get-NxbSemanticPnpIdKey -Shape $_ } | Sort-Object -Unique)
@@ -255,7 +206,6 @@ $createShapeA = @($repeatA.create_event_shapes | ForEach-Object { Get-NxbSemanti
 $createShapeB = @($repeatB.create_event_shapes | ForEach-Object { Get-NxbSemanticPnpShapeKey -Shape $_ } | Sort-Object -Unique)
 $removeShapeA = @($repeatA.remove_event_shapes | ForEach-Object { Get-NxbSemanticPnpShapeKey -Shape $_ } | Sort-Object -Unique)
 $removeShapeB = @($repeatB.remove_event_shapes | ForEach-Object { Get-NxbSemanticPnpShapeKey -Shape $_ } | Sort-Object -Unique)
-
 $commonCreateId = @($createIdA | Where-Object { $createIdB -contains $_ })
 $commonRemoveId = @($removeIdA | Where-Object { $removeIdB -contains $_ })
 $commonCreateShape = @($createShapeA | Where-Object { $createShapeB -contains $_ })
@@ -273,7 +223,9 @@ $result = [pscustomobject][ordered]@{
     ended_utc = $endedUtc.ToString('o')
     scope = 'owned-ephemeral-pnp-fixture-lifecycle-a-b'
     fixture_backend = [string]$repeatA.fixture_backend
+    event_evidence_source = 'repo_owned_eventsource_lifecycle_bridge_v1'
     cim_presence_probe_used = $false
+    optional_windows_eventlog_used_as_authority = $false
     repeats = @($repeatResult)
     negative_controls = [pscustomobject][ordered]@{
         matched_idle_windows = 2
@@ -307,9 +259,7 @@ $result = [pscustomobject][ordered]@{
 $outputFull = [IO.Path]::GetFullPath($OutputPath)
 if (Test-Path -LiteralPath $outputFull) { throw ('PnP semantic output already exists: {0}' -f $outputFull) }
 Write-NxbSemanticPnpJson -Path $outputFull -InputObject $result
-if ([string]$result.status -cne 'passed') {
-    throw ('PnP semantic experiment failed: pnp={0} event_id={1} task_opcode={2}' -f $pnpValidated,$eventIdValidated,$taskOpcodeValidated)
-}
-Write-Information -InformationAction Continue -MessageData ('NXB semantic PnP/event experiment passed: backend={0} create_ids={1} remove_ids={2} create_shapes={3} remove_shapes={4}' -f $result.fixture_backend,$commonCreateId.Count,$commonRemoveId.Count,$commonCreateShape.Count,$commonRemoveShape.Count)
+if ([string]$result.status -cne 'passed') { throw ('PnP semantic experiment failed: pnp={0} event_id={1} task_opcode={2}' -f $pnpValidated,$eventIdValidated,$taskOpcodeValidated) }
+Write-Information -InformationAction Continue -MessageData ('NXB semantic PnP/event experiment passed: source=eventsource backend={0} create_ids={1} remove_ids={2} create_shapes={3} remove_shapes={4}' -f $result.fixture_backend,$commonCreateId.Count,$commonRemoveId.Count,$commonCreateShape.Count,$commonRemoveShape.Count)
 if ($PassThru) { return $result }
 Write-Output $outputFull
