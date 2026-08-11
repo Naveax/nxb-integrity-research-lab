@@ -56,13 +56,22 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed and preflight ledger through NXB-ERR-018' {
+    It 'retains the full observed and preflight ledger through NXB-ERR-019 and locks the enum-type regression' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..18) {
+        foreach ($number in 1..19) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
+
+        $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
+        $regex = [regex]::new([string]$rule.regex)
+        $regex.IsMatch('[WildcardOptions]::IgnoreCase') | Should -BeTrue
+        $regex.IsMatch('[System.Management.Automation.WildcardOptions]::IgnoreCase') | Should -BeFalse
+
+        $scanner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1') -Raw
+        $scanner | Should -Match ([regex]::Escape('[System.Management.Automation.WildcardOptions]::IgnoreCase'))
+        $scanner | Should -Not -Match ([regex]::Escape('[WildcardOptions]::IgnoreCase'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
