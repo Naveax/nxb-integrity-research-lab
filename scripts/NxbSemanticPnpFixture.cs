@@ -34,7 +34,6 @@ namespace Nxb.Semantic
         internal const uint CR_SUCCESS = 0x00000000;
         internal const uint CM_LOCATE_DEVNODE_NORMAL = 0x00000000;
         internal const uint DICD_GENERATE_ID = 0x00000001;
-        internal const uint DIF_REMOVE = 0x00000005;
         internal const uint DIF_REGISTERDEVICE = 0x00000019;
         internal static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 
@@ -100,6 +99,15 @@ namespace Nxb.Semantic
         [DllImport("Setupapi.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetupDiDestroyDeviceInfoList(IntPtr deviceInfoSet);
+
+        [DllImport("Newdev.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DiUninstallDevice(
+            IntPtr hwndParent,
+            IntPtr deviceInfoSet,
+            ref SP_DEVINFO_DATA deviceInfoData,
+            uint flags,
+            out int needReboot);
     }
 
     public sealed class PnpFixtureLease : IDisposable
@@ -114,6 +122,7 @@ namespace Nxb.Semantic
         public string Backend { get; private set; }
         public int PrimarySoftwareDeviceFailureHResult { get; private set; }
         public bool Closed { get; private set; }
+        public bool CleanupRebootRequired { get; private set; }
 
         private PnpFixtureLease()
         {
@@ -121,6 +130,7 @@ namespace Nxb.Semantic
             setupDeviceInfoSet = IntPtr.Zero;
             setupDeviceInfoData = default(SP_DEVINFO_DATA);
             PrimarySoftwareDeviceFailureHResult = 0;
+            CleanupRebootRequired = false;
         }
 
         public static bool IsPresent(string instanceId)
@@ -316,9 +326,12 @@ namespace Nxb.Semantic
                 if (registered)
                 {
                     int lastError;
-                    if (!TryRemoveSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError))
+                    bool rebootRequired;
+                    if (!TryUninstallSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError, out rebootRequired) || rebootRequired)
                     {
-                        cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
+                        cleanupFailure = rebootRequired
+                            ? new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error.")
+                            : new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
                     }
                     else
                     {
@@ -339,16 +352,25 @@ namespace Nxb.Semantic
             }
         }
 
-        private static bool TryRemoveSetupDevice(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, out int lastError)
+        private static bool TryUninstallSetupDevice(
+            IntPtr deviceInfoSet,
+            ref SP_DEVINFO_DATA deviceInfoData,
+            out int lastError,
+            out bool rebootRequired)
         {
             lastError = 0;
+            rebootRequired = false;
             for (int attempt = 1; attempt <= CleanupAttempts; attempt++)
             {
-                if (PnpNativeMethods.SetupDiCallClassInstaller(
-                    PnpNativeMethods.DIF_REMOVE,
+                int nativeNeedReboot;
+                if (PnpNativeMethods.DiUninstallDevice(
+                    IntPtr.Zero,
                     deviceInfoSet,
-                    ref deviceInfoData))
+                    ref deviceInfoData,
+                    0,
+                    out nativeNeedReboot))
                 {
+                    rebootRequired = nativeNeedReboot != 0;
                     return true;
                 }
 
@@ -440,9 +462,15 @@ namespace Nxb.Semantic
                 if (setupDeviceRegistered)
                 {
                     int removalError;
-                    if (!TryRemoveSetupDevice(setupDeviceInfoSet, ref setupDeviceInfoData, out removalError))
+                    bool rebootRequired;
+                    if (!TryUninstallSetupDevice(setupDeviceInfoSet, ref setupDeviceInfoData, out removalError, out rebootRequired))
                     {
-                        throw new Win32Exception(removalError, "DIF_REMOVE failed after bounded retries.");
+                        throw new Win32Exception(removalError, "DiUninstallDevice failed after bounded retries.");
+                    }
+                    if (rebootRequired)
+                    {
+                        CleanupRebootRequired = true;
+                        throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot.");
                     }
                     setupDeviceRegistered = false;
                 }
