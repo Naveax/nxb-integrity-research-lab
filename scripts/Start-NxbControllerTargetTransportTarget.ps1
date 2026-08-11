@@ -72,15 +72,17 @@ function Send-NxbTransportTargetResponse {
     param(
         [Parameter(Mandatory)][IO.StreamWriter]$Writer,
         [Parameter(Mandatory)][object]$State,
+        [Parameter(Mandatory)][string]$StatePath,
         [Parameter(Mandatory)][string]$KeyHex,
         [Parameter(Mandatory)][ValidateSet('ack','reject','status')][string]$Kind,
         [Parameter(Mandatory)][object]$Payload
     )
 
     $response = ConvertTo-NxbTransportFrame -SessionId ([string]$State.session_id) -SenderRole target -Sequence ([int64]$State.response_sequence) -Kind $Kind -Payload $Payload -KeyHex $KeyHex
+    $State.response_sequence = [int64]$State.response_sequence + 1
+    Write-NxbTransportTargetJson -Path $StatePath -InputObject $State
     $Writer.WriteLine((ConvertTo-NxbTransportJsonLine -Frame $response))
     $Writer.Flush()
-    $State.response_sequence = [int64]$State.response_sequence + 1
     return $response
 }
 
@@ -135,8 +137,7 @@ try {
                     $line = $reader.ReadLine()
                     if ($null -eq $line) { break }
                     if ([Text.Encoding]::UTF8.GetByteCount($line) -gt $maxFrameBytes) {
-                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='frame_too_large'; expected_sequence=[int64]$state.next_expected_sequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
-                        Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='frame_too_large'; expected_sequence=[int64]$state.next_expected_sequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
                         continue
                     }
 
@@ -144,8 +145,7 @@ try {
                     try { $frame = ConvertFrom-NxbTransportJsonLine -Line $line } catch { $frame = $null }
                     if ($null -eq $frame -or -not (Test-NxbTransportFrame -Frame $frame -KeyHex $KeyHex -ExpectedSessionId $SessionId -ExpectedSenderRole controller)) {
                         $state.auth_failure_count = [int]$state.auth_failure_count + 1
-                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='invalid_auth'; expected_sequence=[int64]$state.next_expected_sequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
-                        Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='invalid_auth'; expected_sequence=[int64]$state.next_expected_sequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
                         continue
                     }
 
@@ -153,21 +153,18 @@ try {
                     $expectedSequence = [int64]$state.next_expected_sequence
                     if ($requestSequence -lt $expectedSequence) {
                         $state.duplicate_count = [int]$state.duplicate_count + 1
-                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='duplicate'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
-                        Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='duplicate'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
                         continue
                     }
                     if ($requestSequence -gt $expectedSequence) {
                         $state.gap_count = [int]$state.gap_count + 1
-                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='sequence_gap'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
-                        Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='sequence_gap'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
                         continue
                     }
 
                     $kind = [string]$frame.kind
                     if ([bool]$state.emergency_stop -and $kind -ceq 'event') {
-                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='emergency_stop_active'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
-                        Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                        [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind reject -Payload ([pscustomobject][ordered]@{ reason='emergency_stop_active'; request_sequence=$requestSequence; expected_sequence=$expectedSequence; queue_depth=@($state.queue).Count; backpressure=[bool]$state.backpressure_active }))
                         continue
                     }
 
@@ -231,8 +228,7 @@ try {
                         }
                     }
 
-                    [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -KeyHex $KeyHex -Kind $responseKind -Payload $responsePayload)
-                    Write-NxbTransportTargetJson -Path $statePath -InputObject $state
+                    [void](Send-NxbTransportTargetResponse -Writer $writer -State $state -StatePath $statePath -KeyHex $KeyHex -Kind $responseKind -Payload $responsePayload)
                 }
             }
             finally {
