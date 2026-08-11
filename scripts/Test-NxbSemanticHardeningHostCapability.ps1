@@ -92,6 +92,7 @@ $pnpFixtureAvailable = $false
 $pnpFixtureBackend = $null
 $pnpFixturePresentObserved = $false
 $pnpFixtureRemovedObserved = $false
+$pnpFixtureCleanupRebootRequired = $false
 $pnpFixturePrimaryFailureHResult = $null
 $pnpFixtureProbeFailureHResult = $null
 $pnpFixtureLease = $null
@@ -109,17 +110,21 @@ if ($pnpFixtureSourcePresent) {
         $pnpFixturePresentObserved = Wait-NxbSemanticHardeningPnpPresence -InstanceId $pnpFixtureInstanceId -ExpectedPresent $true
         if (-not $pnpFixturePresentObserved) { throw 'Owned PnP fixture was not observed present during capability probe.' }
         $pnpFixtureLease.Close()
+        $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired
+        if ($pnpFixtureCleanupRebootRequired) { throw 'Owned PnP fixture cleanup reported that a reboot is required.' }
         $pnpFixtureRemovedObserved = Wait-NxbSemanticHardeningPnpPresence -InstanceId $pnpFixtureInstanceId -ExpectedPresent $false
         if (-not $pnpFixtureRemovedObserved) { throw 'Owned PnP fixture was not observed removed during capability probe.' }
         $pnpFixtureAvailable = ($pnpFixtureBackend -in @('software_device_api','setupapi_root_fallback'))
     }
     catch {
         $pnpFixtureAvailable = $false
+        if ($null -ne $pnpFixtureLease) { $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired }
         $pnpFixtureProbeFailureHResult = Get-NxbSemanticHardeningHResultText -HResult ([int]$_.Exception.HResult)
     }
     finally {
         if ($null -ne $pnpFixtureLease) {
             try { $pnpFixtureLease.Dispose() } catch { Write-Verbose -Message 'PnP capability probe cleanup encountered a bounded failure.' }
+            $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired
         }
         if (-not [string]::IsNullOrWhiteSpace($pnpFixtureInstanceId)) {
             try {
@@ -133,6 +138,7 @@ if ($pnpFixtureSourcePresent) {
                 $pnpFixtureRemovedObserved = $false
             }
         }
+        if ($pnpFixtureCleanupRebootRequired) { $pnpFixtureAvailable = $false }
     }
 }
 
@@ -200,6 +206,7 @@ if (-not $windowsPowerShellAvailable) { $blockers.Add('windows_powershell_5_1_un
 if (-not $pesterAvailable) { $blockers.Add('pester_module_unavailable') }
 if (-not $pnpFixtureSourcePresent) { $blockers.Add('pnp_fixture_source_unavailable') }
 if (-not $pnpFixtureAvailable) { $blockers.Add('pnp_fixture_lifecycle_probe_failed') }
+if ($pnpFixtureCleanupRebootRequired) { $blockers.Add('pnp_fixture_cleanup_requires_reboot') }
 if (-not $hyperVCmdletsAvailable) { $blockers.Add('hyper_v_cmdlets_unavailable') }
 if (-not $vmmsRunning) { $blockers.Add('hyper_v_vmms_not_running') }
 if (-not $vmHostQueryable) { $blockers.Add('hyper_v_host_not_queryable') }
@@ -227,6 +234,7 @@ $result = [pscustomobject][ordered]@{
         backend = $pnpFixtureBackend
         create_present_observed = $pnpFixturePresentObserved
         close_remove_observed = $pnpFixtureRemovedObserved
+        cleanup_reboot_required = $pnpFixtureCleanupRebootRequired
         presence_probe = 'cfgmgr32_cm_locate_devnode_normal'
         primary_software_device_failure_hresult = $pnpFixturePrimaryFailureHResult
         probe_failure_hresult = $pnpFixtureProbeFailureHResult
@@ -259,6 +267,6 @@ $result = [pscustomobject][ordered]@{
 if ([string]$result.status -cne 'passed') {
     throw ('Part 2 host capability preflight blocked: {0}. No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted. The PnP probe creates and removes only an owned synthetic fixture; no physical PnP device is modified.' -f (@($blockers) -join ', '))
 }
-Write-Information -InformationAction Continue -MessageData ('NXB Part 2 host capability preflight passed: pnp_backend={0} lifecycle_probe=true.' -f $pnpFixtureBackend)
+Write-Information -InformationAction Continue -MessageData ('NXB Part 2 host capability preflight passed: pnp_backend={0} lifecycle_probe=true cleanup_reboot=false.' -f $pnpFixtureBackend)
 if ($PassThru) { return $result }
 Write-Output ($result | ConvertTo-Json -Depth 12)
