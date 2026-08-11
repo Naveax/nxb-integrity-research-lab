@@ -6,7 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 REPOSITORY = "Naveax/nxb-integrity-research-lab"
 CONTRACT = "nxb-irl006-part4-resumable-runner-v1"
@@ -190,7 +190,7 @@ def validate_model(model: Dict[str, Any]) -> Dict[str, bool]:
         fail("resume did not complete all tasks")
 
     stop_kinds = {str(item.get("kind")) for item in events}
-    for required in ("fault_injected_process_crash", "graceful_stop", "emergency_stop", "run_completed"):
+    for required in ("fault_injected_process_crash", "receipt_reconciled", "graceful_stop", "emergency_stop", "run_completed"):
         if required not in stop_kinds:
             fail(f"missing stop/recovery event {required}")
 
@@ -202,7 +202,7 @@ def validate_model(model: Dict[str, Any]) -> Dict[str, bool]:
     not_before = {task_id: 0 for task_id in task_by_id}
     completed_set = set()
     success_ticks: Dict[str, List[int]] = {domain: [] for domain in domains}
-    pending_attempt: Tuple[str, int] | None = None
+    pending_attempt: Optional[Tuple[str, int]] = None
     max_ready = 0
     maximum_attempt = 0
 
@@ -226,6 +226,8 @@ def validate_model(model: Dict[str, Any]) -> Dict[str, bool]:
             expected_score, expected_task = ready[0]
             if task_id != expected_task or int(event["scheduler_score"]) != expected_score:
                 fail("adaptive scheduler selection/score mismatch")
+            if int(event.get("ready_queue_depth", -1)) != len(ready):
+                fail("ready queue depth evidence mismatch")
             attempts[task_id] += 1
             maximum_attempt = max(maximum_attempt, attempts[task_id])
             if int(event["attempt"]) != attempts[task_id]:
