@@ -56,10 +56,10 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed and preflight ledger through NXB-ERR-019 and locks the enum-type regression' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-020 and locks the enum-type regression' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..19) {
+        foreach ($number in 1..20) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
@@ -125,6 +125,14 @@ Describe 'NXB known-error ledger pre-final contract' {
         $root = Get-NxbKnownErrorTestRoot
         $scanner = Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1'
         $result = & $scanner -RepositoryRoot $root -NoThrow -PassThru
+        if ([string]$result.status -cne 'passed' -or [int]$result.finding_count -ne 0) {
+            $detail = @(
+                $result.findings | ForEach-Object {
+                    '{0} {1}:{2} {3}' -f $_.id,$_.path,$_.line,$_.preview
+                }
+            ) -join [Environment]::NewLine
+            throw ('Exact-tree known-error scan failed: findings={0}{1}{2}' -f [int]$result.finding_count,[Environment]::NewLine,$detail)
+        }
         [string]$result.status | Should -BeExactly 'passed'
         [int]$result.finding_count | Should -Be 0
         [int]$result.rule_count | Should -BeGreaterThan 0
