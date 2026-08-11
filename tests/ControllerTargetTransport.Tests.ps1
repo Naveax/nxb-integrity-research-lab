@@ -86,13 +86,17 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         }
     }
 
-    It 'persists target checkpoint state atomically and advances restart generation' {
+    It 'persists target checkpoint state atomically before wire acknowledgement and advances restart generation' {
         $context = Get-NxbTransportTestContext
         $source = Get-Content -LiteralPath $context.target -Raw
         $source | Should -Match ([regex]::Escape('$fullPath + ''.tmp-'''))
         $source | Should -Match ([regex]::Escape('Move-Item -LiteralPath $tempPath -Destination $fullPath -Force'))
         $source | Should -Match ([regex]::Escape('$state.generation = [int]$state.generation + 1'))
         $source | Should -Match ([regex]::Escape('$statePath = Join-Path $stateRoot ''target-state.json'''))
+        $persistPosition = $source.IndexOf('Write-NxbTransportTargetJson -Path $StatePath -InputObject $State',[StringComparison]::Ordinal)
+        $wirePosition = $source.IndexOf('$Writer.WriteLine((ConvertTo-NxbTransportJsonLine -Frame $response))',[StringComparison]::Ordinal)
+        $persistPosition | Should -BeGreaterThan -1
+        $wirePosition | Should -BeGreaterThan $persistPosition
     }
 
     It 'executes invalid-auth duplicate and loss controls against the real loopback socket' {
