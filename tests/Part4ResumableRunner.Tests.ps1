@@ -14,6 +14,7 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
                 worker=Join-Path $fullRoot 'scripts\Invoke-NxbPart4RunnerWorker.ps1'
                 experiment=Join-Path $fullRoot 'scripts\Invoke-NxbPart4ResumableRunnerExperiment.ps1'
                 certification=Join-Path $fullRoot 'scripts\Invoke-NxbPart4ResumableRunnerCertification.ps1'
+                combined=Join-Path $fullRoot 'scripts\Invoke-NxbPart4CombinedCertification.ps1'
                 validator=Join-Path $fullRoot 'tools\validate_part4_runner.py'
                 inherited=Join-Path $fullRoot 'scripts\Invoke-NxbControllerTargetTransportCertification.ps1'
                 ledger=Join-Path $fullRoot 'docs\NXB-KNOWN-ERROR-LEDGER.md'
@@ -23,7 +24,7 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
 
     It 'keeps every Part 4 authority component repo-owned' {
         $context = Get-NxbPart4TestContext
-        foreach ($path in @($context.policy,$context.schema,$context.common,$context.worker,$context.experiment,$context.certification,$context.validator,$context.inherited,$context.ledger)) {
+        foreach ($path in @($context.policy,$context.schema,$context.common,$context.worker,$context.experiment,$context.certification,$context.combined,$context.validator,$context.inherited,$context.ledger)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -81,6 +82,9 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
         $loopPosition = $source.IndexOf('while (@($checkpoint.completed_task_ids).Count',[StringComparison]::Ordinal)
         $syncPosition | Should -BeGreaterThan -1
         $loopPosition | Should -BeGreaterThan $syncPosition
+        $source | Should -Match ([regex]::Escape('Receipt binding mismatch'))
+        $source | Should -Match ([regex]::Escape('$receipt.committed_tick'))
+        $source | Should -Match ([regex]::Escape('$Checkpoint.domain_last_served_tick'))
         $source | Should -Match ([regex]::Escape('Duplicate task execution attempted despite existing receipt'))
     }
 
@@ -146,22 +150,29 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
         foreach ($token in @('stale_exact_head','config_hash_mismatch','scope_hash_mismatch','run_id_mismatch','duplicate_receipt','checkpoint_sequence_rollback','shard_mismatch','budget_exceeded','backoff_violation','fairness_violation')) {
             $source | Should -Match ([regex]::Escape('"' + $token + '"'))
         }
+        $source | Should -Match ([regex]::Escape('Optional[Tuple[str, int]]'))
     }
 
-    It 'chains Part 4 authority through Part 3 and therefore inherited Part 2 on one exact head' {
+    It 'chains Part 4 through Part 3 Part 2 and cryptographically binds nested closure artifacts' {
         $context = Get-NxbPart4TestContext
         $source = Get-Content -LiteralPath $context.certification -Raw
         $source | Should -Match ([regex]::Escape('Invoke-NxbControllerTargetTransportCertification.ps1'))
         $source | Should -Match ([regex]::Escape('-ExpectedHead $ExpectedHead'))
         $source | Should -Match ([regex]::Escape('inherited_part2_validated'))
         $source | Should -Match ([regex]::Escape('inherited_part3_negative_controls'))
+
+        $combinedSource = Get-Content -LiteralPath $context.combined -Raw
+        $combinedSource | Should -Match ([regex]::Escape('Invoke-NxbPart4ResumableRunnerCertification.ps1'))
+        $combinedSource | Should -Match ([regex]::Escape('part3_review_zip_sha256'))
+        $combinedSource | Should -Match ([regex]::Escape('part4_review_zip_sha256'))
+        $combinedSource | Should -Match ([regex]::Escape('part234-combined-certification-receipt.json'))
     }
 
     It 'inherits permanent error gates and keeps Part 4 PowerShell source ASCII-clean' {
         $context = Get-NxbPart4TestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
         $ledger | Should -Match ([regex]::Escape('NXB-ERR-027'))
-        foreach ($path in @($context.common,$context.worker,$context.experiment,$context.certification)) {
+        foreach ($path in @($context.common,$context.worker,$context.experiment,$context.certification,$context.combined)) {
             $source = Get-Content -LiteralPath $path -Raw
             $source | Should -Not -Match '(?im)^\s*\$matches\s*='
             $source | Should -Not -Match '(?im)^\s*\$profile\s*='
