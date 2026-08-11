@@ -103,6 +103,12 @@
       "description": "Fragile text-regex ASCII source assertion that can false-positive in the Windows PowerShell 5.1 Pester path",
       "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)Should\\s+-Not\\s+-Match\\s+['\"]\\[\\^\\\\u0000-\\\\u007F\\]['\"]"
+    },
+    {
+      "id": "NXB-ERR-029",
+      "description": "Brittle ledger contract assertion coupled to exact prose instead of stable IDs and behavior",
+      "include_globs": ["tests/KnownErrorLedger.Tests.ps1"],
+      "regex": "(?im)\\$ledger\\s*\\|\\s*Should\\s+-Match\\s+\\(\\[regex\\]::Escape\\(\\s*['\"][A-Za-z][^'\"\\r\\n]{24,}['\"]\\s*\\)\\s*\\)"
     }
   ]
 }
