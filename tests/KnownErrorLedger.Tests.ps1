@@ -64,6 +64,9 @@ Describe 'NXB known-error ledger pre-final contract' {
         $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
         @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
         @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
+        $capabilityRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-025'
+        @($capabilityRule.include_globs) | Should -Contain 'scripts/Test-NxbSemanticHardeningHostCapability.ps1'
+        @($capabilityRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -75,16 +78,17 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-024 and locks analyzer/runtime regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-025 and locks analyzer/runtime regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..24) {
+        foreach ($number in 1..25) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
         $ledger | Should -Match ([regex]::Escape('Do not generate a regex quantifier through nested Python/PowerShell brace formatting.'))
         $ledger | Should -Match ([regex]::Escape('fixed `^[0-9a-f]+$` regex'))
         $ledger | Should -Match ([regex]::Escape('Never use `.PSObject.Properties` to enumerate a JSON array.'))
+        $ledger | Should -Match ([regex]::Escape('A capability gate must execute the exact bounded owned create → present → remove → absent lifecycle before PASS.'))
 
         $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
         $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
@@ -180,6 +184,19 @@ function Invoke-NxbTransportCertificationNative {
         $hardeningTest | Should -Match ([regex]::Escape('$targets = @($policy.claim_targets)'))
         $transportTest = Get-Content -LiteralPath (Join-Path $root 'tests\ControllerTargetTransport.Tests.ps1') -Raw
         $arrayRegex.IsMatch($transportTest) | Should -BeFalse
+
+        $capabilityRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-025'
+        $capabilityRegex = [regex]::new([string]$capabilityRule.regex)
+        $badFileOnlyCapability = '$softwareDeviceApiAvailable = ' + '(Test-Path -LiteralPath $softwareDeviceDll -PathType Leaf)'
+        $badCimPresence = 'Get-' + 'CimInstance Win32_PnPEntity -ErrorAction Stop'
+        $capabilityRegex.IsMatch($badFileOnlyCapability) | Should -BeTrue
+        $capabilityRegex.IsMatch($badCimPresence) | Should -BeTrue
+        $preflightSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-NxbSemanticHardeningHostCapability.ps1') -Raw
+        $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
+        $capabilityRegex.IsMatch($preflightSource) | Should -BeFalse
+        $capabilityRegex.IsMatch($pnpSource) | Should -BeFalse
+        $preflightSource | Should -Match ([regex]::Escape('lifecycle_probe_executed = $pnpFixtureSourcePresent'))
+        $pnpSource | Should -Match ([regex]::Escape('cfgmgr32_cm_locate_devnode_normal'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
