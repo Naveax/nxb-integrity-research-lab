@@ -115,7 +115,9 @@ function Test-NxbTransportFrame {
 
     if ((Get-NxbTransportSha256Text -Text $payloadText) -cne [string]$Frame.payload_sha256) { return $false }
     $expectedTag = Get-NxbTransportAuthTag -Frame $Frame -KeyHex $KeyHex
-    return ([string]$Frame.auth_tag -ceq $expectedTag)
+    $providedTagBytes = ConvertFrom-NxbTransportHex -Hex ([string]$Frame.auth_tag)
+    $expectedTagBytes = ConvertFrom-NxbTransportHex -Hex $expectedTag
+    return [Security.Cryptography.CryptographicOperations]::FixedTimeEquals($providedTagBytes,$expectedTagBytes)
 }
 
 function Get-NxbTransportPayloadObject {
