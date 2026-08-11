@@ -49,4 +49,10 @@ Statuses:
 
 The IRL-005 adaptive observability branch must run the known-error scanner before its V4 child certification. A scanner PASS does not replace parser, PSScriptAnalyzer, Pester, Python replay, evidence-boundary audit, or native validation; it is an additional mandatory gate.
 
+## IRL-006 inheritance
+
+NXB-IRL-006 inherits the complete `NXB-ERR-001` through `NXB-ERR-021` ledger before adding semantic evidence authority. Generic machine signatures now include `scripts/*NxbSemantic*.ps1` and `tests/Semantic*.Tests.ps1` where the corresponding error class applies. The inherited 12-test ledger contract verifies that semantic authority remains inside this scanner scope without changing the locked test count.
+
+The IRL-006 Part 1 certification must produce zero exact-tree known-error findings before its dual-runtime semantic contract and before re-running the inherited IRL-005 V5 child authority on the same exact head.
+
 When a new error class is discovered, append it here before issuing the next portable authority.
