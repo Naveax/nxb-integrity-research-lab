@@ -12,6 +12,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
                 schema = Join-Path $fullRoot 'schemas\nxb-part5-signed-closure.schema.json'
                 common = Join-Path $fullRoot 'scripts\NxbPart5Crypto.Common.ps1'
                 certification = Join-Path $fullRoot 'scripts\Invoke-NxbPart5SignedClosureCertification.ps1'
+                certification_v2 = Join-Path $fullRoot 'scripts\Invoke-NxbPart5SignedClosureCertificationV2.ps1'
                 validator = Join-Path $fullRoot 'tools\validate_part5_signed_closure.py'
                 inherited = Join-Path $fullRoot 'scripts\Invoke-NxbPart4CombinedCertification.ps1'
                 pnp = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1'
@@ -23,7 +24,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
 
     It 'keeps every Part 5 authority component repo-owned' {
         $context = Get-NxbPart5TestContext
-        foreach ($path in @($context.policy,$context.schema,$context.common,$context.certification,$context.validator,$context.inherited,$context.pnp,$context.ledger,$context.signatures)) {
+        foreach ($path in @($context.policy,$context.schema,$context.common,$context.certification,$context.certification_v2,$context.validator,$context.inherited,$context.pnp,$context.ledger,$context.signatures)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -160,11 +161,11 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $source | Should -Not -Match '(?i)private[-_ ]key\.(?:pem|der|json)|pkcs8'
     }
 
-    It 'inherits ERR-030 keeps Part 5 PowerShell ASCII-clean and requires final zero-error scan' {
+    It 'inherits ERR-030 keeps Part 5 PowerShell ASCII-clean and requires V2 zero-error binding' {
         $context = Get-NxbPart5TestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
         $ledger | Should -Match ([regex]::Escape('NXB-ERR-030'))
-        foreach ($path in @($context.common,$context.certification,$context.pnp)) {
+        foreach ($path in @($context.common,$context.certification,$context.certification_v2,$context.pnp)) {
             $nonAscii = 0
             foreach ($byteValue in [IO.File]::ReadAllBytes($path)) { if ([int]$byteValue -gt 0x7F) { $nonAscii++ } }
             $nonAscii | Should -Be 0
@@ -176,8 +177,9 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $pnpSource = Get-Content -LiteralPath $context.pnp -Raw
         $pnpSource | Should -Match ([regex]::Escape('[AllowEmptyCollection()][object[]]$Record'))
         $pnpSource | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
-        $certificationSource = Get-Content -LiteralPath $context.certification -Raw
-        $certificationSource | Should -Match ([regex]::Escape('$finalScan.rule_count -lt 19'))
-        $certificationSource | Should -Match ([regex]::Escape('$finalScan.finding_count -ne 0'))
+        $v2Source = Get-Content -LiteralPath $context.certification_v2 -Raw
+        $v2Source | Should -Match ([regex]::Escape('$scan.rule_count -lt 19'))
+        $v2Source | Should -Match ([regex]::Escape('$result.known_error_rule_count -lt 19'))
+        $v2Source | Should -Match ([regex]::Escape('ERR-030=true'))
     }
 }
