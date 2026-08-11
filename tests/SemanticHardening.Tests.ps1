@@ -100,9 +100,9 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             [int]$collector.MaximumFileSize.Value | Should -Be 512
         }
         $source = Get-Content -LiteralPath $context.root_trace -Raw
-        $source | Should -Match ([regex]::Escape("scenario_count=10"))
-        $source | Should -Match ([regex]::Escape("observation_gap_count=`$observationGapCount"))
-        $source | Should -Match ([regex]::Escape("sequential_capacity_reached=`$capacityReached"))
+        $source | Should -Match ([regex]::Escape('scenario_count=10'))
+        $source | Should -Match ([regex]::Escape('observation_gap_count=$observationGapCount'))
+        $source | Should -Match ([regex]::Escape('sequential_capacity_reached=$capacityReached'))
     }
 
     It 'requires the independent validator to own all eight final claim names' {
@@ -129,8 +129,8 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
     It 'binds eight validated receipts only after independent 8-of-8 validation' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.certification -Raw
-        $matrixPosition = $source.IndexOf("[5/8] Independent Python 8/8 replay",[StringComparison]::Ordinal)
-        $receiptPosition = $source.IndexOf("[6/8] Generate and independently validate eight Part 1-compatible receipts",[StringComparison]::Ordinal)
+        $matrixPosition = $source.IndexOf('[5/8] Independent Python 8/8 replay',[StringComparison]::Ordinal)
+        $receiptPosition = $source.IndexOf('[6/8] Generate and independently validate eight Part 1-compatible receipts',[StringComparison]::Ordinal)
         $matrixPosition | Should -BeGreaterThan -1
         $receiptPosition | Should -BeGreaterThan $matrixPosition
         $source | Should -Match ([regex]::Escape("status='validated'"))
