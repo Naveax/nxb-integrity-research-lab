@@ -49,7 +49,7 @@
   ],
   "claim_requirements": {
     "pnp_lifecycle_semantics": ["two_successful_create_present_remove_repeats", "matched_idle_controls", "no_physical_device_mutation", "cleanup_verified"],
-    "pcie_bdf_semantics": ["three_same_boot_snapshots", "address_decode_valid", "location_path_cross_check", "stable_sanitized_identity_mapping"],
+    "pcie_bdf_semantics": ["three_same_boot_snapshots", "address_decode_valid", "location_path_cross_check", "stable_sanitized_identity_mapping", "deliberately_mismatched_tuple_rejected"],
     "event_id_semantics": ["controlled_positive_windows", "matched_idle_windows", "provider_log_id_repeated_shape", "independent_differential_validation"],
     "event_task_opcode_semantics": ["event_id_gate_passed", "repeated_id_version_level_task_opcode_shape", "negative_controls", "unobserved_labels_rejected"],
     "power_causality": ["two_direct_state_a_b_transitions", "matched_idle_controls", "original_scheme_restored", "temporary_scheme_deleted"],
