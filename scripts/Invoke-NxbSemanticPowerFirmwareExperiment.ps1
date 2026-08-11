@@ -75,6 +75,27 @@ function Get-NxbSemanticPowerSchemeInventory {
     )
 }
 
+function Get-NxbSemanticFirmwareSecureBootState {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Firmware)
+
+    foreach ($propertyName in @('SecureBoot','EnableSecureBoot')) {
+        $property = $Firmware.PSObject.Properties[$propertyName]
+        if ($null -eq $property) { continue }
+
+        if ($property.Value -is [bool]) {
+            if ([bool]$property.Value) { return 'On' }
+            return 'Off'
+        }
+
+        $state = [string]$property.Value
+        if ($state -in @('On','Off')) { return $state }
+        throw ('Unexpected Hyper-V Secure Boot state from VMFirmware property {0}.' -f $propertyName)
+    }
+
+    throw 'Hyper-V VMFirmware object exposes no supported Secure Boot readback property.'
+}
+
 function Invoke-NxbSemanticPowerRepeat {
     [CmdletBinding()]
     param(
@@ -175,26 +196,25 @@ function Invoke-NxbSemanticFirmwareFixture {
         $vm = New-VM -Name $vmName -Generation 2 -MemoryStartupBytes 32MB -NoVHD -ErrorAction Stop
         $created = ($null -ne $vm)
         if (-not $created) { throw 'Ephemeral Generation 2 VM was not created.' }
-        $initial = [string](Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot
-        if ($initial -notin @('On','Off')) { throw 'Unexpected Hyper-V Secure Boot state.' }
+        $initial = Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)
         $alternate = if ($initial -ceq 'On') { 'Off' } else { 'On' }
 
         foreach ($repeat in @('A','B')) {
-            $idleOne = [string](Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot
+            $idleOne = Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)
             Start-Sleep -Milliseconds $DelayMilliseconds
-            $idleTwo = [string](Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot
+            $idleTwo = Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)
             $idleStable = ($idleOne -ceq $initial -and $idleTwo -ceq $initial)
             if (-not $idleStable) { throw ('Virtual firmware idle control changed in repeat {0}.' -f $repeat) }
 
             Set-VMFirmware -VMName $vmName -EnableSecureBoot $alternate -ErrorAction Stop
             Start-Sleep -Milliseconds $DelayMilliseconds
-            $during = [string](Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot
+            $during = Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)
             $transitionObserved = ($during -ceq $alternate)
             if (-not $transitionObserved) { throw 'Virtual firmware transition was not observed.' }
 
             Set-VMFirmware -VMName $vmName -EnableSecureBoot $initial -ErrorAction Stop
             Start-Sleep -Milliseconds $DelayMilliseconds
-            $restoredState = [string](Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot
+            $restoredState = Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)
             $restored = ($restoredState -ceq $initial)
             if (-not $restored) { throw 'Virtual firmware state was not restored.' }
 
@@ -226,6 +246,7 @@ function Invoke-NxbSemanticFirmwareFixture {
         vm_started = $false
         vhd_attached = $false
         network_switch_attached = $false
+        secure_boot_readback = 'vmfirmware_property_adapter_v1'
         vm_removed = $removed
         host_firmware_changed = $false
         repeats = @($repeatResult)
