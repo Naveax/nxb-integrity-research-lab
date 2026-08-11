@@ -152,7 +152,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $topSource | Should -Match ([regex]::Escape('Deep independent root-cause + trace evidence replay'))
         $topSource | Should -Match ([regex]::Escape('deep_root_trace_validation = $true'))
         $preflightSource = Get-Content -LiteralPath $context.host_preflight -Raw
-        $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, host-firmware mutation, or service start was attempted.'))
+        $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.'))
 
         foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.top_certification,$context.host_preflight)) {
             $runtimeSource = Get-Content -LiteralPath $path -Raw
