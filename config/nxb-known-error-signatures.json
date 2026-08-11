@@ -97,6 +97,12 @@
       "description": "Optional Windows diagnostic EventLog used as mandatory PnP semantic evidence authority",
       "include_globs": ["scripts/Invoke-NxbSemanticPnpEventExperiment.ps1"],
       "regex": "(?im)\\bGet-WinEvent\\b"
+    },
+    {
+      "id": "NXB-ERR-028",
+      "description": "Fragile text-regex ASCII source assertion that can false-positive in the Windows PowerShell 5.1 Pester path",
+      "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "regex": "(?im)Should\\s+-Not\\s+-Match\\s+['\"]\\[\\^\\\\u0000-\\\\u007F\\]['\"]"
     }
   ]
 }
