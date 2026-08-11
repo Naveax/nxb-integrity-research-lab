@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-part5-signed-closure.schema.json",
+  "title": "NXB IRL-006 Part 5 Signed Closure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "authority",
+    "head_sha",
+    "closure_sequence",
+    "algorithm",
+    "key_size_bits",
+    "private_key_persisted",
+    "production_signer_claimed",
+    "public_key",
+    "nested_evidence",
+    "nonce_b64",
+    "created_utc",
+    "canonical_sha256",
+    "signature_b64"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "status": { "const": "passed" },
+    "authority": { "const": "nxb-irl006-part5-signed-closure-v1" },
+    "head_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "closure_sequence": { "const": 1 },
+    "algorithm": { "const": "RSA-PKCS1-SHA256" },
+    "key_size_bits": { "type": "integer", "minimum": 3072 },
+    "private_key_persisted": { "const": false },
+    "production_signer_claimed": { "const": false },
+    "public_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modulus_b64", "exponent_b64", "fingerprint_sha256"],
+      "properties": {
+        "modulus_b64": { "type": "string", "minLength": 256 },
+        "exponent_b64": { "type": "string", "minLength": 4 },
+        "fingerprint_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "nested_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part234_review_zip_sha256",
+        "part234_receipt_sha256",
+        "part2_review_zip_sha256",
+        "part2_receipt_sha256",
+        "part3_review_zip_sha256",
+        "part3_receipt_sha256",
+        "part4_review_zip_sha256",
+        "part4_receipt_sha256"
+      ],
+      "properties": {
+        "part234_review_zip_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part234_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part2_review_zip_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part2_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part3_review_zip_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part3_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part4_review_zip_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "part4_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "nonce_b64": { "type": "string", "minLength": 40 },
+    "created_utc": { "type": "string", "pattern": "^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "canonical_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature_b64": { "type": "string", "minLength": 400 }
+  }
+}
