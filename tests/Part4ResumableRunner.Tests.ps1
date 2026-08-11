@@ -54,7 +54,7 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
         $source = Get-Content -LiteralPath $context.common -Raw
         $source | Should -Match ([regex]::Escape('function Get-NxbPart4RunId'))
         $source | Should -Match ([regex]::Escape('$Repository,$ExactHead,$ConfigSha256,$ScopeSha256,$ContractId'))
-        $source | Should -Match ([regex]::Escape("return 'run-' + (Get-NxbPart4Sha256Text -Text $material).Substring(0,32)"))
+        $source | Should -Match ([regex]::Escape('return ''run-'' + (Get-NxbPart4Sha256Text -Text $material).Substring(0,32)'))
     }
 
     It 'uses sha256 prefix modulo shard count for deterministic sharding' {
@@ -81,7 +81,7 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
         $loopPosition = $source.IndexOf('while (@($checkpoint.completed_task_ids).Count',[StringComparison]::Ordinal)
         $syncPosition | Should -BeGreaterThan -1
         $loopPosition | Should -BeGreaterThan $syncPosition
-        $source | Should -Match ([regex]::Escape("Duplicate task execution attempted despite existing receipt"))
+        $source | Should -Match ([regex]::Escape('Duplicate task execution attempted despite existing receipt'))
     }
 
     It 'injects a real process crash after receipt and before checkpoint advance' {
