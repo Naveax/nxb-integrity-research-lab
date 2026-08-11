@@ -32,7 +32,10 @@ function Test-NxbKnownErrorPathMatch {
         [Parameter(Mandatory)][object[]]$Glob
     )
     foreach ($item in @($Glob)) {
-        $pattern = [WildcardPattern]::new([string]$item,[WildcardOptions]::IgnoreCase)
+        $pattern = [System.Management.Automation.WildcardPattern]::new(
+            [string]$item,
+            [System.Management.Automation.WildcardOptions]::IgnoreCase
+        )
         if ($pattern.IsMatch($RelativePath)) { return $true }
     }
     return $false
