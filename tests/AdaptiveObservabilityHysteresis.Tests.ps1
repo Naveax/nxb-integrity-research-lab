@@ -8,7 +8,7 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
             return [IO.Path]::GetFullPath($root)
         }
 
-        function Write-NxbHysteresisSignals {
+        function Write-NxbHysteresisSignalDocument {
             param(
                 [Parameter(Mandatory)][string]$Path,
                 [Parameter(Mandatory)][hashtable]$Signals
@@ -34,9 +34,12 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         Test-Path -LiteralPath $stateScript -PathType Leaf | Should -BeTrue
         $resolver = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
         $panel = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-NxbAdaptiveObservabilityPanel.ps1') -Raw
+        $testSource = Get-Content -LiteralPath (Join-Path $root 'tests\AdaptiveObservabilityHysteresis.Tests.ps1') -Raw
         $resolver | Should -Match ([regex]::Escape('[string]$TriggerStatePath'))
         $panel | Should -Match ([regex]::Escape('$stateUpdaterPath'))
         $panel | Should -Match ([regex]::Escape('-TriggerStatePath $triggerStatePath'))
+        $testSource | Should -Not -Match ([regex]::Escape('function Write-NxbHysteresisSignals'))
+        $testSource | Should -Match ([regex]::Escape('function Write-NxbHysteresisSignalDocument'))
     }
 
     It 'activates a matching trigger and establishes its hold window' {
@@ -45,7 +48,7 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $updater = Join-Path $root 'scripts\Update-NxbAdaptiveObservabilityState.ps1'
         $signals = Join-Path $TestDrive 'activate-signals.json'
         $statePath = Join-Path $TestDrive 'activate-state.json'
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
         $state = & $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru
         $frame = Get-NxbFrameState -State $state
@@ -61,9 +64,9 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'hold-signals.json'
         $statePath = Join-Path $TestDrive 'hold-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         $state = & $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(5) -PassThru
         $frame = Get-NxbFrameState -State $state
         [bool]$frame.active | Should -BeTrue
@@ -78,9 +81,9 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'deactivate-signals.json'
         $statePath = Join-Path $TestDrive 'deactivate-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         $state = & $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(11) -PassThru
         $frame = Get-NxbFrameState -State $state
         [bool]$frame.active | Should -BeFalse
@@ -95,11 +98,11 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'cooldown-signals.json'
         $statePath = Join-Path $TestDrive 'cooldown-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(11) -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         $state = & $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(20) -PassThru
         $frame = Get-NxbFrameState -State $state
         [bool]$frame.matched_now | Should -BeTrue
@@ -114,11 +117,11 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'reactivate-signals.json'
         $statePath = Join-Path $TestDrive 'reactivate-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(11) -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         $state = & $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(42) -PassThru
         $frame = Get-NxbFrameState -State $state
         [bool]$frame.active | Should -BeTrue
@@ -133,9 +136,9 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'resolver-signals.json'
         $statePath = Join-Path $TestDrive 'resolver-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(5) -PassThru)
         $plan = & $resolver -PolicyPath $policy -SignalsPath $signals -TriggerStatePath $statePath -PassThru
         [string]$plan.effective_mode | Should -BeExactly 'deep'
@@ -151,11 +154,11 @@ Describe 'NXB IRL-005 adaptive observability hysteresis contract' {
         $signals = Join-Path $TestDrive 'authority-signals.json'
         $statePath = Join-Path $TestDrive 'authority-state.json'
         $t0 = [DateTime]::Parse('2026-08-10T12:00:00Z').ToUniversalTime()
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0 -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{}
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{}
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(11) -PassThru)
-        Write-NxbHysteresisSignals -Path $signals -Signals @{ frame_time_ms = 40 }
+        Write-NxbHysteresisSignalDocument -Path $signals -Signals @{ frame_time_ms = 40 }
         [void](& $updater -PolicyPath $policy -SignalsPath $signals -StatePath $statePath -NowUtc $t0.AddSeconds(20) -PassThru)
         $plan = & $resolver -PolicyPath $policy -SignalsPath $signals -TriggerStatePath $statePath -PassThru
         [string]$plan.effective_mode | Should -BeExactly 'minimal'
