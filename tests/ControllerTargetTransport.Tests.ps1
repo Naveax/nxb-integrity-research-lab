@@ -99,13 +99,17 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         $wirePosition | Should -BeGreaterThan $persistPosition
     }
 
-    It 'executes invalid-auth duplicate and loss controls against the real loopback socket' {
+    It 'executes invalid-auth duplicate and loss controls against the real loopback socket with an intentionally empty initial transcript' {
         $context = Get-NxbTransportTestContext
         $source = Get-Content -LiteralPath $context.experiment -Raw
         foreach ($token in @('Connect-NxbTransportExperimentClient','invalid_auth_negative','duplicate_negative','gap_negative','TamperAuthentication')) {
             $source | Should -Match ([regex]::Escape($token))
         }
         $source | Should -Match ([regex]::Escape('[Net.IPAddress]::Loopback'))
+        $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'))
+        $source | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'))
+        $source | Should -Match ([regex]::Escape('$transcript = [Collections.Generic.List[object]]::new()'))
+        $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Records'))
     }
 
     It 'spools pending events within byte and record budgets and persists replay cursor' {
@@ -162,10 +166,12 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         }
     }
 
-    It 'inherits the permanent error ledger through ERR-025 and excludes known active bad patterns' {
+    It 'inherits the permanent error ledger through ERR-033 and excludes known active bad patterns' {
         $context = Get-NxbTransportTestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-025'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-033'))
+        $signatureDocument = Get-Content -LiteralPath $context.signatures -Raw | ConvertFrom-Json
+        @($signatureDocument.rules | Where-Object { [string]$_.id -ceq 'NXB-ERR-033' }).Count | Should -Be 1
         foreach ($path in @($context.common,$context.target,$context.experiment,$context.certification)) {
             $source = Get-Content -LiteralPath $path -Raw
             $source | Should -Not -Match '(?im)^\s*\$matches\s*='
