@@ -55,6 +55,8 @@ Describe 'NXB known-error ledger pre-final contract' {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
+        $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
+        @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -116,8 +118,10 @@ function Invoke-NxbSemanticPythonTest {
     }
 }
 '@
+        $unsafePower = '$output = @(& $PowerCfgPath /list 2>&1)'
         $stderrRegex.IsMatch($unsafeNative) | Should -BeTrue
         $stderrRegex.IsMatch($safeNative) | Should -BeFalse
+        $stderrRegex.IsMatch($unsafePower) | Should -BeTrue
 
         $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
         $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
@@ -126,6 +130,11 @@ function Invoke-NxbSemanticPythonTest {
         $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
         $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
         $stderrRegex.IsMatch($semanticTest) | Should -BeFalse
+
+        $powerSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1') -Raw
+        $powerSource | Should -Match ([regex]::Escape('function Invoke-NxbSemanticPowerNative'))
+        $powerSource | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+        $stderrRegex.IsMatch($powerSource) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
