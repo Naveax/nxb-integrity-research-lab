@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-semantic-evidence-receipt.schema.json",
+  "title": "NXB Semantic Evidence Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_id",
+    "claim_name",
+    "status",
+    "authority",
+    "machine",
+    "capture",
+    "evidence",
+    "validation",
+    "receipt_fingerprint_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "receipt_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._-]+$"
+    },
+    "claim_name": {
+      "enum": [
+        "pnp_lifecycle_semantics",
+        "pcie_bdf_semantics",
+        "event_id_semantics",
+        "event_task_opcode_semantics",
+        "power_causality",
+        "firmware_causality",
+        "root_cause_validated",
+        "continuous_trace_completeness"
+      ]
+    },
+    "status": { "enum": ["validated", "failed", "unavailable"] },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "exact_head", "policy_sha256"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 3, "maxLength": 256 },
+        "exact_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["machine_id_sha256"],
+      "properties": {
+        "machine_id_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "source_kind",
+        "started_utc",
+        "ended_utc",
+        "bounded_session_seconds"
+      ],
+      "properties": {
+        "scope": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "source_kind": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "started_utc": { "type": "string", "format": "date-time" },
+        "ended_utc": { "type": "string", "format": "date-time" },
+        "bounded_session_seconds": { "type": "integer", "minimum": 1, "maximum": 86400 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_count", "artifact_index_sha256"],
+      "properties": {
+        "artifact_count": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "artifact_index_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "negative_controls_passed",
+        "cleanup_verified",
+        "independent_validation_passed",
+        "validator_name",
+        "validator_version",
+        "validator_implementation_sha256",
+        "limitations"
+      ],
+      "properties": {
+        "negative_controls_passed": { "type": "boolean" },
+        "cleanup_verified": { "type": "boolean" },
+        "independent_validation_passed": { "type": "boolean" },
+        "validator_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "validator_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "validator_implementation_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "limitations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\r\\n]+$"
+          }
+        }
+      }
+    },
+    "receipt_fingerprint_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "validated" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": { "artifact_count": { "minimum": 1 } }
+          },
+          "validation": {
+            "properties": {
+              "negative_controls_passed": { "const": true },
+              "cleanup_verified": { "const": true },
+              "independent_validation_passed": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
