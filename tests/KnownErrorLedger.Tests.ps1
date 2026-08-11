@@ -40,31 +40,32 @@ Describe 'NXB known-error ledger pre-final contract' {
         [string]$document.ledger_path | Should -BeExactly 'docs/NXB-KNOWN-ERROR-LEDGER.md'
     }
 
-    It 'keeps machine rule ids unique and extends coverage through ERR-029' {
+    It 'keeps machine rule ids unique and extends coverage through ERR-030' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
-        $ids.Count | Should -BeGreaterOrEqual 18
-        foreach ($ruleId in @('NXB-ERR-024','NXB-ERR-025','NXB-ERR-026','NXB-ERR-027','NXB-ERR-028','NXB-ERR-029')) {
+        $ids.Count | Should -BeGreaterOrEqual 19
+        foreach ($ruleId in @('NXB-ERR-024','NXB-ERR-025','NXB-ERR-026','NXB-ERR-027','NXB-ERR-028','NXB-ERR-029','NXB-ERR-030')) {
             $ids | Should -Contain $ruleId
         }
         @((Get-NxbKnownErrorRule -Id 'NXB-ERR-029').include_globs) | Should -Contain 'tests/KnownErrorLedger.Tests.ps1'
+        @((Get-NxbKnownErrorRule -Id 'NXB-ERR-030').include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
     }
 
-    It 'lists every machine rule and every historical id through ERR-029 in the human ledger' {
+    It 'lists every machine rule and every historical id through ERR-030 in the human ledger' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
         $document = Get-NxbKnownErrorSignatureDocument
         foreach ($rule in @($document.rules)) {
             $ledger | Should -Match ([regex]::Escape([string]$rule.id))
         }
-        foreach ($number in 1..29) {
+        foreach ($number in 1..30) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
     }
 
-    It 'locks recent array capability encoding EventLog ASCII and prose regression behavior' {
+    It 'locks recent array capability encoding EventLog ASCII prose and empty-collection regression behavior' {
         $arrayRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-024').regex)
         $badArrayProjection = '$policy.claim_targets' + '.PSObject.Properties'
         $arrayRegex.IsMatch($badArrayProjection) | Should -BeTrue
@@ -94,18 +95,27 @@ Describe 'NXB known-error ledger pre-final contract' {
         $badProseAssertion = '$ledger | Should -Match ([regex]::Escape(' + $quote + 'This explanatory sentence is intentionally long and brittle.' + $quote + '))'
         $proseRegex.IsMatch($badProseAssertion) | Should -BeTrue
         $proseRegex.IsMatch('$ledger | Should -Match ([regex]::Escape(' + $quote + 'NXB-ERR-029' + $quote + '))') | Should -BeFalse
+
+        $emptyCollectionRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-030').regex)
+        $emptyCollectionRegex.IsMatch('[Parameter(Mandatory)][object[]]$Record') | Should -BeTrue
+        $emptyCollectionRegex.IsMatch('[Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Record') | Should -BeFalse
     }
 
-    It 'keeps current Part 4 and ledger tests free of ERR-028 and ERR-029 patterns' {
+    It 'keeps current Part 4 ledger and PnP sources free of ERR-028 ERR-029 and ERR-030 patterns' {
         $root = Get-NxbKnownErrorTestRoot
         $asciiRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-028').regex)
         $proseRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-029').regex)
+        $emptyCollectionRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-030').regex)
         $part4Source = Get-Content -LiteralPath (Join-Path $root 'tests\Part4ResumableRunner.Tests.ps1') -Raw
         $ledgerSource = Get-Content -LiteralPath (Join-Path $root 'tests\KnownErrorLedger.Tests.ps1') -Raw
+        $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
         $asciiRegex.IsMatch($part4Source) | Should -BeFalse
         $asciiRegex.IsMatch($ledgerSource) | Should -BeFalse
         $proseRegex.IsMatch($ledgerSource) | Should -BeFalse
+        $emptyCollectionRegex.IsMatch($pnpSource) | Should -BeFalse
         $part4Source | Should -Match ([regex]::Escape('[IO.File]::ReadAllBytes($Path)'))
+        $pnpSource | Should -Match ([regex]::Escape('[AllowEmptyCollection()][object[]]$Record'))
+        $pnpSource | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
@@ -168,7 +178,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
         [string]$result.status | Should -BeExactly 'passed'
         [int]$result.finding_count | Should -Be 0
-        [int]$result.rule_count | Should -BeGreaterOrEqual 18
+        [int]$result.rule_count | Should -BeGreaterOrEqual 19
         $source = Get-Content -LiteralPath $scanner -Raw
         $source | Should -Match ([regex]::Escape('if ($orderedFinding.Count -gt 0 -and -not $NoThrow)'))
         $source | Should -Match ([regex]::Escape('NXB known-error pre-final scan failed with {0} finding(s).'))
