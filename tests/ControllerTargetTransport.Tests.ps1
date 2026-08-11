@@ -109,6 +109,7 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'))
         $source | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'))
         $source | Should -Match ([regex]::Escape('$transcript = [Collections.Generic.List[object]]::new()'))
+        $source | Should -Match ([regex]::Escape('if ($transcript.Count -ne 0) { throw ''Transport transcript must start empty before the first authenticated request.'' }'))
         $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Records'))
     }
 
