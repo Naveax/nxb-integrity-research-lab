@@ -39,6 +39,12 @@ function ConvertTo-NxbAdaptiveStateUtc {
     [CmdletBinding()]
     param([Parameter()][AllowNull()][object]$Value)
     if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) { return [DateTime]::MinValue }
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset]$Value).UtcDateTime
+    }
+    if ($Value -is [DateTime]) {
+        return ([DateTime]$Value).ToUniversalTime()
+    }
     return [DateTime]::Parse(
         [string]$Value,
         [Globalization.CultureInfo]::InvariantCulture,
