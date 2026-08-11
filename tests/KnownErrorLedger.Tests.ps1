@@ -40,11 +40,21 @@ Describe 'NXB known-error ledger pre-final contract' {
         [string]$document.ledger_path | Should -BeExactly 'docs/NXB-KNOWN-ERROR-LEDGER.md'
     }
 
-    It 'keeps machine-detectable rule ids unique' {
+    It 'keeps machine-detectable rule ids unique and extends generic coverage to semantic authority' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
         $ids.Count | Should -BeGreaterThan 0
+
+        foreach ($ruleId in @('NXB-ERR-001','NXB-ERR-005','NXB-ERR-006','NXB-ERR-008','NXB-ERR-021')) {
+            $rule = Get-NxbKnownErrorRule -Id $ruleId
+            @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
+            @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
+        }
+        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-015')) {
+            $rule = Get-NxbKnownErrorRule -Id $ruleId
+            @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
+        }
     }
 
     It 'lists every machine rule in the human ledger' {
