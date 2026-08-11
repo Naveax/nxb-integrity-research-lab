@@ -32,20 +32,22 @@ $signaturePath = Join-Path $repositoryRoot 'config\nxb-known-error-signatures.js
 $pnpPath = Join-Path $PSScriptRoot 'Invoke-NxbSemanticPnpEventExperiment.ps1'
 $powerPath = Join-Path $PSScriptRoot 'Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
 $rootTracePath = Join-Path $PSScriptRoot 'Invoke-NxbSemanticRootTraceExperiment.ps1'
-foreach ($requiredPath in @($childPath,$scannerPath,$signaturePath,$pnpPath,$powerPath,$rootTracePath)) {
+$transportPath = Join-Path $PSScriptRoot 'Invoke-NxbControllerTargetTransportExperiment.ps1'
+foreach ($requiredPath in @($childPath,$scannerPath,$signaturePath,$pnpPath,$powerPath,$rootTracePath,$transportPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw ('Part 5 V2 component missing: {0}' -f $requiredPath)
     }
 }
 
 Write-Information -InformationAction Continue -MessageData '=== NXB IRL-006 PART 2 + PART 3 + PART 4 + PART 5 SIGNED CLOSURE CERTIFICATION V2 ==='
-Write-Information -InformationAction Continue -MessageData '[top 1/3] ERR-030/ERR-031/ERR-032 exact-tree gate + wrapper/semantic analyzer'
+Write-Information -InformationAction Continue -MessageData '[top 1/3] ERR-030/ERR-031/ERR-032/ERR-033 exact-tree gate + wrapper/semantic/transport analyzer'
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $analyzerFinding = @(
     Invoke-ScriptAnalyzer -Path $PSCommandPath -Severity Warning,Error
     Invoke-ScriptAnalyzer -Path $powerPath -Severity Warning,Error
     Invoke-ScriptAnalyzer -Path $rootTracePath -Severity Warning,Error
+    Invoke-ScriptAnalyzer -Path $transportPath -Severity Warning,Error
 )
 if ($analyzerFinding.Count -gt 0) {
     $detail = @($analyzerFinding | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join [Environment]::NewLine
@@ -53,7 +55,7 @@ if ($analyzerFinding.Count -gt 0) {
 }
 
 $scan = & $scannerPath -RepositoryRoot $repositoryRoot -SignaturePath $signaturePath -NoThrow -PassThru
-if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 21) {
+if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 22) {
     $detail = @($scan.findings | ForEach-Object { '{0} {1}:{2} {3}' -f $_.id,$_.path,$_.line,$_.preview }) -join [Environment]::NewLine
     throw ('Part 5 V2 known-error preflight failed: rules={0} findings={1}{2}{3}' -f [int]$scan.rule_count,[int]$scan.finding_count,[Environment]::NewLine,$detail)
 }
@@ -103,7 +105,20 @@ if ([regex]::IsMatch($rootTraceSource,$unsafeDictionaryWalker)) {
     throw 'ERR-032 regression: root/trace property walker is PSObject-only.'
 }
 
-Write-Information -InformationAction Continue -MessageData ('Part 5 V2 preflight passed: rules={0} findings=0 ERR-030=true ERR-031=true ERR-032=true.' -f [int]$scan.rule_count)
+$transportSource = Get-Content -LiteralPath $transportPath -Raw
+$goodTranscriptSignature = '[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'
+$badTranscriptSignature = '[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'
+if ($transportSource.IndexOf($goodTranscriptSignature,[StringComparison]::Ordinal) -lt 0) {
+    throw 'ERR-033 repair missing: transport transcript does not explicitly allow the valid empty initial collection.'
+}
+if ($transportSource.IndexOf($badTranscriptSignature,[StringComparison]::Ordinal) -ge 0) {
+    throw 'ERR-033 regression: mandatory transport transcript rejects the valid empty initial collection.'
+}
+if ($transportSource.IndexOf('[Parameter(Mandatory)][object[]]$Records',[StringComparison]::Ordinal) -lt 0) {
+    throw 'ERR-033 boundary drift: non-empty spool-record contract was unexpectedly loosened.'
+}
+
+Write-Information -InformationAction Continue -MessageData ('Part 5 V2 preflight passed: rules={0} findings=0 ERR-030=true ERR-031=true ERR-032=true ERR-033=true.' -f [int]$scan.rule_count)
 Write-Information -InformationAction Continue -MessageData '[top 2/3] Run complete Part 5 signed closure child authority'
 
 $pipeline = @(& $childPath -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory -PassThru)
@@ -115,11 +130,11 @@ foreach ($item in $pipeline) {
 }
 if ($null -eq $result) { throw 'Part 5 V2 child authority returned no passed result.' }
 if ([string]$result.head_sha -cne $currentHead) { throw 'Part 5 V2 child exact-head binding mismatch.' }
-if ([int]$result.known_error_rule_count -lt 21 -or [int]$result.known_error_finding_count -ne 0) {
+if ([int]$result.known_error_rule_count -lt 22 -or [int]$result.known_error_finding_count -ne 0) {
     throw ('Part 5 V2 child known-error closure failed: rules={0} findings={1}' -f [int]$result.known_error_rule_count,[int]$result.known_error_finding_count)
 }
 
-Write-Information -InformationAction Continue -MessageData '[top 3/3] Bind ERR-030/ERR-031/ERR-032 repairs into final Part 2+3+4+5 result'
-Write-Information -InformationAction Continue -MessageData ('NXB Part 5 V2 passed: head={0} known_errors=0 rules={1} ERR-030=true ERR-031=true ERR-032=true.' -f $currentHead,[int]$result.known_error_rule_count)
+Write-Information -InformationAction Continue -MessageData '[top 3/3] Bind ERR-030/ERR-031/ERR-032/ERR-033 repairs into final Part 2+3+4+5 result'
+Write-Information -InformationAction Continue -MessageData ('NXB Part 5 V2 passed: head={0} known_errors=0 rules={1} ERR-030=true ERR-031=true ERR-032=true ERR-033=true.' -f $currentHead,[int]$result.known_error_rule_count)
 if ($PassThru) { return $result }
 Write-Output ([string]$result.review_zip_path)
