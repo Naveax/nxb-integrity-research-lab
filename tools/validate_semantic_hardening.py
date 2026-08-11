@@ -6,7 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Iterable, Set
 
 CLAIMS = (
     "pnp_lifecycle_semantics",
@@ -55,6 +55,44 @@ def require_status(document: Dict[str, Any], label: str) -> None:
         fail(f"{label}.status must be passed")
 
 
+def event_id_key(item: Dict[str, Any]) -> str:
+    return f"{item.get('provider_name')}|{item.get('log_name')}|{int(item.get('id', -1))}"
+
+
+def event_shape_key(item: Dict[str, Any]) -> str:
+    return "|".join(
+        str(value)
+        for value in (
+            item.get("provider_name"), item.get("log_name"), int(item.get("id", -1)),
+            int(item.get("version", -1)), int(item.get("level", -1)),
+            int(item.get("task", -1)), int(item.get("opcode", -1)),
+        )
+    )
+
+
+def shape_set(items: Any, key_function: Callable[[Dict[str, Any]], str], label: str) -> Set[str]:
+    if not isinstance(items, list):
+        fail(f"{label} must be an array")
+    result: Set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            fail(f"{label} contains a non-object")
+        if item.get("fixture_identity_matched") is not True:
+            fail(f"{label} contains an event not bound to the fixture identity")
+        result.add(key_function(item))
+    return result
+
+
+def require_declared_set(mapping: Dict[str, Any], key: str, expected: Iterable[str]) -> None:
+    value = mapping.get(key)
+    if not isinstance(value, list):
+        fail(f"pnp repeated mapping {key} must be an array")
+    observed = {str(item) for item in value}
+    expected_set = set(expected)
+    if observed != expected_set:
+        fail(f"pnp repeated mapping {key} does not match independently recomputed intersection")
+
+
 def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
     require_status(document, "pnp")
     repeats = document.get("repeats")
@@ -68,6 +106,26 @@ def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
             fail("pnp create/present direct-state control failed")
         if require_bool(direct.get("close_remove_observed"), "pnp.close_remove_observed") is not True:
             fail("pnp close/remove direct-state control failed")
+        idle = item.get("idle_event_shapes")
+        if not isinstance(idle, list) or len(idle) != 0:
+            fail("pnp matched idle window contains fixture-identity events")
+
+    create_id_a = shape_set(repeats[0].get("create_event_shapes"), event_id_key, "pnp create A")
+    create_id_b = shape_set(repeats[1].get("create_event_shapes"), event_id_key, "pnp create B")
+    remove_id_a = shape_set(repeats[0].get("remove_event_shapes"), event_id_key, "pnp remove A")
+    remove_id_b = shape_set(repeats[1].get("remove_event_shapes"), event_id_key, "pnp remove B")
+    create_shape_a = shape_set(repeats[0].get("create_event_shapes"), event_shape_key, "pnp create-shape A")
+    create_shape_b = shape_set(repeats[1].get("create_event_shapes"), event_shape_key, "pnp create-shape B")
+    remove_shape_a = shape_set(repeats[0].get("remove_event_shapes"), event_shape_key, "pnp remove-shape A")
+    remove_shape_b = shape_set(repeats[1].get("remove_event_shapes"), event_shape_key, "pnp remove-shape B")
+
+    common_create_id = create_id_a & create_id_b
+    common_remove_id = remove_id_a & remove_id_b
+    common_create_shape = create_shape_a & create_shape_b
+    common_remove_shape = remove_shape_a & remove_shape_b
+    if not common_create_id or not common_remove_id or not common_create_shape or not common_remove_shape:
+        fail("pnp/event independent A/B intersections are empty")
+
     negative = document.get("negative_controls") or {}
     if negative.get("matched_idle_windows") != 2 or negative.get("fixture_identity_events_in_idle_windows") != 0:
         fail("pnp matched idle controls failed")
@@ -75,6 +133,24 @@ def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
         fail("pnp negative controls are not passed")
     if require_bool(document.get("cleanup_verified"), "pnp.cleanup_verified") is not True:
         fail("pnp cleanup was not verified")
+
+    mapping = document.get("repeated_event_mapping")
+    if not isinstance(mapping, dict):
+        fail("pnp repeated event mapping is missing")
+    expected_counts = {
+        "common_create_provider_log_id_count": len(common_create_id),
+        "common_remove_provider_log_id_count": len(common_remove_id),
+        "common_create_full_shape_count": len(common_create_shape),
+        "common_remove_full_shape_count": len(common_remove_shape),
+    }
+    for key, expected_count in expected_counts.items():
+        if mapping.get(key) != expected_count:
+            fail(f"pnp {key} does not match independent recomputation")
+    require_declared_set(mapping, "common_create_provider_log_ids", common_create_id)
+    require_declared_set(mapping, "common_remove_provider_log_ids", common_remove_id)
+    require_declared_set(mapping, "common_create_full_shapes", common_create_shape)
+    require_declared_set(mapping, "common_remove_full_shapes", common_remove_shape)
+
     claims = document.get("claims") or {}
     result = {
         "pnp_lifecycle_semantics": require_bool(claims.get("pnp_lifecycle_semantics"), "pnp claim"),
@@ -83,15 +159,6 @@ def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
     }
     if not all(result.values()):
         fail("one or more PnP/event claims are not validated")
-    mapping = document.get("repeated_event_mapping") or {}
-    for key in (
-        "common_create_provider_log_id_count",
-        "common_remove_provider_log_id_count",
-        "common_create_full_shape_count",
-        "common_remove_full_shape_count",
-    ):
-        if not isinstance(mapping.get(key), int) or mapping[key] < 1:
-            fail(f"pnp repeated event mapping missing {key}")
     return result
 
 
@@ -107,6 +174,18 @@ def validate_pcie(document: Dict[str, Any]) -> Dict[str, bool]:
             fail("pcie mapping was not repeated three times")
         if item.get("address_decode_valid") is not True or item.get("location_path_cross_check_matches") is not True:
             fail("pcie mapping lacks address/location cross-check")
+        bus = item.get("bus")
+        device = item.get("device")
+        function = item.get("function")
+        if not isinstance(bus, int) or not 0 <= bus <= 255:
+            fail("pcie stable mapping bus is invalid")
+        if not isinstance(device, int) or not 0 <= device <= 31:
+            fail("pcie stable mapping device is invalid")
+        if not isinstance(function, int) or not 0 <= function <= 7:
+            fail("pcie stable mapping function is invalid")
+        expected_bdf = f"{bus:02x}:{device:02x}.{function:x}"
+        if item.get("bdf") != expected_bdf:
+            fail("pcie BDF string does not match independently formatted bus/device/function")
 
     negative = document.get("negative_controls")
     if not isinstance(negative, dict):
