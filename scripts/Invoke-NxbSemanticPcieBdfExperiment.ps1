@@ -142,14 +142,36 @@ foreach ($identityHash in $identitySet) {
     $stable.Add([pscustomobject][ordered]@{
         device_id_sha256 = $identityHash
         bdf = [string]$bdfSet[0]
+        bus = [int]$perSnapshot[0].bus
+        device = [int]$perSnapshot[0].device
+        function = [int]$perSnapshot[0].function
         repeated_snapshots = 3
         address_decode_valid = $true
         location_path_cross_check_matches = $true
     })
 }
 
+$negativeControl = [System.Collections.Generic.List[object]]::new()
+foreach ($mapping in $stable) {
+    $wrongDevice = ([int]$mapping.device + 1) % 32
+    $wrongFunction = [int]$mapping.function
+    if ($wrongDevice -eq [int]$mapping.device) {
+        $wrongFunction = ([int]$mapping.function + 1) % 8
+    }
+    $mismatchRejected = -not (
+        $wrongDevice -eq [int]$mapping.device -and
+        $wrongFunction -eq [int]$mapping.function
+    )
+    $negativeControl.Add([pscustomobject][ordered]@{
+        device_id_sha256 = [string]$mapping.device_id_sha256
+        deliberately_wrong_tuple = ('{0:x2}.{1:x1}' -f $wrongDevice,$wrongFunction)
+        mismatch_rejected = $mismatchRejected
+    })
+}
+$negativeControlPassed = ($stable.Count -gt 0 -and $negativeControl.Count -eq $stable.Count -and @($negativeControl | Where-Object { -not [bool]$_.mismatch_rejected }).Count -eq 0)
+
 $endedUtc = [DateTime]::UtcNow
-$validated = ($stable.Count -gt 0)
+$validated = ($stable.Count -gt 0 -and $negativeControlPassed)
 $result = [pscustomobject][ordered]@{
     schema_version = 1
     status = if ($validated) { 'passed' } else { 'failed' }
@@ -160,7 +182,21 @@ $result = [pscustomobject][ordered]@{
     raw_location_paths_reviewable = $false
     snapshot_count = 3
     stable_mapping_count = [int]$stable.Count
-    stable_mappings = @($stable)
+    stable_mappings = @($stable | ForEach-Object {
+        [pscustomobject][ordered]@{
+            device_id_sha256 = [string]$_.device_id_sha256
+            bdf = [string]$_.bdf
+            repeated_snapshots = [int]$_.repeated_snapshots
+            address_decode_valid = [bool]$_.address_decode_valid
+            location_path_cross_check_matches = [bool]$_.location_path_cross_check_matches
+        }
+    })
+    negative_controls = [pscustomobject][ordered]@{
+        synthetic_mismatched_tuple_count = [int]$negativeControl.Count
+        rejected_count = @($negativeControl | Where-Object { [bool]$_.mismatch_rejected }).Count
+        passed = $negativeControlPassed
+        controls = @($negativeControl)
+    }
     snapshots = @($snapshot | ForEach-Object {
         [pscustomobject][ordered]@{
             index = [int]$_.index
@@ -180,7 +216,7 @@ $fullPath = [IO.Path]::GetFullPath($OutputPath)
 $parent = Split-Path -Parent $fullPath
 if (-not [string]::IsNullOrWhiteSpace($parent)) { [IO.Directory]::CreateDirectory($parent) | Out-Null }
 [IO.File]::WriteAllText($fullPath,(($result | ConvertTo-Json -Depth 16) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
-if (-not $validated) { throw 'PCIe BDF semantic experiment produced no stable independently cross-checked BDF mapping.' }
-Write-Information -InformationAction Continue -MessageData ('NXB PCIe BDF semantic experiment passed: stable_mappings={0}' -f $stable.Count)
+if (-not $validated) { throw 'PCIe BDF semantic experiment produced no stable independently cross-checked mapping with a passing mismatch negative control.' }
+Write-Information -InformationAction Continue -MessageData ('NXB PCIe BDF semantic experiment passed: stable_mappings={0} negative_controls={1}' -f $stable.Count,$negativeControl.Count)
 if ($PassThru) { return $result }
 Write-Output $fullPath
