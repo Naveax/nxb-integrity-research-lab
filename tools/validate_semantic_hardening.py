@@ -5,7 +5,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 CLAIMS = (
     "pnp_lifecycle_semantics",
@@ -70,6 +70,8 @@ def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
     negative = document.get("negative_controls") or {}
     if negative.get("matched_idle_windows") != 2 or negative.get("fixture_identity_events_in_idle_windows") != 0:
         fail("pnp matched idle controls failed")
+    if negative.get("passed") is not True:
+        fail("pnp negative controls are not passed")
     if require_bool(document.get("cleanup_verified"), "pnp.cleanup_verified") is not True:
         fail("pnp cleanup was not verified")
     claims = document.get("claims") or {}
@@ -104,6 +106,21 @@ def validate_pcie(document: Dict[str, Any]) -> Dict[str, bool]:
             fail("pcie mapping was not repeated three times")
         if item.get("address_decode_valid") is not True or item.get("location_path_cross_check_matches") is not True:
             fail("pcie mapping lacks address/location cross-check")
+
+    negative = document.get("negative_controls")
+    if not isinstance(negative, dict):
+        fail("pcie negative control object is missing")
+    expected_count = len(mappings)
+    if negative.get("synthetic_mismatched_tuple_count") != expected_count:
+        fail("pcie negative-control count does not match stable mappings")
+    if negative.get("rejected_count") != expected_count or negative.get("passed") is not True:
+        fail("pcie mismatched tuple negative controls did not all reject")
+    controls = negative.get("controls")
+    if not isinstance(controls, list) or len(controls) != expected_count:
+        fail("pcie negative-control detail count mismatch")
+    if any(item.get("mismatch_rejected") is not True for item in controls):
+        fail("pcie contains an accepted deliberately wrong tuple")
+
     claim = require_bool((document.get("claims") or {}).get("pcie_bdf_semantics"), "pcie claim")
     if not claim:
         fail("pcie claim is not validated")
