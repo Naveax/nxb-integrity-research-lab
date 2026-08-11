@@ -89,10 +89,10 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
     It 'persists target checkpoint state atomically and advances restart generation' {
         $context = Get-NxbTransportTestContext
         $source = Get-Content -LiteralPath $context.target -Raw
-        $source | Should -Match ([regex]::Escape("$fullPath + '.tmp-'"))
+        $source | Should -Match ([regex]::Escape('$fullPath + ''.tmp-'''))
         $source | Should -Match ([regex]::Escape('Move-Item -LiteralPath $tempPath -Destination $fullPath -Force'))
         $source | Should -Match ([regex]::Escape('$state.generation = [int]$state.generation + 1'))
-        $source | Should -Match ([regex]::Escape("$statePath = Join-Path $stateRoot 'target-state.json'"))
+        $source | Should -Match ([regex]::Escape('$statePath = Join-Path $stateRoot ''target-state.json'''))
     }
 
     It 'executes invalid-auth duplicate and loss controls against the real loopback socket' {
@@ -129,7 +129,7 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         $source | Should -Match ([regex]::Escape('post_stop_event_negative'))
         $source | Should -Match ([regex]::Escape("reason -ceq 'emergency_stop_active'"))
         $targetSource = Get-Content -LiteralPath $context.target -Raw
-        $targetSource | Should -Match ([regex]::Escape("$kind -ceq 'event'"))
+        $targetSource | Should -Match ([regex]::Escape('$kind -ceq ''event'''))
         $targetSource | Should -Match ([regex]::Escape("reason='emergency_stop_active'"))
     }
 
