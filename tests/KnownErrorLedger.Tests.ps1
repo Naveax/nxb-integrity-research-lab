@@ -51,10 +51,14 @@ Describe 'NXB known-error ledger pre-final contract' {
             @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
-        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-022')) {
+        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-022','NXB-ERR-024')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
+        $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
+        @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
+        $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
+        @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -66,13 +70,16 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-022 and locks analyzer/runtime regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-024 and locks analyzer/runtime regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..22) {
+        foreach ($number in 1..24) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
+        $ledger | Should -Match ([regex]::Escape('Do not generate a regex quantifier through nested Python/PowerShell brace formatting.'))
+        $ledger | Should -Match ([regex]::Escape('fixed `^[0-9a-f]+$` regex'))
+        $ledger | Should -Match ([regex]::Escape('Never use `.PSObject.Properties` to enumerate a JSON array.'))
 
         $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
         $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
@@ -116,8 +123,10 @@ function Invoke-NxbSemanticPythonTest {
     }
 }
 '@
+        $unsafePower = '$output = @(& $PowerCfgPath /list 2>&1)'
         $stderrRegex.IsMatch($unsafeNative) | Should -BeTrue
         $stderrRegex.IsMatch($safeNative) | Should -BeFalse
+        $stderrRegex.IsMatch($unsafePower) | Should -BeTrue
 
         $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
         $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
@@ -126,6 +135,20 @@ function Invoke-NxbSemanticPythonTest {
         $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
         $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
         $stderrRegex.IsMatch($semanticTest) | Should -BeFalse
+
+        $powerSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1') -Raw
+        $powerSource | Should -Match ([regex]::Escape('function Invoke-NxbSemanticPowerNative'))
+        $powerSource | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+        $stderrRegex.IsMatch($powerSource) | Should -BeFalse
+
+        $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
+        $arrayRegex = [regex]::new([string]$arrayRule.regex)
+        $badArrayProjection = '$policy.claim_targets' + '.PSObject.Properties'
+        $arrayRegex.IsMatch($badArrayProjection) | Should -BeTrue
+        $arrayRegex.IsMatch('@($policy.claim_targets)') | Should -BeFalse
+        $hardeningTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticHardening.Tests.ps1') -Raw
+        $arrayRegex.IsMatch($hardeningTest) | Should -BeFalse
+        $hardeningTest | Should -Match ([regex]::Escape('$targets = @($policy.claim_targets)'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
