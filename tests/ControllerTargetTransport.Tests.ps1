@@ -49,10 +49,10 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         [bool]$config.review_privacy.authentication_key_reviewable | Should -BeFalse
     }
 
-    It 'binds every frame to canonical payload hashing and HMAC material' {
+    It 'binds every frame to canonical payload hashing and fixed-time HMAC verification' {
         $context = Get-NxbTransportTestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('Get-NxbTransportCanonicalMaterial','HMACSHA256','payload_sha256','payload_b64','session_id','sender_role','sequence','auth_tag')) {
+        foreach ($token in @('Get-NxbTransportCanonicalMaterial','HMACSHA256','payload_sha256','payload_b64','session_id','sender_role','sequence','auth_tag','CryptographicOperations]::FixedTimeEquals')) {
             $source | Should -Match ([regex]::Escape($token))
         }
         $source | Should -Match ([regex]::Escape('Test-NxbTransportFrame'))
