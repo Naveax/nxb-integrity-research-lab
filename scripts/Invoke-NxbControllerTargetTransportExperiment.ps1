@@ -20,7 +20,7 @@ function Write-NxbTransportExperimentJson {
     [IO.File]::WriteAllText($fullPath,(($InputObject | ConvertTo-Json -Depth 48) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 }
 
-function Start-NxbTransportTargetProcess {
+function Invoke-NxbTransportTargetProcessStart {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$PowerShellPath,
@@ -205,7 +205,7 @@ $gapRejected = $false
 $restartGeneration = 0
 
 try {
-    $targetProcess = Start-NxbTransportTargetProcess -PowerShellPath $pwsh -TargetScript $targetScript -ConfigPath $configFull -StateDirectory $stateRoot -ReadyPath $readyOnePath -ResultPath $targetResultPath -SessionId $sessionId -KeyHex $keyHex
+    $targetProcess = Invoke-NxbTransportTargetProcessStart -PowerShellPath $pwsh -TargetScript $targetScript -ConfigPath $configFull -StateDirectory $stateRoot -ReadyPath $readyOnePath -ResultPath $targetResultPath -SessionId $sessionId -KeyHex $keyHex
     $readyOne = Wait-NxbTransportReady -Process $targetProcess -ReadyPath $readyOnePath
     if ([string]$readyOne.status -cne 'ready' -or [int]$readyOne.generation -ne 1) { throw 'Initial transport target readiness contract failed.' }
     $connection = Connect-NxbTransportExperimentClient -Port ([int]$readyOne.port)
@@ -279,7 +279,7 @@ try {
             $targetProcess = $null
             $restartPerformed = $true
 
-            $targetProcess = Start-NxbTransportTargetProcess -PowerShellPath $pwsh -TargetScript $targetScript -ConfigPath $configFull -StateDirectory $stateRoot -ReadyPath $readyTwoPath -ResultPath $targetResultPath -SessionId $sessionId -KeyHex $keyHex
+            $targetProcess = Invoke-NxbTransportTargetProcessStart -PowerShellPath $pwsh -TargetScript $targetScript -ConfigPath $configFull -StateDirectory $stateRoot -ReadyPath $readyTwoPath -ResultPath $targetResultPath -SessionId $sessionId -KeyHex $keyHex
             $readyTwo = Wait-NxbTransportReady -Process $targetProcess -ReadyPath $readyTwoPath
             $restartGeneration = [int]$readyTwo.generation
             $checkpointMatched = ([int64]$readyTwo.next_expected_sequence -eq $nextSequence -and [int64]$readyTwo.response_sequence -eq $nextResponseSequence)
