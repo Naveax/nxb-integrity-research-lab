@@ -126,7 +126,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         @($targets | Where-Object { -not [bool]$_.target_requested }).Count | Should -Be 0
     }
 
-    It 'binds eight validated receipts only after independent 8-of-8 validation' {
+    It 'binds receipts only after 8-of-8 validation and keeps inherited regressions out of the runtime surface' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.certification -Raw
         $matrixPosition = $source.IndexOf('[5/8] Independent Python 8/8 replay',[StringComparison]::Ordinal)
@@ -135,16 +135,18 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $receiptPosition | Should -BeGreaterThan $matrixPosition
         $source | Should -Match ([regex]::Escape("status='validated'"))
         $source | Should -Match ([regex]::Escape('independent_validation_passed=$true'))
-    }
 
-    It 'keeps inherited recurring PowerShell error classes out of the new runtime surface' {
-        $context = Get-NxbSemanticHardeningTestContext
         foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification)) {
-            $source = Get-Content -LiteralPath $path -Raw
-            $source | Should -Not -Match '(?im)^\s*\$matches\s*='
-            $source | Should -Not -Match '(?im)^\s*\$profile\s*='
-            $source | Should -Not -Match '(?ims)catch\s*\{\s*\}'
+            $runtimeSource = Get-Content -LiteralPath $path -Raw
+            $runtimeSource | Should -Not -Match '(?im)^\s*\$matches\s*='
+            $runtimeSource | Should -Not -Match '(?im)^\s*\$profile\s*='
+            $runtimeSource | Should -Not -Match '(?ims)catch\s*\{\s*\}'
         }
+        $powerSource = Get-Content -LiteralPath $context.power -Raw
+        $powerSource | Should -Match ([regex]::Escape('function Invoke-NxbSemanticPowerNative'))
+        $powerSource | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+        $powerSource | Should -Not -Match '(?im)^\s*\$[A-Za-z_][A-Za-z0-9_]*\s*=\s*@\(&\s*\$PowerCfgPath\b[^\r\n]*2>&1\)'
+
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
         $ledger | Should -Match ([regex]::Escape('NXB-ERR-022'))
     }
