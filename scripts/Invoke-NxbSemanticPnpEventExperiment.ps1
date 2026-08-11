@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$OutputPath,
     [Parameter()][ValidateRange(250,3000)][int]$SettleMilliseconds = 750,
+    [Parameter()][ValidateRange(2,15)][int]$EventTimeoutSeconds = 8,
     [Parameter()][switch]$PassThru
 )
 
@@ -117,6 +118,23 @@ function Get-NxbSemanticPnpEventShape {
     return @($shape | Sort-Object provider_name,log_name,id,version,level,task,opcode -Unique)
 }
 
+function Wait-NxbSemanticPnpEventShape {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$InstanceId,
+        [Parameter(Mandatory)][DateTime]$StartUtc,
+        [Parameter(Mandatory)][string[]]$LogNames,
+        [Parameter(Mandatory)][ValidateRange(2,15)][int]$TimeoutSeconds
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $observed = @(Get-NxbSemanticPnpEventShape -InstanceId $InstanceId -StartUtc $StartUtc -EndUtc ([DateTime]::UtcNow) -LogNames $LogNames)
+        if ($observed.Count -gt 0) { return @($observed) }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    return @()
+}
+
 function Get-NxbSemanticPnpShapeKey {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object]$Shape)
@@ -174,19 +192,20 @@ foreach ($repeat in @('A','B')) {
         }
         $presentObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $true
         if (-not $presentObserved) { throw 'Owned ephemeral PnP fixture was not observed present.' }
-        Start-Sleep -Milliseconds $SettleMilliseconds
+        $createShape = @(Wait-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $createStart -LogNames $logInventory -TimeoutSeconds $EventTimeoutSeconds)
         $createEnd = [DateTime]::UtcNow
+        if ($createShape.Count -eq 0) { throw 'Owned ephemeral PnP fixture produced no bounded create event evidence.' }
 
         $removeStart = [DateTime]::UtcNow
         $lease.Close()
+        if ([bool]$lease.CleanupRebootRequired) { throw 'Owned ephemeral PnP fixture cleanup requires reboot.' }
         $removedObserved = Wait-NxbSemanticPnpPresence -InstanceId $actualId -ExpectedPresent $false
         if (-not $removedObserved) { throw 'Owned ephemeral PnP fixture was not observed removed after close.' }
-        Start-Sleep -Milliseconds $SettleMilliseconds
+        $removeShape = @(Wait-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $removeStart -LogNames $logInventory -TimeoutSeconds $EventTimeoutSeconds)
         $removeEnd = [DateTime]::UtcNow
+        if ($removeShape.Count -eq 0) { throw 'Owned ephemeral PnP fixture produced no bounded remove event evidence.' }
 
         $idleShape = @(Get-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $idleStart -EndUtc $idleEnd -LogNames $logInventory)
-        $createShape = @(Get-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $createStart -EndUtc $createEnd -LogNames $logInventory)
-        $removeShape = @(Get-NxbSemanticPnpEventShape -InstanceId $actualId -StartUtc $removeStart -EndUtc $removeEnd -LogNames $logInventory)
 
         $repeatResult.Add([pscustomobject][ordered]@{
             repeat = $repeat
@@ -196,7 +215,15 @@ foreach ($repeat in @('A','B')) {
             direct_state = [pscustomobject][ordered]@{
                 create_present_observed = $presentObserved
                 close_remove_observed = $removedObserved
+                cleanup_reboot_required = [bool]$lease.CleanupRebootRequired
                 presence_probe = 'cfgmgr32_cm_locate_devnode_normal'
+            }
+            evidence_windows = [pscustomobject][ordered]@{
+                create_started_utc = $createStart.ToString('o')
+                create_ended_utc = $createEnd.ToString('o')
+                remove_started_utc = $removeStart.ToString('o')
+                remove_ended_utc = $removeEnd.ToString('o')
+                event_timeout_seconds = $EventTimeoutSeconds
             }
             idle_event_shapes = $idleShape
             create_event_shapes = $createShape
@@ -234,7 +261,7 @@ $commonRemoveId = @($removeIdA | Where-Object { $removeIdB -contains $_ })
 $commonCreateShape = @($createShapeA | Where-Object { $createShapeB -contains $_ })
 $commonRemoveShape = @($removeShapeA | Where-Object { $removeShapeB -contains $_ })
 $idleClean = (@($repeatResult | ForEach-Object { @($_.idle_event_shapes) }).Count -eq 0)
-$pnpValidated = (@($repeatResult | Where-Object { -not [bool]$_.direct_state.create_present_observed -or -not [bool]$_.direct_state.close_remove_observed }).Count -eq 0)
+$pnpValidated = (@($repeatResult | Where-Object { -not [bool]$_.direct_state.create_present_observed -or -not [bool]$_.direct_state.close_remove_observed -or [bool]$_.direct_state.cleanup_reboot_required }).Count -eq 0)
 $eventIdValidated = ($idleClean -and $commonCreateId.Count -gt 0 -and $commonRemoveId.Count -gt 0)
 $taskOpcodeValidated = ($eventIdValidated -and $commonCreateShape.Count -gt 0 -and $commonRemoveShape.Count -gt 0)
 $endedUtc = [DateTime]::UtcNow
