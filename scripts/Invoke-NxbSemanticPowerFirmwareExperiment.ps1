@@ -27,13 +27,38 @@ function Get-NxbSemanticPowerSha256Text {
     finally { $sha.Dispose() }
 }
 
+function Invoke-NxbSemanticPowerNative {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Executable,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+    $previousErrorActionPreference = $ErrorActionPreference
+    $nativePreferenceVariable = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    $nativePreferenceAvailable = ($null -ne $nativePreferenceVariable)
+    $previousNativePreference = if ($nativePreferenceAvailable) { [bool]$nativePreferenceVariable.Value } else { $null }
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($nativePreferenceAvailable) { Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $false -Scope Local }
+        $nativeOutput = @(& $Executable @ArgumentList 2>&1)
+        $nativeExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($nativePreferenceAvailable) { Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $previousNativePreference -Scope Local }
+    }
+    return [pscustomobject][ordered]@{
+        exit_code = $nativeExitCode
+        output = @($nativeOutput | ForEach-Object { [string]$_ })
+    }
+}
+
 function Get-NxbSemanticPowerActiveScheme {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$PowerCfgPath)
-    $output = @(& $PowerCfgPath /getactivescheme 2>&1)
-    $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-    if ($exitCode -ne 0) { throw ('powercfg /getactivescheme failed: exit={0}' -f $exitCode) }
-    $guidMatch = [regex]::Match(($output -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    $native = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/getactivescheme')
+    if ($native.exit_code -ne 0) { throw ('powercfg /getactivescheme failed: exit={0}' -f $native.exit_code) }
+    $guidMatch = [regex]::Match(($native.output -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
     if (-not $guidMatch.Success) { throw 'Unable to parse active power scheme GUID.' }
     return $guidMatch.Value.ToLowerInvariant()
 }
@@ -41,11 +66,10 @@ function Get-NxbSemanticPowerActiveScheme {
 function Get-NxbSemanticPowerSchemeInventory {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$PowerCfgPath)
-    $output = @(& $PowerCfgPath /list 2>&1)
-    $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-    if ($exitCode -ne 0) { throw ('powercfg /list failed: exit={0}' -f $exitCode) }
+    $native = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/list')
+    if ($native.exit_code -ne 0) { throw ('powercfg /list failed: exit={0}' -f $native.exit_code) }
     return @(
-        [regex]::Matches(($output -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') |
+        [regex]::Matches(($native.output -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') |
             ForEach-Object { $_.Value.ToLowerInvariant() } |
             Sort-Object -Unique
     )
@@ -71,45 +95,44 @@ function Invoke-NxbSemanticPowerRepeat {
     $restored = $false
     $deleted = $false
     try {
-        $duplicateOutput = @(& $PowerCfgPath /duplicatescheme $original 2>&1)
-        $duplicateExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-        if ($duplicateExit -ne 0) { throw ('powercfg /duplicatescheme failed: exit={0}' -f $duplicateExit) }
-        $guidMatches = @([regex]::Matches(($duplicateOutput -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'))
+        $duplicate = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/duplicatescheme',$original)
+        if ($duplicate.exit_code -ne 0) { throw ('powercfg /duplicatescheme failed: exit={0}' -f $duplicate.exit_code) }
+        $guidMatches = @([regex]::Matches(($duplicate.output -join [Environment]::NewLine),'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'))
         if ($guidMatches.Count -lt 1) { throw 'Unable to parse duplicated power scheme GUID.' }
         $temporary = $guidMatches[$guidMatches.Count - 1].Value.ToLowerInvariant()
         if ($temporary -ceq $original) { throw 'Temporary power scheme equals original.' }
         $created = (@(Get-NxbSemanticPowerSchemeInventory -PowerCfgPath $PowerCfgPath) -contains $temporary)
         if (-not $created) { throw 'Temporary power scheme was not created.' }
 
-        & $PowerCfgPath /setactive $temporary *> $null
-        if ($LASTEXITCODE -ne 0) { throw 'Temporary power scheme activation failed.' }
+        $activate = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/setactive',$temporary)
+        if ($activate.exit_code -ne 0) { throw ('Temporary power scheme activation failed: exit={0}' -f $activate.exit_code) }
         Start-Sleep -Milliseconds $DelayMilliseconds
         $activated = ((Get-NxbSemanticPowerActiveScheme -PowerCfgPath $PowerCfgPath) -ceq $temporary)
         if (-not $activated) { throw 'Temporary power scheme was not observed active.' }
 
-        & $PowerCfgPath /setactive $original *> $null
-        if ($LASTEXITCODE -ne 0) { throw 'Original power scheme restore failed.' }
+        $restore = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/setactive',$original)
+        if ($restore.exit_code -ne 0) { throw ('Original power scheme restore failed: exit={0}' -f $restore.exit_code) }
         Start-Sleep -Milliseconds $DelayMilliseconds
         $restored = ((Get-NxbSemanticPowerActiveScheme -PowerCfgPath $PowerCfgPath) -ceq $original)
         if (-not $restored) { throw 'Original power scheme was not restored.' }
 
-        & $PowerCfgPath /delete $temporary *> $null
-        if ($LASTEXITCODE -ne 0) { throw 'Temporary power scheme delete failed.' }
+        $delete = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/delete',$temporary)
+        if ($delete.exit_code -ne 0) { throw ('Temporary power scheme delete failed: exit={0}' -f $delete.exit_code) }
         $deleted = (@(Get-NxbSemanticPowerSchemeInventory -PowerCfgPath $PowerCfgPath) -notcontains $temporary)
         if (-not $deleted) { throw 'Temporary power scheme remained after delete.' }
     }
     finally {
         if (-not $restored) {
             try {
-                & $PowerCfgPath /setactive $original *> $null
-                $restored = ((Get-NxbSemanticPowerActiveScheme -PowerCfgPath $PowerCfgPath) -ceq $original)
+                $cleanupRestore = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/setactive',$original)
+                if ($cleanupRestore.exit_code -eq 0) { $restored = ((Get-NxbSemanticPowerActiveScheme -PowerCfgPath $PowerCfgPath) -ceq $original) }
             }
             catch { $restored = $false }
         }
         if (-not [string]::IsNullOrWhiteSpace($temporary) -and -not $deleted) {
             try {
-                & $PowerCfgPath /delete $temporary *> $null
-                $deleted = (@(Get-NxbSemanticPowerSchemeInventory -PowerCfgPath $PowerCfgPath) -notcontains $temporary)
+                $cleanupDelete = Invoke-NxbSemanticPowerNative -Executable $PowerCfgPath -ArgumentList @('/delete',$temporary)
+                if ($cleanupDelete.exit_code -eq 0) { $deleted = (@(Get-NxbSemanticPowerSchemeInventory -PowerCfgPath $PowerCfgPath) -notcontains $temporary) }
             }
             catch { $deleted = $false }
         }
@@ -134,7 +157,13 @@ function Invoke-NxbSemanticFirmwareFixture {
 
     foreach ($commandName in @('New-VM','Get-VM','Get-VMFirmware','Set-VMFirmware','Remove-VM')) {
         if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
-            return [pscustomobject][ordered]@{ status='unavailable'; reason='hyper_v_cmdlets_unavailable'; vm_removed=$true; host_firmware_changed=$false; repeats=@() }
+            return [pscustomobject][ordered]@{
+                status = 'unavailable'
+                reason = 'hyper_v_cmdlets_unavailable'
+                vm_removed = $true
+                host_firmware_changed = $false
+                repeats = @()
+            }
         }
     }
 
@@ -170,7 +199,12 @@ function Invoke-NxbSemanticFirmwareFixture {
             if (-not $restored) { throw 'Virtual firmware state was not restored.' }
 
             $repeatResult.Add([pscustomobject][ordered]@{
-                repeat=$repeat; idle_control_stable=$idleStable; initial_secure_boot=$initial; alternate_secure_boot=$alternate; transition_observed=$transitionObserved; restored=$restored
+                repeat = $repeat
+                idle_control_stable = $idleStable
+                initial_secure_boot = $initial
+                alternate_secure_boot = $alternate
+                transition_observed = $transitionObserved
+                restored = $restored
             })
         }
     }
@@ -186,9 +220,15 @@ function Invoke-NxbSemanticFirmwareFixture {
 
     $passed = ($created -and $removed -and $repeatResult.Count -eq 2 -and @($repeatResult | Where-Object { -not [bool]$_.transition_observed -or -not [bool]$_.restored }).Count -eq 0)
     return [pscustomobject][ordered]@{
-        status=if ($passed) { 'passed' } else { 'failed' }
-        reason=if ($passed) { $null } else { 'virtual_firmware_fixture_failed' }
-        generation=2; vm_started=$false; vhd_attached=$false; network_switch_attached=$false; vm_removed=$removed; host_firmware_changed=$false; repeats=@($repeatResult)
+        status = if ($passed) { 'passed' } else { 'failed' }
+        reason = if ($passed) { $null } else { 'virtual_firmware_fixture_failed' }
+        generation = 2
+        vm_started = $false
+        vhd_attached = $false
+        network_switch_attached = $false
+        vm_removed = $removed
+        host_firmware_changed = $false
+        repeats = @($repeatResult)
     }
 }
 
@@ -208,15 +248,22 @@ $firmwareValidated = ([string]$firmware.status -ceq 'passed')
 $endedUtc = [DateTime]::UtcNow
 
 $result = [pscustomobject][ordered]@{
-    schema_version=1
-    status=if ($powerValidated -and $firmwareValidated) { 'passed' } elseif ([string]$firmware.status -ceq 'unavailable') { 'unavailable' } else { 'failed' }
-    started_utc=$startedUtc.ToString('o')
-    ended_utc=$endedUtc.ToString('o')
-    scope='owned-temporary-power-scheme-and-ephemeral-hyperv-gen2-firmware'
-    power=[pscustomobject][ordered]@{ repeats=$powerRepeat; cleanup_verified=(@($powerRepeat | Where-Object { -not [bool]$_.original_scheme_restored -or -not [bool]$_.temporary_scheme_deleted }).Count -eq 0) }
-    firmware=$firmware
-    claims=[pscustomobject][ordered]@{
-        power_causality=$powerValidated; firmware_causality=$firmwareValidated; host_firmware_changed=$false; generalized_power_causality_claimed=$false; generalized_firmware_causality_claimed=$false
+    schema_version = 1
+    status = if ($powerValidated -and $firmwareValidated) { 'passed' } elseif ([string]$firmware.status -ceq 'unavailable') { 'unavailable' } else { 'failed' }
+    started_utc = $startedUtc.ToString('o')
+    ended_utc = $endedUtc.ToString('o')
+    scope = 'owned-temporary-power-scheme-and-ephemeral-hyperv-gen2-firmware'
+    power = [pscustomobject][ordered]@{
+        repeats = $powerRepeat
+        cleanup_verified = (@($powerRepeat | Where-Object { -not [bool]$_.original_scheme_restored -or -not [bool]$_.temporary_scheme_deleted }).Count -eq 0)
+    }
+    firmware = $firmware
+    claims = [pscustomobject][ordered]@{
+        power_causality = $powerValidated
+        firmware_causality = $firmwareValidated
+        host_firmware_changed = $false
+        generalized_power_causality_claimed = $false
+        generalized_firmware_causality_claimed = $false
     }
 }
 
