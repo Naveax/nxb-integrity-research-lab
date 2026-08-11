@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-irl006-part5-signed-closure-v1",
+  "scope": "local-ephemeral-certification-signing-only",
+  "algorithm": "RSA-PKCS1-SHA256",
+  "key_size_bits": 3072,
+  "closure_sequence": 1,
+  "private_key_persisted": false,
+  "production_signer_claimed": false,
+  "requirements": [
+    "exact_head_binding",
+    "nested_evidence_binding",
+    "rsa_signature_valid",
+    "public_key_fingerprint_binding",
+    "canonical_material_binding",
+    "closure_sequence_binding",
+    "nonce_binding",
+    "private_key_non_persistence",
+    "production_signer_boundary",
+    "independent_verification"
+  ],
+  "negative_controls": [
+    "tampered_signature",
+    "tampered_head",
+    "tampered_part234_receipt_hash",
+    "tampered_public_key_fingerprint",
+    "tampered_modulus",
+    "closure_sequence_replay",
+    "algorithm_downgrade",
+    "production_signer_claimed",
+    "private_key_persisted",
+    "canonical_hash_mismatch"
+  ]
+}
