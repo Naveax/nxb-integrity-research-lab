@@ -10,6 +10,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
                 root = $fullRoot
                 config = Join-Path $fullRoot 'config\nxb-semantic-hardening-experiments.json'
                 pnp = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1'
+                pnp_fixture = Join-Path $fullRoot 'scripts\NxbSemanticPnpFixture.cs'
                 pcie = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPcieBdfExperiment.ps1'
                 power = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
                 root_trace = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticRootTraceExperiment.ps1'
@@ -28,7 +29,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
     It 'keeps every current Part 2 component repo-owned' {
         $context = Get-NxbSemanticHardeningTestContext
         foreach ($path in @(
-            $context.config,$context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,
+            $context.config,$context.pnp,$context.pnp_fixture,$context.pcie,$context.power,$context.root_trace,$context.certification,
             $context.top_certification,$context.host_preflight,$context.profile,$context.python,$context.deep_python
         )) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
@@ -44,12 +45,22 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         @($claims | Sort-Object -Unique).Count | Should -Be 8
     }
 
-    It 'uses the Windows Software Device API for owned PnP lifecycle controls' {
+    It 'uses one owned PnP fixture with Software Device primary SetupAPI fallback CfgMgr32 presence checks and reboot-aware cleanup' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.pnp -Raw
-        $source | Should -Match ([regex]::Escape('SwDeviceCreate'))
-        $source | Should -Match ([regex]::Escape('SwDeviceClose'))
-        $source | Should -Match ([regex]::Escape('HTREE\\ROOT\\0'))
+        $fixtureSource = Get-Content -LiteralPath $context.pnp_fixture -Raw
+        foreach ($token in @(
+            'SwDeviceCreate','SwDeviceClose','HTREE\\ROOT\\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
+            'DIF_REGISTERDEVICE','DiUninstallDevice','CleanupRebootRequired','CM_Locate_DevNodeW','0x8007007E','setupapi_root_fallback'
+        )) {
+            $fixtureSource | Should -Match ([regex]::Escape($token))
+        }
+        $fixtureSource | Should -Match ([regex]::Escape('CleanupAttempts = 3'))
+        $fixtureSource | Should -Match ([regex]::Escape('DiUninstallDevice reported that cleanup requires a reboot.'))
+        $source | Should -Match ([regex]::Escape('Nxb.Semantic.PnpFixtureLease'))
+        $source | Should -Match ([regex]::Escape('fixture_backend'))
+        $source | Should -Match ([regex]::Escape('cim_presence_probe_used = $false'))
+        $source | Should -Not -Match '(?im)Get-CimInstance\s+Win32_PnPEntity\b'
         $source | Should -Not -Match '(?i)Disable-PnpDevice|Remove-PnpDevice|Uninstall-PnpDevice'
     }
 
@@ -59,6 +70,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('raw_device_instance_id_reviewable = $false'))
         $source | Should -Match ([regex]::Escape('raw_event_payload_reviewable = $false'))
         $source | Should -Match ([regex]::Escape('formatted_event_message_reviewable = $false'))
+        $source | Should -Match ([regex]::Escape('primary_failure_localized_text_reviewable = $false'))
     }
 
     It 'cross-checks PCIe address decoding against sanitized location-path semantics' {
@@ -121,6 +133,8 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             $source | Should -Match ([regex]::Escape('"' + $claim + '"'))
         }
         $source | Should -Match ([regex]::Escape('requested=8 validated=8'))
+        $source | Should -Match ([regex]::Escape('setupapi_root_fallback'))
+        $source | Should -Match ([regex]::Escape('cim_presence_probe_used'))
 
         $deepSource = Get-Content -LiteralPath $context.deep_python -Raw
         foreach ($token in @('events_lost','buffers_lost','buffers_written','all_on_domain_counts','kernel_interventions','summary_replay','events_replay')) {
@@ -158,6 +172,11 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $topSource | Should -Match ([regex]::Escape('Deep independent root-cause + trace evidence replay'))
         $topSource | Should -Match ([regex]::Escape('deep_root_trace_validation = $true'))
         $preflightSource = Get-Content -LiteralPath $context.host_preflight -Raw
+        $preflightSource | Should -Match ([regex]::Escape('lifecycle_probe_executed = $pnpFixtureSourcePresent'))
+        $preflightSource | Should -Match ([regex]::Escape('file_presence_used_as_capability_authority = $false'))
+        $preflightSource | Should -Match ([regex]::Escape('physical_pnp_device_modified = $false'))
+        $preflightSource | Should -Match ([regex]::Escape('cleanup_reboot_required = $pnpFixtureCleanupRebootRequired'))
+        $preflightSource | Should -Match ([regex]::Escape('$blockers.Add(''pnp_fixture_cleanup_requires_reboot'')'))
         $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.'))
 
         foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.top_certification,$context.host_preflight)) {
@@ -172,6 +191,6 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $powerSource | Should -Not -Match '(?im)^\s*\$[A-Za-z_][A-Za-z0-9_]*\s*=\s*@\(&\s*\$PowerCfgPath\b[^\r\n]*2>&1\)'
 
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-022'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-025'))
     }
 }

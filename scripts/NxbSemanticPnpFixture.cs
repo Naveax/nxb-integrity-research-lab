@@ -1,0 +1,487 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics.Tracing;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+namespace Nxb.Semantic
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct SW_DEVICE_CREATE_INFO
+    {
+        internal uint cbSize;
+        [MarshalAs(UnmanagedType.LPWStr)] internal string pszInstanceId;
+        internal IntPtr pszzHardwareIds;
+        internal IntPtr pszzCompatibleIds;
+        internal IntPtr pContainerId;
+        internal uint CapabilityFlags;
+        [MarshalAs(UnmanagedType.LPWStr)] internal string pszDeviceDescription;
+        [MarshalAs(UnmanagedType.LPWStr)] internal string pszDeviceLocation;
+        internal IntPtr pSecurityDescriptor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SP_DEVINFO_DATA
+    {
+        internal uint cbSize;
+        internal Guid ClassGuid;
+        internal uint DevInst;
+        internal UIntPtr Reserved;
+    }
+
+    internal static class PnpNativeMethods
+    {
+        internal const uint CR_SUCCESS = 0x00000000;
+        internal const uint CM_LOCATE_DEVNODE_NORMAL = 0x00000000;
+        internal const uint DICD_GENERATE_ID = 0x00000001;
+        internal const uint DIF_REGISTERDEVICE = 0x00000019;
+        internal static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
+        internal delegate void SW_DEVICE_CREATE_CALLBACK(
+            IntPtr hSwDevice,
+            int createResult,
+            IntPtr context,
+            [MarshalAs(UnmanagedType.LPWStr)] string deviceInstanceId);
+
+        [DllImport("Cfgmgr32.dll", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Winapi)]
+        internal static extern int SwDeviceCreate(
+            string pszEnumeratorName,
+            string pszParentDeviceInstance,
+            ref SW_DEVICE_CREATE_INFO pCreateInfo,
+            uint cPropertyCount,
+            IntPtr pProperties,
+            SW_DEVICE_CREATE_CALLBACK pCallback,
+            IntPtr pContext,
+            out IntPtr phSwDevice);
+
+        [DllImport("Cfgmgr32.dll", CallingConvention = CallingConvention.Winapi)]
+        internal static extern void SwDeviceClose(IntPtr hSwDevice);
+
+        [DllImport("Cfgmgr32.dll", EntryPoint = "CM_Locate_DevNodeW", CharSet = CharSet.Unicode)]
+        internal static extern uint CM_Locate_DevNodeW(
+            out uint pdnDevInst,
+            string pDeviceId,
+            uint ulFlags);
+
+        [DllImport("Setupapi.dll", SetLastError = true)]
+        internal static extern IntPtr SetupDiCreateDeviceInfoList(IntPtr classGuid, IntPtr hwndParent);
+
+        [DllImport("Setupapi.dll", EntryPoint = "SetupDiCreateDeviceInfoW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetupDiCreateDeviceInfoW(
+            IntPtr deviceInfoSet,
+            string deviceName,
+            ref Guid classGuid,
+            string deviceDescription,
+            IntPtr hwndParent,
+            uint creationFlags,
+            ref SP_DEVINFO_DATA deviceInfoData);
+
+        [DllImport("Setupapi.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetupDiCallClassInstaller(uint installFunction, IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData);
+
+        [DllImport("Setupapi.dll", EntryPoint = "SetupDiGetDeviceInstanceIdW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetupDiGetDeviceInstanceIdW(
+            IntPtr deviceInfoSet,
+            ref SP_DEVINFO_DATA deviceInfoData,
+            StringBuilder deviceInstanceId,
+            uint deviceInstanceIdSize,
+            out uint requiredSize);
+
+        [DllImport("Setupapi.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetupDiDestroyDeviceInfoList(IntPtr deviceInfoSet);
+
+        [DllImport("Newdev.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DiUninstallDevice(IntPtr hwndParent, IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, uint flags, out int needReboot);
+    }
+
+    [EventSource(Name = "NXB-Semantic-PnP-Fixture")]
+    internal sealed class PnpLifecycleEventSource : EventSource
+    {
+        internal static readonly PnpLifecycleEventSource Log = new PnpLifecycleEventSource();
+
+        private PnpLifecycleEventSource() { }
+
+        [Event(1001, Level = EventLevel.Informational, Task = (EventTask)1, Opcode = EventOpcode.Start)]
+        internal void FixtureCreateConfirmed(string correlationToken, string backend)
+        {
+            if (IsEnabled()) { WriteEvent(1001, correlationToken, backend); }
+        }
+
+        [Event(1002, Level = EventLevel.Informational, Task = (EventTask)1, Opcode = EventOpcode.Stop)]
+        internal void FixtureRemoveConfirmed(string correlationToken, string backend)
+        {
+            if (IsEnabled()) { WriteEvent(1002, correlationToken, backend); }
+        }
+    }
+
+    public sealed class PnpLifecycleEvidenceRecord
+    {
+        public string ProviderName { get; internal set; }
+        public int EventId { get; internal set; }
+        public int Version { get; internal set; }
+        public int Level { get; internal set; }
+        public int Task { get; internal set; }
+        public int Opcode { get; internal set; }
+        public string CorrelationToken { get; internal set; }
+        public string Backend { get; internal set; }
+    }
+
+    public sealed class PnpLifecycleCollector : EventListener
+    {
+        private readonly object syncRoot = new object();
+        private readonly List<PnpLifecycleEvidenceRecord> records = new List<PnpLifecycleEvidenceRecord>();
+
+        public PnpLifecycleCollector()
+        {
+            PnpLifecycleEventSource source = PnpLifecycleEventSource.Log;
+            EnableEvents(source, EventLevel.Informational);
+        }
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            base.OnEventSourceCreated(eventSource);
+            if (eventSource != null && String.Equals(eventSource.Name, "NXB-Semantic-PnP-Fixture", StringComparison.Ordinal))
+            {
+                EnableEvents(eventSource, EventLevel.Informational);
+            }
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData == null || eventData.EventSource == null || !String.Equals(eventData.EventSource.Name, "NXB-Semantic-PnP-Fixture", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string correlationToken = String.Empty;
+            string backend = String.Empty;
+            if (eventData.Payload != null)
+            {
+                if (eventData.Payload.Count > 0 && eventData.Payload[0] != null) { correlationToken = Convert.ToString(eventData.Payload[0]); }
+                if (eventData.Payload.Count > 1 && eventData.Payload[1] != null) { backend = Convert.ToString(eventData.Payload[1]); }
+            }
+
+            PnpLifecycleEvidenceRecord record = new PnpLifecycleEvidenceRecord
+            {
+                ProviderName = eventData.EventSource.Name,
+                EventId = eventData.EventId,
+                Version = eventData.Version,
+                Level = (int)eventData.Level,
+                Task = (int)eventData.Task,
+                Opcode = (int)eventData.Opcode,
+                CorrelationToken = correlationToken,
+                Backend = backend
+            };
+            lock (syncRoot) { records.Add(record); }
+        }
+
+        public PnpLifecycleEvidenceRecord[] Snapshot(string correlationToken)
+        {
+            List<PnpLifecycleEvidenceRecord> result = new List<PnpLifecycleEvidenceRecord>();
+            lock (syncRoot)
+            {
+                foreach (PnpLifecycleEvidenceRecord record in records)
+                {
+                    if (String.IsNullOrEmpty(correlationToken) || String.Equals(record.CorrelationToken, correlationToken, StringComparison.Ordinal))
+                    {
+                        result.Add(record);
+                    }
+                }
+            }
+            return result.ToArray();
+        }
+    }
+
+    public static class PnpLifecycleEvidence
+    {
+        public const string ProviderName = "NXB-Semantic-PnP-Fixture";
+        public const int CreateEventId = 1001;
+        public const int RemoveEventId = 1002;
+
+        public static void EmitCreateIfPresent(string instanceId, string correlationToken, string backend)
+        {
+            ValidateArguments(instanceId, correlationToken, backend);
+            if (!PnpFixtureLease.IsPresent(instanceId))
+            {
+                throw new InvalidOperationException("PnP create evidence cannot be emitted before native presence is confirmed.");
+            }
+            PnpLifecycleEventSource.Log.FixtureCreateConfirmed(correlationToken, backend);
+        }
+
+        public static void EmitRemoveIfAbsent(string instanceId, string correlationToken, string backend)
+        {
+            ValidateArguments(instanceId, correlationToken, backend);
+            if (PnpFixtureLease.IsPresent(instanceId))
+            {
+                throw new InvalidOperationException("PnP remove evidence cannot be emitted while the native fixture remains present.");
+            }
+            PnpLifecycleEventSource.Log.FixtureRemoveConfirmed(correlationToken, backend);
+        }
+
+        private static void ValidateArguments(string instanceId, string correlationToken, string backend)
+        {
+            if (String.IsNullOrWhiteSpace(instanceId)) { throw new ArgumentException("instanceId"); }
+            if (String.IsNullOrWhiteSpace(correlationToken)) { throw new ArgumentException("correlationToken"); }
+            if (String.IsNullOrWhiteSpace(backend)) { throw new ArgumentException("backend"); }
+        }
+    }
+
+    public sealed class PnpFixtureLease : IDisposable
+    {
+        private const int CleanupAttempts = 3;
+        private IntPtr softwareDeviceHandle;
+        private IntPtr setupDeviceInfoSet;
+        private SP_DEVINFO_DATA setupDeviceInfoData;
+        private bool setupDeviceRegistered;
+
+        public string InstanceId { get; private set; }
+        public string Backend { get; private set; }
+        public int PrimarySoftwareDeviceFailureHResult { get; private set; }
+        public bool Closed { get; private set; }
+        public bool CleanupRebootRequired { get; private set; }
+
+        private PnpFixtureLease()
+        {
+            softwareDeviceHandle = IntPtr.Zero;
+            setupDeviceInfoSet = IntPtr.Zero;
+            setupDeviceInfoData = default(SP_DEVINFO_DATA);
+            PrimarySoftwareDeviceFailureHResult = 0;
+            CleanupRebootRequired = false;
+        }
+
+        public static bool IsPresent(string instanceId)
+        {
+            if (String.IsNullOrWhiteSpace(instanceId)) { return false; }
+            uint devInst;
+            uint result = PnpNativeMethods.CM_Locate_DevNodeW(out devInst, instanceId, PnpNativeMethods.CM_LOCATE_DEVNODE_NORMAL);
+            return result == PnpNativeMethods.CR_SUCCESS;
+        }
+
+        public static PnpFixtureLease Create(string instanceSeed)
+        {
+            if (String.IsNullOrWhiteSpace(instanceSeed)) { throw new ArgumentException("instanceSeed"); }
+            try { return CreateSoftwareDevice(instanceSeed); }
+            catch (Exception exception) when (IsFallbackEligible(exception))
+            {
+                return CreateSetupApiRootDevice(instanceSeed, exception.HResult);
+            }
+        }
+
+        private static bool IsFallbackEligible(Exception exception)
+        {
+            if (exception is DllNotFoundException || exception is EntryPointNotFoundException) { return true; }
+            return exception.HResult == unchecked((int)0x8007007E);
+        }
+
+        private static PnpFixtureLease CreateSoftwareDevice(string instanceSeed)
+        {
+            SW_DEVICE_CREATE_INFO info = new SW_DEVICE_CREATE_INFO
+            {
+                cbSize = (uint)Marshal.SizeOf(typeof(SW_DEVICE_CREATE_INFO)),
+                pszInstanceId = instanceSeed,
+                pszzHardwareIds = IntPtr.Zero,
+                pszzCompatibleIds = IntPtr.Zero,
+                pContainerId = IntPtr.Zero,
+                CapabilityFlags = 0x00000001u | 0x00000002u | 0x00000004u,
+                pszDeviceDescription = "NXB Semantic Ephemeral Software Device",
+                pszDeviceLocation = null,
+                pSecurityDescriptor = IntPtr.Zero
+            };
+
+            using (ManualResetEventSlim ready = new ManualResetEventSlim(false))
+            {
+                int callbackResult = unchecked((int)0x80004005);
+                string actualId = null;
+                PnpNativeMethods.SW_DEVICE_CREATE_CALLBACK callback = (device, result, context, id) =>
+                {
+                    callbackResult = result;
+                    actualId = id;
+                    try { ready.Set(); } catch (ObjectDisposedException) { }
+                };
+
+                IntPtr handle;
+                int immediateResult = PnpNativeMethods.SwDeviceCreate("NXBSEM", "HTREE\\ROOT\\0", ref info, 0, IntPtr.Zero, callback, IntPtr.Zero, out handle);
+                if (immediateResult < 0)
+                {
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
+                    Marshal.ThrowExceptionForHR(immediateResult);
+                }
+                if (!ready.Wait(TimeSpan.FromSeconds(10)))
+                {
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
+                    throw new TimeoutException("SwDeviceCreate callback timed out.");
+                }
+                GC.KeepAlive(callback);
+                if (callbackResult < 0)
+                {
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
+                    Marshal.ThrowExceptionForHR(callbackResult);
+                }
+                if (String.IsNullOrWhiteSpace(actualId))
+                {
+                    if (handle != IntPtr.Zero) { PnpNativeMethods.SwDeviceClose(handle); }
+                    throw new InvalidOperationException("SwDeviceCreate callback returned no instance id.");
+                }
+                return new PnpFixtureLease { softwareDeviceHandle = handle, InstanceId = actualId, Backend = "software_device_api" };
+            }
+        }
+
+        private static PnpFixtureLease CreateSetupApiRootDevice(string instanceSeed, int primaryFailureHResult)
+        {
+            IntPtr deviceInfoSet = PnpNativeMethods.SetupDiCreateDeviceInfoList(IntPtr.Zero, IntPtr.Zero);
+            if (deviceInfoSet == PnpNativeMethods.INVALID_HANDLE_VALUE)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiCreateDeviceInfoList failed.");
+            }
+
+            SP_DEVINFO_DATA deviceInfoData = new SP_DEVINFO_DATA
+            {
+                cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA)),
+                ClassGuid = Guid.Empty,
+                DevInst = 0,
+                Reserved = UIntPtr.Zero
+            };
+            bool registered = false;
+            try
+            {
+                Guid classGuid = Guid.Empty;
+                string generatedRootId = "NXBSEMANTIC-" + NormalizeSeed(instanceSeed);
+                if (!PnpNativeMethods.SetupDiCreateDeviceInfoW(deviceInfoSet, generatedRootId, ref classGuid, "NXB Semantic Ephemeral Root Device", IntPtr.Zero, PnpNativeMethods.DICD_GENERATE_ID, ref deviceInfoData))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiCreateDeviceInfoW failed.");
+                }
+
+                string instanceId = GetSetupApiInstanceId(deviceInfoSet, ref deviceInfoData);
+                if (String.IsNullOrWhiteSpace(instanceId)) { throw new InvalidOperationException("SetupAPI root fixture returned no instance id."); }
+                if (!PnpNativeMethods.SetupDiCallClassInstaller(PnpNativeMethods.DIF_REGISTERDEVICE, deviceInfoSet, ref deviceInfoData))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "DIF_REGISTERDEVICE failed.");
+                }
+                registered = true;
+                return new PnpFixtureLease
+                {
+                    setupDeviceInfoSet = deviceInfoSet,
+                    setupDeviceInfoData = deviceInfoData,
+                    setupDeviceRegistered = true,
+                    InstanceId = instanceId,
+                    Backend = "setupapi_root_fallback",
+                    PrimarySoftwareDeviceFailureHResult = primaryFailureHResult
+                };
+            }
+            catch (Exception creationFailure)
+            {
+                Exception cleanupFailure = null;
+                bool uninstallCompleted = false;
+                if (registered)
+                {
+                    int lastError;
+                    bool rebootRequired;
+                    uninstallCompleted = TryUninstallSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError, out rebootRequired);
+                    if (!uninstallCompleted) { cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error."); }
+                    else if (rebootRequired) { cleanupFailure = new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error."); }
+                    registered = !uninstallCompleted;
+                }
+                if (!registered && !PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet) && cleanupFailure == null)
+                {
+                    cleanupFailure = new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed after creation error.");
+                }
+                if (cleanupFailure != null) { throw new AggregateException("SetupAPI fallback creation and cleanup both failed.", creationFailure, cleanupFailure); }
+                throw;
+            }
+        }
+
+        private static bool TryUninstallSetupDevice(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, out int lastError, out bool rebootRequired)
+        {
+            lastError = 0;
+            rebootRequired = false;
+            for (int attempt = 1; attempt <= CleanupAttempts; attempt++)
+            {
+                int nativeNeedReboot;
+                if (PnpNativeMethods.DiUninstallDevice(IntPtr.Zero, deviceInfoSet, ref deviceInfoData, 0, out nativeNeedReboot))
+                {
+                    rebootRequired = nativeNeedReboot != 0;
+                    return true;
+                }
+                lastError = Marshal.GetLastWin32Error();
+                if (attempt < CleanupAttempts) { Thread.Sleep(100); }
+            }
+            return false;
+        }
+
+        private static string NormalizeSeed(string seed)
+        {
+            StringBuilder builder = new StringBuilder();
+            foreach (char character in seed.ToUpperInvariant())
+            {
+                if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')) { builder.Append(character); }
+                else { builder.Append('-'); }
+                if (builder.Length >= 80) { break; }
+            }
+            if (builder.Length == 0) { builder.Append(Guid.NewGuid().ToString("N").ToUpperInvariant()); }
+            return builder.ToString();
+        }
+
+        private static string GetSetupApiInstanceId(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData)
+        {
+            uint requiredSize;
+            StringBuilder buffer = new StringBuilder(512);
+            if (PnpNativeMethods.SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref deviceInfoData, buffer, (uint)buffer.Capacity, out requiredSize))
+            {
+                return buffer.ToString();
+            }
+            int error = Marshal.GetLastWin32Error();
+            const int ERROR_INSUFFICIENT_BUFFER = 122;
+            if (error != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) { throw new Win32Exception(error, "SetupDiGetDeviceInstanceIdW failed."); }
+            buffer = new StringBuilder((int)requiredSize);
+            if (!PnpNativeMethods.SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref deviceInfoData, buffer, (uint)buffer.Capacity, out requiredSize))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiGetDeviceInstanceIdW failed.");
+            }
+            return buffer.ToString();
+        }
+
+        public void Close()
+        {
+            if (Closed) { return; }
+            if (softwareDeviceHandle != IntPtr.Zero)
+            {
+                PnpNativeMethods.SwDeviceClose(softwareDeviceHandle);
+                softwareDeviceHandle = IntPtr.Zero;
+            }
+
+            bool rebootRequiredAfterSuccessfulUninstall = false;
+            if (setupDeviceInfoSet != IntPtr.Zero && setupDeviceInfoSet != PnpNativeMethods.INVALID_HANDLE_VALUE)
+            {
+                if (setupDeviceRegistered)
+                {
+                    int removalError;
+                    bool rebootRequired;
+                    if (!TryUninstallSetupDevice(setupDeviceInfoSet, ref setupDeviceInfoData, out removalError, out rebootRequired))
+                    {
+                        throw new Win32Exception(removalError, "DiUninstallDevice failed after bounded retries.");
+                    }
+                    setupDeviceRegistered = false;
+                    CleanupRebootRequired = rebootRequired;
+                    rebootRequiredAfterSuccessfulUninstall = rebootRequired;
+                }
+                if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(setupDeviceInfoSet))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed.");
+                }
+                setupDeviceInfoSet = IntPtr.Zero;
+            }
+            Closed = true;
+            if (rebootRequiredAfterSuccessfulUninstall) { throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot."); }
+        }
+
+        public void Dispose() { Close(); }
+    }
+}

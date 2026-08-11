@@ -41,6 +41,29 @@ function Get-NxbSemanticHardeningCommandPath {
     return $null
 }
 
+function Wait-NxbSemanticHardeningPnpPresence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$InstanceId,
+        [Parameter(Mandatory)][bool]$ExpectedPresent,
+        [Parameter()][ValidateRange(1,30)][int]$TimeoutSeconds = 10
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $present = [Nxb.Semantic.PnpFixtureLease]::IsPresent($InstanceId)
+        if ($present -eq $ExpectedPresent) { return $true }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    return $false
+}
+
+function Get-NxbSemanticHardeningHResultText {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][int]$HResult)
+    $value = ([int64]$HResult -band 0xFFFFFFFFL)
+    return ('0x{0:X8}' -f $value)
+}
+
 if ($env:OS -cne 'Windows_NT') { throw 'Part 2 host capability preflight requires Windows.' }
 if ($PSVersionTable.PSEdition -cne 'Core') { throw 'Part 2 host capability preflight requires PowerShell 7.' }
 if (-not (Test-NxbSemanticHardeningAdministrator)) { throw 'Part 2 host capability preflight requires elevated PowerShell 7.' }
@@ -62,7 +85,62 @@ $windowsPowerShellAvailable = (Test-Path -LiteralPath $windowsPowerShellPath -Pa
 $pesterAvailable = (@(Get-Module -ListAvailable -Name Pester).Count -gt 0)
 
 $softwareDeviceDll = Join-Path $env:SystemRoot 'System32\CfgMgr32.dll'
-$softwareDeviceApiAvailable = (Test-Path -LiteralPath $softwareDeviceDll -PathType Leaf)
+$softwareDeviceDllPresent = (Test-Path -LiteralPath $softwareDeviceDll -PathType Leaf)
+$fixtureSource = Join-Path $PSScriptRoot 'NxbSemanticPnpFixture.cs'
+$pnpFixtureSourcePresent = (Test-Path -LiteralPath $fixtureSource -PathType Leaf)
+$pnpFixtureAvailable = $false
+$pnpFixtureBackend = $null
+$pnpFixturePresentObserved = $false
+$pnpFixtureRemovedObserved = $false
+$pnpFixtureCleanupRebootRequired = $false
+$pnpFixturePrimaryFailureHResult = $null
+$pnpFixtureProbeFailureHResult = $null
+$pnpFixtureLease = $null
+$pnpFixtureInstanceId = $null
+if ($pnpFixtureSourcePresent) {
+    try {
+        if ($null -eq ('Nxb.Semantic.PnpFixtureLease' -as [type])) {
+            Add-Type -Path $fixtureSource -ErrorAction Stop
+        }
+        $pnpFixtureLease = [Nxb.Semantic.PnpFixtureLease]::Create(('PREFLIGHT-' + [Guid]::NewGuid().ToString('N')))
+        $pnpFixtureInstanceId = [string]$pnpFixtureLease.InstanceId
+        $pnpFixtureBackend = [string]$pnpFixtureLease.Backend
+        $primaryHResult = [int]$pnpFixtureLease.PrimarySoftwareDeviceFailureHResult
+        if ($primaryHResult -ne 0) { $pnpFixturePrimaryFailureHResult = Get-NxbSemanticHardeningHResultText -HResult $primaryHResult }
+        $pnpFixturePresentObserved = Wait-NxbSemanticHardeningPnpPresence -InstanceId $pnpFixtureInstanceId -ExpectedPresent $true
+        if (-not $pnpFixturePresentObserved) { throw 'Owned PnP fixture was not observed present during capability probe.' }
+        $pnpFixtureLease.Close()
+        $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired
+        if ($pnpFixtureCleanupRebootRequired) { throw 'Owned PnP fixture cleanup reported that a reboot is required.' }
+        $pnpFixtureRemovedObserved = Wait-NxbSemanticHardeningPnpPresence -InstanceId $pnpFixtureInstanceId -ExpectedPresent $false
+        if (-not $pnpFixtureRemovedObserved) { throw 'Owned PnP fixture was not observed removed during capability probe.' }
+        $pnpFixtureAvailable = ($pnpFixtureBackend -in @('software_device_api','setupapi_root_fallback'))
+    }
+    catch {
+        $pnpFixtureAvailable = $false
+        if ($null -ne $pnpFixtureLease) { $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired }
+        $pnpFixtureProbeFailureHResult = Get-NxbSemanticHardeningHResultText -HResult ([int]$_.Exception.HResult)
+    }
+    finally {
+        if ($null -ne $pnpFixtureLease) {
+            try { $pnpFixtureLease.Dispose() } catch { Write-Verbose -Message 'PnP capability probe cleanup encountered a bounded failure.' }
+            $pnpFixtureCleanupRebootRequired = [bool]$pnpFixtureLease.CleanupRebootRequired
+        }
+        if (-not [string]::IsNullOrWhiteSpace($pnpFixtureInstanceId)) {
+            try {
+                if ([Nxb.Semantic.PnpFixtureLease]::IsPresent($pnpFixtureInstanceId)) {
+                    $pnpFixtureAvailable = $false
+                    $pnpFixtureRemovedObserved = $false
+                }
+            }
+            catch {
+                $pnpFixtureAvailable = $false
+                $pnpFixtureRemovedObserved = $false
+            }
+        }
+        if ($pnpFixtureCleanupRebootRequired) { $pnpFixtureAvailable = $false }
+    }
+}
 
 $hyperVCommands = [ordered]@{}
 foreach ($commandName in @('New-VM','Get-VM','Get-VMHost','Get-VMFirmware','Set-VMFirmware','Remove-VM')) {
@@ -126,7 +204,9 @@ $blockers = [System.Collections.Generic.List[string]]::new()
 foreach ($missing in $missingCommands) { $blockers.Add('missing_command:' + $missing) }
 if (-not $windowsPowerShellAvailable) { $blockers.Add('windows_powershell_5_1_unavailable') }
 if (-not $pesterAvailable) { $blockers.Add('pester_module_unavailable') }
-if (-not $softwareDeviceApiAvailable) { $blockers.Add('software_device_api_unavailable') }
+if (-not $pnpFixtureSourcePresent) { $blockers.Add('pnp_fixture_source_unavailable') }
+if (-not $pnpFixtureAvailable) { $blockers.Add('pnp_fixture_lifecycle_probe_failed') }
+if ($pnpFixtureCleanupRebootRequired) { $blockers.Add('pnp_fixture_cleanup_requires_reboot') }
 if (-not $hyperVCmdletsAvailable) { $blockers.Add('hyper_v_cmdlets_unavailable') }
 if (-not $vmmsRunning) { $blockers.Add('hyper_v_vmms_not_running') }
 if (-not $vmHostQueryable) { $blockers.Add('hyper_v_host_not_queryable') }
@@ -134,7 +214,7 @@ if (-not $vcBuildToolsAvailable) { $blockers.Add('visual_cpp_build_tools_unavail
 if (-not $pnpProviderReadable) { $blockers.Add('kernel_pnp_provider_unreadable') }
 
 $result = [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     status = if ($blockers.Count -eq 0) { 'passed' } else { 'blocked' }
     commands = [pscustomobject]$commandResult
     cross_runtime = [pscustomobject][ordered]@{
@@ -143,8 +223,23 @@ $result = [pscustomobject][ordered]@{
         pester_available = $pesterAvailable
     }
     software_device_api = [pscustomobject][ordered]@{
-        available = $softwareDeviceApiAvailable
-        dll_path = if ($softwareDeviceApiAvailable) { $softwareDeviceDll } else { $null }
+        dll_present = $softwareDeviceDllPresent
+        dll_path = if ($softwareDeviceDllPresent) { $softwareDeviceDll } else { $null }
+        file_presence_used_as_capability_authority = $false
+    }
+    pnp_fixture = [pscustomobject][ordered]@{
+        source_present = $pnpFixtureSourcePresent
+        lifecycle_probe_executed = $pnpFixtureSourcePresent
+        available = $pnpFixtureAvailable
+        backend = $pnpFixtureBackend
+        create_present_observed = $pnpFixturePresentObserved
+        close_remove_observed = $pnpFixtureRemovedObserved
+        cleanup_reboot_required = $pnpFixtureCleanupRebootRequired
+        presence_probe = 'cfgmgr32_cm_locate_devnode_normal'
+        primary_software_device_failure_hresult = $pnpFixturePrimaryFailureHResult
+        probe_failure_hresult = $pnpFixtureProbeFailureHResult
+        localized_failure_text_recorded = $false
+        physical_pnp_device_modified = $false
     }
     hyper_v = [pscustomobject][ordered]@{
         cmdlets_available = $hyperVCmdletsAvailable
@@ -170,8 +265,8 @@ $result = [pscustomobject][ordered]@{
 }
 
 if ([string]$result.status -cne 'passed') {
-    throw ('Part 2 host capability preflight blocked: {0}. No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.' -f (@($blockers) -join ', '))
+    throw ('Part 2 host capability preflight blocked: {0}. No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted. The PnP probe creates and removes only an owned synthetic fixture; no physical PnP device is modified.' -f (@($blockers) -join ', '))
 }
-Write-Information -InformationAction Continue -MessageData 'NXB Part 2 host capability preflight passed.'
+Write-Information -InformationAction Continue -MessageData ('NXB Part 2 host capability preflight passed: pnp_backend={0} lifecycle_probe=true cleanup_reboot=false.' -f $pnpFixtureBackend)
 if ($PassThru) { return $result }
 Write-Output ($result | ConvertTo-Json -Depth 12)

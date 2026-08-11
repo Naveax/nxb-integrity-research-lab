@@ -19,6 +19,15 @@ CLAIMS = (
     "continuous_trace_completeness",
 )
 
+PNP_EVENT_SOURCE = "repo_owned_eventsource_lifecycle_bridge_v1"
+PNP_PROVIDER = "NXB-Semantic-PnP-Fixture"
+PNP_LOG_NAME = "in_process_eventsource"
+PNP_CREATE_EVENT_ID = 1001
+PNP_REMOVE_EVENT_ID = 1002
+PNP_TASK = 1
+PNP_CREATE_OPCODE = 1
+PNP_REMOVE_OPCODE = 2
+
 
 def fail(message: str) -> None:
     raise SystemExit(f"semantic hardening validation failed: {message}")
@@ -70,6 +79,23 @@ def event_shape_key(item: Dict[str, Any]) -> str:
     )
 
 
+def validate_pnp_event_item(item: Dict[str, Any], expected_id: int, expected_opcode: int, backend: str, label: str) -> None:
+    if item.get("provider_name") != PNP_PROVIDER:
+        fail(f"{label} provider is not the repo-owned PnP EventSource")
+    if item.get("log_name") != PNP_LOG_NAME:
+        fail(f"{label} log name is not the in-process EventSource boundary")
+    if item.get("source_kind") != PNP_EVENT_SOURCE:
+        fail(f"{label} source kind is not the lifecycle bridge")
+    if item.get("fixture_backend") != backend:
+        fail(f"{label} backend binding mismatch")
+    if item.get("id") != expected_id:
+        fail(f"{label} event id mismatch")
+    if item.get("task") != PNP_TASK or item.get("opcode") != expected_opcode:
+        fail(f"{label} task/opcode metadata mismatch")
+    if item.get("fixture_identity_matched") is not True:
+        fail(f"{label} is not correlated to the fixture identity")
+
+
 def shape_set(items: Any, key_function: Callable[[Dict[str, Any]], str], label: str) -> Set[str]:
     if not isinstance(items, list):
         fail(f"{label} must be an array")
@@ -95,20 +121,68 @@ def require_declared_set(mapping: Dict[str, Any], key: str, expected: Iterable[s
 
 def validate_pnp(document: Dict[str, Any]) -> Dict[str, bool]:
     require_status(document, "pnp")
+    allowed_backends = {"software_device_api", "setupapi_root_fallback"}
+    document_backend = document.get("fixture_backend")
+    if document_backend not in allowed_backends:
+        fail(f"pnp fixture backend is invalid: {document_backend}")
+    if document.get("cim_presence_probe_used") is not False:
+        fail("pnp must use the CfgMgr32 present-state probe rather than CIM")
+    if document.get("event_evidence_source") != PNP_EVENT_SOURCE:
+        fail("pnp event authority is not the repo-owned lifecycle EventSource bridge")
+    if document.get("optional_windows_eventlog_used_as_authority") is not False:
+        fail("pnp optional Windows diagnostic EventLog must not be claim authority")
+
     repeats = document.get("repeats")
     if not isinstance(repeats, list) or len(repeats) != 2:
         fail("pnp requires exactly two repeats")
     if [item.get("repeat") for item in repeats] != ["A", "B"]:
         fail("pnp repeat ordering must be A/B")
-    for item in repeats:
+    repeat_backends = [item.get("fixture_backend") for item in repeats]
+    if any(backend not in allowed_backends for backend in repeat_backends):
+        fail("pnp repeat contains an invalid fixture backend")
+    if repeat_backends != [document_backend, document_backend]:
+        fail("pnp fixture backend must be stable across A/B repeats")
+
+    for index, item in enumerate(repeats):
         direct = item.get("direct_state") or {}
         if require_bool(direct.get("create_present_observed"), "pnp.create_present_observed") is not True:
             fail("pnp create/present direct-state control failed")
         if require_bool(direct.get("close_remove_observed"), "pnp.close_remove_observed") is not True:
             fail("pnp close/remove direct-state control failed")
+        if require_bool(direct.get("cleanup_reboot_required"), "pnp.cleanup_reboot_required") is not False:
+            fail("pnp cleanup unexpectedly requires reboot")
+        if direct.get("presence_probe") != "cfgmgr32_cm_locate_devnode_normal":
+            fail("pnp direct-state control did not use CfgMgr32 CM_Locate_DevNode NORMAL")
+        primary_failure = item.get("primary_software_device_failure_hresult")
+        if document_backend == "software_device_api" and primary_failure is not None:
+            fail("software-device primary backend unexpectedly records a primary failure")
+        if document_backend == "setupapi_root_fallback":
+            if not isinstance(primary_failure, str) or len(primary_failure) != 10 or not primary_failure.startswith("0x"):
+                fail("SetupAPI fallback must record a sanitized primary Software Device HRESULT")
         idle = item.get("idle_event_shapes")
         if not isinstance(idle, list) or len(idle) != 0:
             fail("pnp matched idle window contains fixture-identity events")
+        evidence_window = item.get("evidence_windows") or {}
+        if evidence_window.get("source_kind") != PNP_EVENT_SOURCE:
+            fail("pnp repeat evidence window source kind mismatch")
+        create_items = item.get("create_event_shapes")
+        remove_items = item.get("remove_event_shapes")
+        if not isinstance(create_items, list) or len(create_items) != 1:
+            fail(f"pnp create repeat {index} must contain exactly one lifecycle bridge event")
+        if not isinstance(remove_items, list) or len(remove_items) != 1:
+            fail(f"pnp remove repeat {index} must contain exactly one lifecycle bridge event")
+        validate_pnp_event_item(create_items[0], PNP_CREATE_EVENT_ID, PNP_CREATE_OPCODE, document_backend, f"pnp create {index}")
+        validate_pnp_event_item(remove_items[0], PNP_REMOVE_EVENT_ID, PNP_REMOVE_OPCODE, document_backend, f"pnp remove {index}")
+
+    review_boundary = document.get("review_boundary") or {}
+    if review_boundary.get("raw_device_instance_id_reviewable") is not False:
+        fail("pnp raw instance identifier crossed the review boundary")
+    if review_boundary.get("raw_event_payload_reviewable") is not False:
+        fail("pnp raw event payload crossed the review boundary")
+    if review_boundary.get("formatted_event_message_reviewable") is not False:
+        fail("pnp formatted event message crossed the review boundary")
+    if review_boundary.get("primary_failure_localized_text_reviewable") is not False:
+        fail("pnp localized primary failure text crossed the review boundary")
 
     create_id_a = shape_set(repeats[0].get("create_event_shapes"), event_id_key, "pnp create A")
     create_id_b = shape_set(repeats[1].get("create_event_shapes"), event_id_key, "pnp create B")
@@ -300,12 +374,12 @@ def validate_fail_closed_controls(documents: Dict[str, Dict[str, Any]]) -> Dict[
     result["pnp_lifecycle_semantics"] = expect_rejection(validate_pnp, pnp_lifecycle, "pnp direct-state mutation")
 
     event_id = copy.deepcopy(documents["pnp"])
-    event_id["repeated_event_mapping"]["common_create_provider_log_id_count"] = 0
-    result["event_id_semantics"] = expect_rejection(validate_pnp, event_id, "event-id mapping mutation")
+    event_id["repeats"][0]["create_event_shapes"][0]["id"] = 9999
+    result["event_id_semantics"] = expect_rejection(validate_pnp, event_id, "event-id source mutation")
 
     event_shape = copy.deepcopy(documents["pnp"])
-    event_shape["repeated_event_mapping"]["common_create_full_shape_count"] = 0
-    result["event_task_opcode_semantics"] = expect_rejection(validate_pnp, event_shape, "event-shape mapping mutation")
+    event_shape["repeats"][0]["create_event_shapes"][0]["opcode"] = PNP_REMOVE_OPCODE
+    result["event_task_opcode_semantics"] = expect_rejection(validate_pnp, event_shape, "event task/opcode mutation")
 
     pcie = copy.deepcopy(documents["pcie"])
     pcie["negative_controls"]["passed"] = False
@@ -379,6 +453,10 @@ def main() -> None:
             label: {"sha256": file_sha256(path), "file_name": path.name}
             for label, path in sorted(paths.items())
         },
+        "pnp_fixture_backend": documents["pnp"].get("fixture_backend"),
+        "pnp_cim_presence_probe_used": documents["pnp"].get("cim_presence_probe_used"),
+        "pnp_event_evidence_source": documents["pnp"].get("event_evidence_source"),
+        "pnp_optional_windows_eventlog_used_as_authority": documents["pnp"].get("optional_windows_eventlog_used_as_authority"),
         "scope_boundary": "bounded-owned-experiments-only",
         "generalized_system_semantics_claimed": False,
     }
