@@ -41,6 +41,7 @@ Statuses:
 | NXB-ERR-016 | workflow | Stale GitHub contents blob SHA | Sequential `update_file` with an old blob SHA returns HTTP 409. | Fetch current blob before sequential mutation and use the returned `content_sha` for the next update. Never interpret 409 as content state. |
 | NXB-ERR-017 | caught-preflight | Locale-dependent diagnostic material in fingerprint | Raw provider/error text can vary by OS locale and destabilize evidence fingerprints. | Keep localized error text out of canonical material; include bounded counts/status codes instead. |
 | NXB-ERR-018 | caught-preflight | Inline parser-risk expressions in compatibility authority | Dense inline expressions in hashtable/string contexts can create PS5.1 parser/analyzer risk. | Precompute nontrivial values into named variables when cross-runtime compatibility is required. |
+| NXB-ERR-019 | observed-native | Unqualified PowerShell engine enum type | The scanner used `[WildcardOptions]::IgnoreCase`; `WildcardOptions` is not a PowerShell type accelerator, so runtime resolution failed with `Unable to find type [WildcardOptions]`. | Fully qualify non-accelerated engine types. This surface must use `System.Management.Automation.WildcardPattern` and `System.Management.Automation.WildcardOptions`; scan the scanner for the bare `[WildcardOptions]::` form. |
 
 ## Current IRL-005 application
 
