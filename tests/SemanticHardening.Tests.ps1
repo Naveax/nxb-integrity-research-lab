@@ -98,12 +98,17 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         }
     }
 
-    It 'confines firmware transition evidence to an ephemeral unstarted Generation 2 VM' {
+    It 'confines firmware transition evidence to an ephemeral unstarted Generation 2 VM with shape-safe Secure Boot readback' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.power -Raw
         $source | Should -Match ([regex]::Escape('-Generation 2'))
         $source | Should -Match ([regex]::Escape('-NoVHD'))
         $source | Should -Match ([regex]::Escape('Set-VMFirmware'))
+        $source | Should -Match ([regex]::Escape('-EnableSecureBoot $alternate'))
+        $source | Should -Match ([regex]::Escape('function Get-NxbSemanticFirmwareSecureBootState'))
+        $source | Should -Match ([regex]::Escape('foreach ($propertyName in @(''SecureBoot'',''EnableSecureBoot''))'))
+        $source | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
+        $source | Should -Not -Match '(?im)\(\s*Get-VMFirmware\b[^\r\n]*\)\.EnableSecureBoot\b'
         $source | Should -Match ([regex]::Escape('Remove-VM'))
         $source | Should -Not -Match '(?im)^\s*Start-VM\b'
     }
@@ -180,6 +185,6 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             $runtimeSource | Should -Not -Match '(?ims)catch\s*\{\s*\}'
         }
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-030'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-031'))
     }
 }
