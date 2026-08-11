@@ -8,10 +8,22 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
             return [IO.Path]::GetFullPath($root)
         }
 
-        function Get-NxbSemanticFixtureObject {
+        function Get-NxbSemanticTestContext {
             $root = Get-NxbSemanticTestRoot
-            $fixturePath = Join-Path $root 'tests\fixtures\semantic-evidence\valid-semantic-receipt.json'
-            return (Get-Content -LiteralPath $fixturePath -Raw | ConvertFrom-Json)
+            return [pscustomobject][ordered]@{
+                root = $root
+                validator_path = Join-Path $root 'scripts\Test-NxbSemanticEvidenceReceipt.ps1'
+                python_validator_path = Join-Path $root 'tools\validate_semantic_evidence_receipt.py'
+                fixture_path = Join-Path $root 'tests\fixtures\semantic-evidence\valid-semantic-receipt.json'
+                expected_head = '1111111111111111111111111111111111111111'
+                expected_policy = '2222222222222222222222222222222222222222222222222222222222222222'
+                expected_machine = '3333333333333333333333333333333333333333333333333333333333333333'
+            }
+        }
+
+        function Get-NxbSemanticFixtureObject {
+            $context = Get-NxbSemanticTestContext
+            return (Get-Content -LiteralPath $context.fixture_path -Raw | ConvertFrom-Json)
         }
 
         function Get-NxbSemanticTestSha256Text {
@@ -96,23 +108,15 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
             }
             $nativeOutput = @(& $pythonPath @argumentList 2>&1)
             $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
-            return [pscustomobject]@{
+            return [pscustomobject][ordered]@{
                 exit_code = $exitCode
                 output = ($nativeOutput -join "`n")
             }
         }
-
-        $root = Get-NxbSemanticTestRoot
-        $validatorPath = Join-Path $root 'scripts\Test-NxbSemanticEvidenceReceipt.ps1'
-        $pythonValidatorPath = Join-Path $root 'tools\validate_semantic_evidence_receipt.py'
-        $fixturePath = Join-Path $root 'tests\fixtures\semantic-evidence\valid-semantic-receipt.json'
-        $expectedHead = '1111111111111111111111111111111111111111'
-        $expectedPolicy = '2222222222222222222222222222222222222222222222222222222222222222'
-        $expectedMachine = '3333333333333333333333333333333333333333333333333333333333333333'
     }
 
     It 'keeps every Part 1 semantic authority component repo-owned' {
-        $root = Get-NxbSemanticTestRoot
+        $context = Get-NxbSemanticTestContext
         foreach ($relative in @(
             'schemas\nxb-semantic-evidence-receipt.schema.json',
             'scripts\Test-NxbSemanticEvidenceReceipt.ps1',
@@ -122,13 +126,13 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
             'scripts\Invoke-NxbSemanticEvidenceAuthorityCertification.ps1',
             'docs\NXB-IRL-006-SEMANTIC-EVIDENCE-AUTHORITY.md'
         )) {
-            Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue
+            Test-Path -LiteralPath (Join-Path $context.root $relative) -PathType Leaf | Should -BeTrue
         }
     }
 
     It 'locks the schema to exactly eight semantic claims and three receipt states' {
-        $root = Get-NxbSemanticTestRoot
-        $schema = Get-Content -LiteralPath (Join-Path $root 'schemas\nxb-semantic-evidence-receipt.schema.json') -Raw | ConvertFrom-Json
+        $context = Get-NxbSemanticTestContext
+        $schema = Get-Content -LiteralPath (Join-Path $context.root 'schemas\nxb-semantic-evidence-receipt.schema.json') -Raw | ConvertFrom-Json
         [int]$schema.properties.schema_version.const | Should -Be 1
         @($schema.properties.claim_name.enum).Count | Should -Be 8
         @($schema.properties.status.enum).Count | Should -Be 3
@@ -138,7 +142,8 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
     }
 
     It 'accepts the canonical validated fixture in PowerShell and marks it promotable' {
-        $result = & $validatorPath -ReceiptPath $fixturePath -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy -ExpectedMachineIdSha256 $expectedMachine -PassThru
+        $context = Get-NxbSemanticTestContext
+        $result = & $context.validator_path -ReceiptPath $context.fixture_path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy -ExpectedMachineIdSha256 $context.expected_machine -PassThru
         [string]$result.status | Should -BeExactly 'passed'
         [bool]$result.promotable | Should -BeTrue
         [string]$result.claim_name | Should -BeExactly 'pnp_lifecycle_semantics'
@@ -146,7 +151,8 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
     }
 
     It 'accepts the same fixture in the independent Python validator with matching identity' {
-        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $fixturePath -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy -ExpectedMachine $expectedMachine
+        $context = Get-NxbSemanticTestContext
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $context.fixture_path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy -ExpectedMachine $context.expected_machine
         [int]$pythonCheck.exit_code | Should -Be 0
         $pythonResult = [string]$pythonCheck.output | ConvertFrom-Json
         [string]$pythonResult.status | Should -BeExactly 'passed'
@@ -155,99 +161,112 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
     }
 
     It 'rejects unknown top-level properties before promotion' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt | Add-Member -NotePropertyName unexpected -NotePropertyValue 'blocked'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*top-level property set is not exact*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*top-level property set is not exact*'
     }
 
     It 'rejects a cross-head or stale receipt even when its fingerprint is recomputed' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.authority.exact_head = '6666666666666666666666666666666666666666'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*exact-head mismatch*'
-        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*exact-head mismatch*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy
         [int]$pythonCheck.exit_code | Should -Not -Be 0
         [string]$pythonCheck.output | Should -Match 'exact-head mismatch'
     }
 
     It 'rejects a receipt bound to a different policy fingerprint' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.authority.policy_sha256 = '7777777777777777777777777777777777777777777777777777777777777777'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*policy mismatch*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*policy mismatch*'
     }
 
     It 'rejects cross-machine evidence when a machine binding is required' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
         $otherMachine = '8888888888888888888888888888888888888888888888888888888888888888'
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy -ExpectedMachineIdSha256 $otherMachine } | Should -Throw '*machine mismatch*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy -ExpectedMachineIdSha256 $otherMachine } | Should -Throw '*machine mismatch*'
     }
 
     It 'rejects an unknown semantic claim name' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.claim_name = 'invented_semantics'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*Unknown semantic claim*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*Unknown semantic claim*'
     }
 
     It 'rejects validated promotion without at least one evidence artifact' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.evidence.artifact_count = 0
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*requires at least one evidence artifact*'
-        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*requires at least one evidence artifact*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy
         [int]$pythonCheck.exit_code | Should -Not -Be 0
         [string]$pythonCheck.output | Should -Match 'requires at least one evidence artifact'
     }
 
     It 'rejects validated promotion when negative controls did not pass' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.validation.negative_controls_passed = $false
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*requires negative controls to pass*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*requires negative controls to pass*'
     }
 
     It 'rejects validated promotion without cleanup verification' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.validation.cleanup_verified = $false
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*requires cleanup verification*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*requires cleanup verification*'
     }
 
     It 'rejects validated promotion without independent validation' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.validation.independent_validation_passed = $false
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*requires independent validation*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*requires independent validation*'
     }
 
     It 'rejects a capture whose end precedes its start' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.capture.ended_utc = '2026-08-11T08:59:59Z'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*capture end must be after capture start*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*capture end must be after capture start*'
     }
 
     It 'rejects an observed capture duration that exceeds its declared bound' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.capture.bounded_session_seconds = 5
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*observed duration exceeds bounded_session_seconds*'
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*observed duration exceeds bounded_session_seconds*'
     }
 
     It 'rejects semantic tampering when the canonical fingerprint is stale' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.capture.scope = 'tampered-scope'
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt -KeepFingerprint
-        { & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy } | Should -Throw '*fingerprint mismatch*'
-        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        { & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy } | Should -Throw '*fingerprint mismatch*'
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy
         [int]$pythonCheck.exit_code | Should -Not -Be 0
         [string]$pythonCheck.output | Should -Match 'fingerprint mismatch'
     }
 
     It 'accepts a structurally valid failed receipt but never marks it promotable' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.status = 'failed'
         $receipt.evidence.artifact_count = 0
@@ -255,16 +274,17 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $receipt.validation.cleanup_verified = $false
         $receipt.validation.independent_validation_passed = $false
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        $result = & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy -PassThru
+        $result = & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy -PassThru
         [string]$result.status | Should -BeExactly 'passed'
         [bool]$result.promotable | Should -BeFalse
-        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $pythonValidatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicy $expectedPolicy
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy
         [int]$pythonCheck.exit_code | Should -Be 0
         $pythonResult = [string]$pythonCheck.output | ConvertFrom-Json
         [bool]$pythonResult.promotable | Should -BeFalse
     }
 
     It 'accepts a structurally valid unavailable receipt but never marks it promotable' {
+        $context = Get-NxbSemanticTestContext
         $receipt = Get-NxbSemanticFixtureObject
         $receipt.status = 'unavailable'
         $receipt.evidence.artifact_count = 0
@@ -272,8 +292,12 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
         $receipt.validation.cleanup_verified = $false
         $receipt.validation.independent_validation_passed = $false
         $path = Write-NxbSemanticTestReceiptDocument -Receipt $receipt
-        $result = & $validatorPath -ReceiptPath $path -ExpectedHead $expectedHead -ExpectedPolicySha256 $expectedPolicy -PassThru
+        $result = & $context.validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicySha256 $context.expected_policy -PassThru
         [string]$result.status | Should -BeExactly 'passed'
         [bool]$result.promotable | Should -BeFalse
+        $pythonCheck = Invoke-NxbSemanticPythonTest -ValidatorPath $context.python_validator_path -ReceiptPath $path -ExpectedHead $context.expected_head -ExpectedPolicy $context.expected_policy
+        [int]$pythonCheck.exit_code | Should -Be 0
+        $pythonResult = [string]$pythonCheck.output | ConvertFrom-Json
+        [bool]$pythonResult.promotable | Should -BeFalse
     }
 }
