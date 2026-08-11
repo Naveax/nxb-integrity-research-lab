@@ -48,11 +48,21 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
             Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue
         }
         $resolverSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
-        $testSource = Get-Content -LiteralPath (Join-Path $root 'tests\AdaptiveObservabilityControlPlane.Tests.ps1') -Raw
+        $testPath = Join-Path $root 'tests\AdaptiveObservabilityControlPlane.Tests.ps1'
+        $tokens = $null
+        $parseErrors = $null
+        $testAst = [Management.Automation.Language.Parser]::ParseFile($testPath,[ref]$tokens,[ref]$parseErrors)
+        @($parseErrors).Count | Should -Be 0
+        $functionNames = @(
+            $testAst.FindAll(
+                { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] },
+                $true
+            ) | ForEach-Object { [string]$_.Name }
+        )
         $resolverSource | Should -Not -Match ([regex]::Escape('function Get-NxbStableUniqueDomains'))
         $resolverSource | Should -Match ([regex]::Escape('function Get-NxbStableUniqueDomain'))
-        $testSource | Should -Not -Match ([regex]::Escape('function Write-NxbAdaptiveTestSignals'))
-        $testSource | Should -Match ([regex]::Escape('function Write-NxbAdaptiveTestSignalDocument'))
+        $functionNames | Should -Not -Contain 'Write-NxbAdaptiveTestSignals'
+        $functionNames | Should -Contain 'Write-NxbAdaptiveTestSignalDocument'
     }
 
     It 'defines exactly five ordered logging modes' {
