@@ -51,7 +51,7 @@ Describe 'NXB known-error ledger pre-final contract' {
             @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
-        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015')) {
+        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-022')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
@@ -66,10 +66,10 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-021 and locks analyzer regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-022 and locks analyzer/runtime regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..21) {
+        foreach ($number in 1..22) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
@@ -97,9 +97,35 @@ Describe 'NXB known-error ledger pre-final contract' {
         $assignedRegex.IsMatch('$pythonValidatorPath = Join-Path $root ''tools\validate_semantic_evidence_receipt.py''') | Should -BeTrue
         $assignedRegex.IsMatch('$context = Get-NxbSemanticTestContext') | Should -BeFalse
 
+        $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
+        $stderrRegex = [regex]::new([string]$stderrRule.regex)
+        $unsafeNative = @'
+function Invoke-NxbSemanticPythonTest {
+    $nativeOutput = @(& $pythonPath @argumentList 2>&1)
+}
+'@
+        $safeNative = @'
+function Invoke-NxbSemanticPythonTest {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $nativeOutput = @(& $pythonPath @argumentList 2>&1)
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+'@
+        $stderrRegex.IsMatch($unsafeNative) | Should -BeTrue
+        $stderrRegex.IsMatch($safeNative) | Should -BeFalse
+
         $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
         $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
         $semanticTest | Should -Not -Match '(?im)^\s*\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\s*='
+        $semanticTest | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+        $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
+        $semanticTest | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
+        $stderrRegex.IsMatch($semanticTest) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
