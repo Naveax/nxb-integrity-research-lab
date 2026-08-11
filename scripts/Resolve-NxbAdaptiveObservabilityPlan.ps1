@@ -62,7 +62,7 @@ function Test-NxbTriggerCondition {
     }
 }
 
-function Get-NxbStableUniqueDomains {
+function Get-NxbStableUniqueDomain {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$Domains)
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -143,7 +143,7 @@ foreach ($trigger in $activeTriggers) {
 }
 foreach ($domain in @($profile.domains)) { $domainCandidates.Add([string]$domain) }
 
-$orderedDomains = @(Get-NxbStableUniqueDomains -Domains $domainCandidates.ToArray())
+$orderedDomains = @(Get-NxbStableUniqueDomain -Domains $domainCandidates.ToArray())
 $maxDomains = [int]$policy.budgets.max_concurrent_domains
 if ($orderedDomains.Count -gt $maxDomains) {
     $orderedDomains = @($orderedDomains | Select-Object -First $maxDomains)
