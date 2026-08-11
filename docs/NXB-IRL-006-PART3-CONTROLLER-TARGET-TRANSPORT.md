@@ -36,7 +36,7 @@ Each frame binds the following canonical material:
 - SHA-256 of the payload JSON
 - base64 representation of the payload JSON
 
-The authentication tag is HMAC-SHA256 over this canonical material. Controller requests and target responses are both authenticated. The review evidence contains the deterministic synthetic protocol transcript but does not expose the certification key itself.
+The authentication tag is HMAC-SHA256 over this canonical material. Controller requests and target responses are both authenticated. PowerShell verification converts the provided and independently computed tags to bytes and uses `CryptographicOperations.FixedTimeEquals`; the independent Python validator uses its own HMAC recomputation. The review evidence contains the deterministic synthetic protocol transcript but does not expose the certification key itself.
 
 ## Sequence semantics
 
@@ -49,6 +49,12 @@ For an authenticated controller request:
 - only `sequence == next_expected_sequence` is eligible to advance.
 
 Target responses have a separate monotonically increasing response sequence. The independent Python validator recomputes authentication and independently walks both request and response sequence state from the transcript.
+
+## Durable acknowledgement ordering
+
+The target does not acknowledge an in-memory-only transition. Before any authenticated ACK or REJECT is written to the socket, the target increments the response sequence and atomically persists the complete current state, including request sequence, queue/counter mutations, emergency-stop state, and the next response sequence.
+
+The wire response is emitted only after that checkpoint succeeds. This ordering makes the process-kill recovery test meaningful: once the controller has observed an acknowledgement, the corresponding target state must already be recoverable from disk.
 
 ## Bounded queue and backpressure
 
@@ -77,7 +83,7 @@ The spool itself is local working evidence and is not packaged into the final re
 
 ## Interrupted-transfer recovery
 
-The target persists its checkpoint state atomically through a temporary file followed by replacement of the canonical state file.
+The target persists its checkpoint state atomically through a temporary file followed by replacement of the canonical state file. Response acknowledgements follow the durable-before-wire rule above.
 
 After the configured twelfth accepted logical event, the native experiment:
 
@@ -137,7 +143,7 @@ The machine signature set extends the applicable generic rules to `scripts/*NxbC
 - ERR-022 covers the Part 3 native stderr-capture helper.
 - ERR-024 covers any reintroduction of the invalid `claim_targets.PSObject.Properties` JSON-array projection.
 
-Pre-final review also replaced the state-changing helper name `Start-NxbTransportTargetProcess` with `Invoke-NxbTransportTargetProcessStart` rather than suppressing the PSScriptAnalyzer ShouldProcess rule.
+Pre-final review also replaced the state-changing helper name `Start-NxbTransportTargetProcess` with `Invoke-NxbTransportTargetProcessStart` rather than suppressing the PSScriptAnalyzer ShouldProcess rule. The same review hardened HMAC comparison to fixed-time byte equality and repaired the acknowledgement/checkpoint ordering so durable state is committed before a wire response is observable.
 
 ## Review evidence
 
