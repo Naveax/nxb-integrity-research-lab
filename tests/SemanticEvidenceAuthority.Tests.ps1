@@ -120,7 +120,8 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
     It 'accepts the same fixture in the independent Python validator with matching identity' {
         $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
         if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
-        $pythonOutput = & $pythonCommand.Source $pythonValidatorPath $fixturePath --expected-head $expectedHead --expected-policy-sha256 $expectedPolicy --expected-machine-id-sha256 $expectedMachine
+        $pythonPath = [string]$pythonCommand.Source
+        $pythonOutput = & $pythonPath $pythonValidatorPath $fixturePath --expected-head $expectedHead --expected-policy-sha256 $expectedPolicy --expected-machine-id-sha256 $expectedMachine
         $LASTEXITCODE | Should -Be 0
         $pythonResult = $pythonOutput | ConvertFrom-Json
         [string]$pythonResult.status | Should -BeExactly 'passed'
