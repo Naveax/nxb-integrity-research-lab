@@ -176,7 +176,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $preflightSource | Should -Match ([regex]::Escape('file_presence_used_as_capability_authority = $false'))
         $preflightSource | Should -Match ([regex]::Escape('physical_pnp_device_modified = $false'))
         $preflightSource | Should -Match ([regex]::Escape('cleanup_reboot_required = $pnpFixtureCleanupRebootRequired'))
-        $preflightSource | Should -Match ([regex]::Escape("$blockers.Add('pnp_fixture_cleanup_requires_reboot')"))
+        $preflightSource | Should -Match ([regex]::Escape('$blockers.Add(''pnp_fixture_cleanup_requires_reboot'')'))
         $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.'))
 
         foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.top_certification,$context.host_preflight)) {
