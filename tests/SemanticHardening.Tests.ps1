@@ -58,6 +58,9 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('repo_owned_eventsource_lifecycle_bridge_v1'))
         $source | Should -Match ([regex]::Escape('optional_windows_eventlog_used_as_authority = $false'))
         $source | Should -Match ([regex]::Escape('cim_presence_probe_used = $false'))
+        $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Record'))
+        $source | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
+        $source | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Record'))
         $source | Should -Not -Match '(?im)\bGet-WinEvent\b'
         $source | Should -Not -Match '(?im)Get-CimInstance\s+Win32_PnPEntity\b'
         $source | Should -Not -Match '(?i)Disable-PnpDevice|Remove-PnpDevice|Uninstall-PnpDevice'
@@ -95,17 +98,22 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         }
     }
 
-    It 'confines firmware transition evidence to an ephemeral unstarted Generation 2 VM' {
+    It 'confines firmware transition evidence to an ephemeral unstarted Generation 2 VM with shape-safe Secure Boot readback' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.power -Raw
         $source | Should -Match ([regex]::Escape('-Generation 2'))
         $source | Should -Match ([regex]::Escape('-NoVHD'))
         $source | Should -Match ([regex]::Escape('Set-VMFirmware'))
+        $source | Should -Match ([regex]::Escape('-EnableSecureBoot $alternate'))
+        $source | Should -Match ([regex]::Escape('function Get-NxbSemanticFirmwareSecureBootState'))
+        $source | Should -Match ([regex]::Escape('foreach ($propertyName in @(''SecureBoot'',''EnableSecureBoot''))'))
+        $source | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
+        $source | Should -Not -Match '(?im)\(\s*Get-VMFirmware\b[^\r\n]*\)\.EnableSecureBoot\b'
         $source | Should -Match ([regex]::Escape('Remove-VM'))
         $source | Should -Not -Match '(?im)^\s*Start-VM\b'
     }
 
-    It 'uses sequential bounded WPR collectors and scenario continuity for trace completeness' {
+    It 'uses sequential bounded WPR collectors scenario continuity and measured dictionary-safe trace counters' {
         $context = Get-NxbSemanticHardeningTestContext
         [xml]$xml = Get-Content -LiteralPath $context.profile -Raw
         $fileCollectors = @($xml.WindowsPerformanceRecorder.Profiles.SystemCollector,$xml.WindowsPerformanceRecorder.Profiles.EventCollector)
@@ -118,6 +126,14 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('scenario_count=10'))
         $source | Should -Match ([regex]::Escape('observation_gap_count=$observationGapCount'))
         $source | Should -Match ([regex]::Escape('sequential_capacity_reached=$capacityReached'))
+        $source | Should -Match ([regex]::Escape('if ($current -is [System.Collections.IDictionary])'))
+        $source | Should -Match ([regex]::Escape('if (-not $current.Contains($segment)) { return $DefaultValue }'))
+        $source | Should -Match ([regex]::Escape('$current = $current[$segment]'))
+        $source | Should -Match ([regex]::Escape('$statisticsStatus -cne ''measured'''))
+        $source | Should -Match ([regex]::Escape('$eventsLostStatus -cne ''measured'''))
+        $source | Should -Match ([regex]::Escape('$buffersLostStatus -cne ''measured'''))
+        $source | Should -Match ([regex]::Escape('$buffersWrittenStatus -cne ''measured'''))
+        $source | Should -Match ([regex]::Escape('$eventsLost -ne 0 -or $buffersLost -ne 0 -or $buffersWritten -eq 0'))
     }
 
     It 'requires independent validators to own all final claim and deep evidence gates' {
@@ -177,6 +193,6 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             $runtimeSource | Should -Not -Match '(?ims)catch\s*\{\s*\}'
         }
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-027'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-032'))
     }
 }

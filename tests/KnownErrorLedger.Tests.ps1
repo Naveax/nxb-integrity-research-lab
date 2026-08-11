@@ -40,31 +40,35 @@ Describe 'NXB known-error ledger pre-final contract' {
         [string]$document.ledger_path | Should -BeExactly 'docs/NXB-KNOWN-ERROR-LEDGER.md'
     }
 
-    It 'keeps machine rule ids unique and extends coverage through ERR-029' {
+    It 'keeps machine rule ids unique and extends coverage through ERR-033' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
-        $ids.Count | Should -BeGreaterOrEqual 18
-        foreach ($ruleId in @('NXB-ERR-024','NXB-ERR-025','NXB-ERR-026','NXB-ERR-027','NXB-ERR-028','NXB-ERR-029')) {
+        $ids.Count | Should -BeGreaterOrEqual 22
+        foreach ($ruleId in @('NXB-ERR-024','NXB-ERR-025','NXB-ERR-026','NXB-ERR-027','NXB-ERR-028','NXB-ERR-029','NXB-ERR-030','NXB-ERR-031','NXB-ERR-032','NXB-ERR-033')) {
             $ids | Should -Contain $ruleId
         }
         @((Get-NxbKnownErrorRule -Id 'NXB-ERR-029').include_globs) | Should -Contain 'tests/KnownErrorLedger.Tests.ps1'
+        @((Get-NxbKnownErrorRule -Id 'NXB-ERR-030').include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
+        @((Get-NxbKnownErrorRule -Id 'NXB-ERR-031').include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
+        @((Get-NxbKnownErrorRule -Id 'NXB-ERR-032').include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticRootTraceExperiment.ps1'
+        @((Get-NxbKnownErrorRule -Id 'NXB-ERR-033').include_globs) | Should -Contain 'scripts/Invoke-NxbControllerTargetTransportExperiment.ps1'
     }
 
-    It 'lists every machine rule and every historical id through ERR-029 in the human ledger' {
+    It 'lists every machine rule and every historical id through ERR-033 in the human ledger' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
         $document = Get-NxbKnownErrorSignatureDocument
         foreach ($rule in @($document.rules)) {
             $ledger | Should -Match ([regex]::Escape([string]$rule.id))
         }
-        foreach ($number in 1..29) {
+        foreach ($number in 1..33) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
     }
 
-    It 'locks recent array capability encoding EventLog ASCII and prose regression behavior' {
+    It 'locks recent array capability encoding EventLog ASCII prose empty-collection firmware-readback dictionary-traversal and transport-transcript regression behavior' {
         $arrayRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-024').regex)
         $badArrayProjection = '$policy.claim_targets' + '.PSObject.Properties'
         $arrayRegex.IsMatch($badArrayProjection) | Should -BeTrue
@@ -94,18 +98,74 @@ Describe 'NXB known-error ledger pre-final contract' {
         $badProseAssertion = '$ledger | Should -Match ([regex]::Escape(' + $quote + 'This explanatory sentence is intentionally long and brittle.' + $quote + '))'
         $proseRegex.IsMatch($badProseAssertion) | Should -BeTrue
         $proseRegex.IsMatch('$ledger | Should -Match ([regex]::Escape(' + $quote + 'NXB-ERR-029' + $quote + '))') | Should -BeFalse
+
+        $emptyCollectionRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-030').regex)
+        $emptyCollectionRegex.IsMatch('[Parameter(Mandatory)][object[]]$Record') | Should -BeTrue
+        $emptyCollectionRegex.IsMatch('[Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Record') | Should -BeFalse
+
+        $firmwareRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-031').regex)
+        $badFirmwareReadback = '(Get-VMFirmware -VMName $vmName -ErrorAction Stop).EnableSecureBoot'
+        $goodFirmwareReadback = 'Get-NxbSemanticFirmwareSecureBootState -Firmware (Get-VMFirmware -VMName $vmName -ErrorAction Stop)'
+        $firmwareRegex.IsMatch($badFirmwareReadback) | Should -BeTrue
+        $firmwareRegex.IsMatch($goodFirmwareReadback) | Should -BeFalse
+
+        $dictionaryRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-032').regex)
+        $badDictionaryWalker = @'
+foreach ($segment in $Path.Split('.')) {
+    if ($null -eq $current) { return $DefaultValue }
+    $property = $current.PSObject.Properties[$segment]
+'@
+        $goodDictionaryWalker = @'
+foreach ($segment in $Path.Split('.')) {
+    if ($null -eq $current) { return $DefaultValue }
+    if ($current -is [System.Collections.IDictionary]) {
+        if (-not $current.Contains($segment)) { return $DefaultValue }
+        $current = $current[$segment]
+        continue
+    }
+    $property = $current.PSObject.Properties[$segment]
+'@
+        $dictionaryRegex.IsMatch($badDictionaryWalker) | Should -BeTrue
+        $dictionaryRegex.IsMatch($goodDictionaryWalker) | Should -BeFalse
+
+        $transcriptRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-033').regex)
+        $transcriptRegex.IsMatch('[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript') | Should -BeTrue
+        $transcriptRegex.IsMatch('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript') | Should -BeFalse
     }
 
-    It 'keeps current Part 4 and ledger tests free of ERR-028 and ERR-029 patterns' {
+    It 'keeps current Part 4 ledger PnP firmware root-trace and transport sources free of ERR-028 through ERR-033 patterns' {
         $root = Get-NxbKnownErrorTestRoot
         $asciiRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-028').regex)
         $proseRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-029').regex)
+        $emptyCollectionRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-030').regex)
+        $firmwareRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-031').regex)
+        $dictionaryRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-032').regex)
+        $transcriptRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-033').regex)
         $part4Source = Get-Content -LiteralPath (Join-Path $root 'tests\Part4ResumableRunner.Tests.ps1') -Raw
         $ledgerSource = Get-Content -LiteralPath (Join-Path $root 'tests\KnownErrorLedger.Tests.ps1') -Raw
+        $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
+        $firmwareSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1') -Raw
+        $rootTraceSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticRootTraceExperiment.ps1') -Raw
+        $transportSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbControllerTargetTransportExperiment.ps1') -Raw
         $asciiRegex.IsMatch($part4Source) | Should -BeFalse
         $asciiRegex.IsMatch($ledgerSource) | Should -BeFalse
         $proseRegex.IsMatch($ledgerSource) | Should -BeFalse
+        $emptyCollectionRegex.IsMatch($pnpSource) | Should -BeFalse
+        $firmwareRegex.IsMatch($firmwareSource) | Should -BeFalse
+        $dictionaryRegex.IsMatch($rootTraceSource) | Should -BeFalse
+        $transcriptRegex.IsMatch($transportSource) | Should -BeFalse
         $part4Source | Should -Match ([regex]::Escape('[IO.File]::ReadAllBytes($Path)'))
+        $pnpSource | Should -Match ([regex]::Escape('[AllowEmptyCollection()][object[]]$Record'))
+        $pnpSource | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
+        $firmwareSource | Should -Match ([regex]::Escape('function Get-NxbSemanticFirmwareSecureBootState'))
+        $firmwareSource | Should -Match ([regex]::Escape('foreach ($propertyName in @(''SecureBoot'',''EnableSecureBoot''))'))
+        $firmwareSource | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
+        $rootTraceSource | Should -Match ([regex]::Escape('if ($current -is [System.Collections.IDictionary])'))
+        $rootTraceSource | Should -Match ([regex]::Escape('$current = $current[$segment]'))
+        $rootTraceSource | Should -Match ([regex]::Escape('$eventsLostStatus -cne ''measured'''))
+        $rootTraceSource | Should -Match ([regex]::Escape('$buffersWrittenStatus -cne ''measured'''))
+        $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'))
+        $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Records'))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
@@ -168,7 +228,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
         [string]$result.status | Should -BeExactly 'passed'
         [int]$result.finding_count | Should -Be 0
-        [int]$result.rule_count | Should -BeGreaterOrEqual 18
+        [int]$result.rule_count | Should -BeGreaterOrEqual 22
         $source = Get-Content -LiteralPath $scanner -Raw
         $source | Should -Match ([regex]::Escape('if ($orderedFinding.Count -gt 0 -and -not $NoThrow)'))
         $source | Should -Match ([regex]::Escape('NXB known-error pre-final scan failed with {0} finding(s).'))

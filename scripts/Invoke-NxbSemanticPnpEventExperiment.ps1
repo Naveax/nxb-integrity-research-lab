@@ -60,10 +60,12 @@ function Wait-NxbSemanticPnpPresence {
 function ConvertTo-NxbSemanticPnpEventShape {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][object[]]$Record,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Record,
         [Parameter(Mandatory)][string]$CorrelationToken,
         [Parameter(Mandatory)][int]$ExpectedEventId
     )
+
+    if ($Record.Count -eq 0) { return @() }
 
     $shape = [Collections.Generic.List[object]]::new()
     foreach ($item in @($Record)) {
