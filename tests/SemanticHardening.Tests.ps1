@@ -128,13 +128,19 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         }
     }
 
-    It 'does not pre-promote semantic targets inside the repository default policy' {
+    It 'does not pre-promote the eight Part 2 semantic targets inside the repository default policy' {
         $context = Get-NxbSemanticHardeningTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
-        $targets = @($policy.claim_targets.PSObject.Properties | ForEach-Object { $_.Value })
-        $targets.Count | Should -Be 8
-        @($targets | Where-Object { [bool]$_.validated }).Count | Should -Be 0
-        @($targets | Where-Object { -not [bool]$_.target_requested }).Count | Should -Be 0
+        $part2Names = @(
+            'pnp_lifecycle_semantics','pcie_bdf_semantics','event_id_semantics','event_task_opcode_semantics',
+            'power_causality','firmware_causality','root_cause_validated','continuous_trace_completeness'
+        )
+        $targets = @($policy.claim_targets)
+        $part2Targets = @($targets | Where-Object { $part2Names -contains [string]$_.name })
+        $part2Targets.Count | Should -Be 8
+        @($part2Targets | ForEach-Object { [string]$_.name } | Sort-Object -Unique).Count | Should -Be 8
+        @($part2Targets | Where-Object { [bool]$_.validated }).Count | Should -Be 0
+        @($part2Targets | Where-Object { -not [bool]$_.target_requested }).Count | Should -Be 0
     }
 
     It 'binds receipts only after 8-of-8 validation and keeps inherited regressions out of the runtime surface' {
