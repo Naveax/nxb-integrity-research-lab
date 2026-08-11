@@ -105,7 +105,7 @@ $reviewRoot = Join-Path $outputFull 'review'
 [IO.Directory]::CreateDirectory($reviewRoot) | Out-Null
 $reviewScanPath = Join-Path $reviewRoot 'known-error-scan.json'
 $scan = & $scannerPath -RepositoryRoot $repositoryRoot -SignaturePath $signaturePath -OutputPath $reviewScanPath -NoThrow -PassThru
-if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 16) { throw ('Combined closure known-error gate failed: rules={0} findings={1}' -f [int]$scan.rule_count,[int]$scan.finding_count) }
+if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 17) { throw ('Combined closure known-error gate failed: rules={0} findings={1}' -f [int]$scan.rule_count,[int]$scan.finding_count) }
 
 $part4ReceiptCopy = Join-Path $reviewRoot 'part4-runner-certification-receipt.json'
 $part3ReceiptCopy = Join-Path $reviewRoot 'part3-transport-certification-receipt.json'
@@ -150,7 +150,7 @@ if (@($entries | Where-Object { -not $_.EndsWith('.json',[StringComparison]::Ord
 
 Write-Information -InformationAction Continue -MessageData '[4/4] Final combined closure validation'
 $finalScan = & $scannerPath -RepositoryRoot $repositoryRoot -SignaturePath $signaturePath -NoThrow -PassThru
-if ([string]$finalScan.status -cne 'passed' -or [int]$finalScan.finding_count -ne 0 -or [int]$finalScan.rule_count -lt 16) { throw 'Combined final exact-tree known-error scan failed.' }
+if ([string]$finalScan.status -cne 'passed' -or [int]$finalScan.finding_count -ne 0 -or [int]$finalScan.rule_count -lt 17) { throw 'Combined final exact-tree known-error scan failed.' }
 
 $result = [pscustomobject][ordered]@{
     schema_version=1; status='passed'; head_sha=$currentHead;
