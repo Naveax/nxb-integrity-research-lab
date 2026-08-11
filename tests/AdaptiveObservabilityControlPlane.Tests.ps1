@@ -8,7 +8,7 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
             return [IO.Path]::GetFullPath($root)
         }
 
-        function Write-NxbAdaptiveTestSignals {
+        function Write-NxbAdaptiveTestSignalDocument {
             param([Parameter(Mandatory)][hashtable]$Signals)
             $path = Join-Path $TestDrive ('signals-{0}.json' -f [Guid]::NewGuid().ToString('N'))
             [IO.File]::WriteAllText(
@@ -27,7 +27,7 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
             $root = Get-NxbAdaptiveTestRoot
             $policy = Join-Path $root 'config\adaptive-observability-policy.default.json'
             $resolver = Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1'
-            $signalsPath = Write-NxbAdaptiveTestSignals -Signals $Signals
+            $signalsPath = Write-NxbAdaptiveTestSignalDocument -Signals $Signals
             if ([string]::IsNullOrWhiteSpace($OperatorMode)) {
                 return (& $resolver -PolicyPath $policy -SignalsPath $signalsPath -PassThru)
             }
@@ -47,6 +47,12 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
         )) {
             Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf | Should -BeTrue
         }
+        $resolverSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
+        $testSource = Get-Content -LiteralPath (Join-Path $root 'tests\AdaptiveObservabilityControlPlane.Tests.ps1') -Raw
+        $resolverSource | Should -Not -Match ([regex]::Escape('function Get-NxbStableUniqueDomains'))
+        $resolverSource | Should -Match ([regex]::Escape('function Get-NxbStableUniqueDomain'))
+        $testSource | Should -Not -Match ([regex]::Escape('function Write-NxbAdaptiveTestSignals'))
+        $testSource | Should -Match ([regex]::Escape('function Write-NxbAdaptiveTestSignalDocument'))
     }
 
     It 'defines exactly five ordered logging modes' {
@@ -130,7 +136,8 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
     It 'preserves first-occurrence domain priority' {
         $root = Get-NxbAdaptiveTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
-        $source | Should -Match ([regex]::Escape('Get-NxbStableUniqueDomains'))
+        $source | Should -Match ([regex]::Escape('Get-NxbStableUniqueDomain'))
+        $source | Should -Not -Match ([regex]::Escape('Get-NxbStableUniqueDomains'))
         $source | Should -Match ([regex]::Escape('if ($seen.Add($domain)) { $ordered.Add($domain) }'))
     }
 
