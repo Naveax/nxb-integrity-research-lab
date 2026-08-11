@@ -79,6 +79,12 @@
       "description": "Treating a JSON array as PSObject.Properties instead of enumerating its elements",
       "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\.claim_targets\\.PSObject\\.Properties\\b"
+    },
+    {
+      "id": "NXB-ERR-025",
+      "description": "Shallow native capability preflight based on DLL/provider presence or unsupported CIM PnP enumeration",
+      "include_globs": ["scripts/Test-NxbSemanticHardeningHostCapability.ps1","scripts/Invoke-NxbSemanticPnpEventExperiment.ps1"],
+      "regex": "(?im)(?:Get-CimInstance\\s+Win32_PnPEntity\\b|\\$softwareDeviceApiAvailable\\s*=\\s*\\(Test-Path\\s+-LiteralPath\\s+\\$softwareDeviceDll\\b)"
     }
   ]
 }
