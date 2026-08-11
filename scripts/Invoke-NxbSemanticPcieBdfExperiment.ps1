@@ -47,6 +47,17 @@ function Get-NxbSemanticPcieLocationTuple {
     return $candidate[$candidate.Count - 1]
 }
 
+function Test-NxbSemanticPcieTupleMatch {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateRange(0,31)][int]$ExpectedDevice,
+        [Parameter(Mandatory)][ValidateRange(0,7)][int]$ExpectedFunction,
+        [Parameter(Mandatory)][ValidateRange(0,31)][int]$ObservedDevice,
+        [Parameter(Mandatory)][ValidateRange(0,7)][int]$ObservedFunction
+    )
+    return ($ExpectedDevice -eq $ObservedDevice -and $ExpectedFunction -eq $ObservedFunction)
+}
+
 function Get-NxbSemanticPcieSnapshot {
     [CmdletBinding()]
     param([Parameter(Mandatory)][ValidateRange(1,3)][int]$Index)
@@ -73,27 +84,30 @@ function Get-NxbSemanticPcieSnapshot {
             if ($address -lt 0) { continue }
             $deviceNumber = [int](($address -shr 16) -band 0xffff)
             $functionNumber = [int]($address -band 0xffff)
-            $locationTuple = Get-NxbSemanticPcieLocationTuple -LocationPaths $locationValue
-            $locationAvailable = ($null -ne $locationTuple)
-            $locationMatches = $false
-            if ($locationAvailable) {
-                $locationMatches = (
-                    [int]$locationTuple.device -eq $deviceNumber -and
-                    [int]$locationTuple.function -eq $functionNumber
-                )
-            }
             $rangeValid = (
                 $bus -ge 0 -and $bus -le 255 -and
                 $deviceNumber -ge 0 -and $deviceNumber -le 31 -and
                 $functionNumber -ge 0 -and $functionNumber -le 7
             )
+            if (-not $rangeValid) { continue }
+
+            $locationTuple = Get-NxbSemanticPcieLocationTuple -LocationPaths $locationValue
+            $locationAvailable = ($null -ne $locationTuple)
+            $locationMatches = $false
+            if ($locationAvailable) {
+                $locationMatches = Test-NxbSemanticPcieTupleMatch `
+                    -ExpectedDevice $deviceNumber `
+                    -ExpectedFunction $functionNumber `
+                    -ObservedDevice ([int]$locationTuple.device) `
+                    -ObservedFunction ([int]$locationTuple.function)
+            }
             $rows.Add([pscustomobject][ordered]@{
                 device_id_sha256 = Get-NxbSemanticPcieSha256Text -Text $instanceId
                 bus = $bus
                 device = $deviceNumber
                 function = $functionNumber
                 bdf = ('{0:x2}:{1:x2}.{2:x1}' -f $bus,$deviceNumber,$functionNumber)
-                address_decode_valid = $rangeValid
+                address_decode_valid = $true
                 location_path_cross_check_available = $locationAvailable
                 location_path_cross_check_matches = $locationMatches
             })
@@ -155,17 +169,15 @@ $negativeControl = [System.Collections.Generic.List[object]]::new()
 foreach ($mapping in $stable) {
     $wrongDevice = ([int]$mapping.device + 1) % 32
     $wrongFunction = [int]$mapping.function
-    if ($wrongDevice -eq [int]$mapping.device) {
-        $wrongFunction = ([int]$mapping.function + 1) % 8
-    }
-    $mismatchRejected = -not (
-        $wrongDevice -eq [int]$mapping.device -and
-        $wrongFunction -eq [int]$mapping.function
-    )
+    $wrongTupleAccepted = Test-NxbSemanticPcieTupleMatch `
+        -ExpectedDevice ([int]$mapping.device) `
+        -ExpectedFunction ([int]$mapping.function) `
+        -ObservedDevice $wrongDevice `
+        -ObservedFunction $wrongFunction
     $negativeControl.Add([pscustomobject][ordered]@{
         device_id_sha256 = [string]$mapping.device_id_sha256
         deliberately_wrong_tuple = ('{0:x2}.{1:x1}' -f $wrongDevice,$wrongFunction)
-        mismatch_rejected = $mismatchRejected
+        mismatch_rejected = (-not $wrongTupleAccepted)
     })
 }
 $negativeControlPassed = ($stable.Count -gt 0 -and $negativeControl.Count -eq $stable.Count -and @($negativeControl | Where-Object { -not [bool]$_.mismatch_rejected }).Count -eq 0)
@@ -185,6 +197,9 @@ $result = [pscustomobject][ordered]@{
     stable_mappings = @($stable | ForEach-Object {
         [pscustomobject][ordered]@{
             device_id_sha256 = [string]$_.device_id_sha256
+            bus = [int]$_.bus
+            device = [int]$_.device
+            function = [int]$_.function
             bdf = [string]$_.bdf
             repeated_snapshots = [int]$_.repeated_snapshots
             address_decode_valid = [bool]$_.address_decode_valid
