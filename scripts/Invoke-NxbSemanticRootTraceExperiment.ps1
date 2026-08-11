@@ -26,6 +26,11 @@ function Get-NxbSemanticRootTraceProperty {
     $current = $InputObject
     foreach ($segment in $Path.Split('.')) {
         if ($null -eq $current) { return $DefaultValue }
+        if ($current -is [System.Collections.IDictionary]) {
+            if (-not $current.Contains($segment)) { return $DefaultValue }
+            $current = $current[$segment]
+            continue
+        }
         $property = $current.PSObject.Properties[$segment]
         if ($null -eq $property) { return $DefaultValue }
         $current = $property.Value
@@ -172,6 +177,13 @@ $capacityReached = ($etlLength -ge $sequentialCapacityBytes)
 if ($capacityReached) { throw ('Sequential trace reached the conservative 512 MiB capacity boundary: bytes={0}' -f $etlLength) }
 
 $statistics = & $statisticsScript -ExperimentPath $captureRoot -XperfExecutablePath $xperf -PassThru -Confirm:$false
+$statisticsStatus = [string](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'status' -DefaultValue 'failed')
+$eventsLostStatus = [string](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'events_lost.status' -DefaultValue 'failed')
+$buffersLostStatus = [string](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'buffers_lost.status' -DefaultValue 'failed')
+$buffersWrittenStatus = [string](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'buffers_written.status' -DefaultValue 'failed')
+if ($statisticsStatus -cne 'measured' -or $eventsLostStatus -cne 'measured' -or $buffersLostStatus -cne 'measured' -or $buffersWrittenStatus -cne 'measured') {
+    throw ('Trace statistics evidence is not fully measured: statistics={0} EventsLost={1} BuffersLost={2} BuffersWritten={3}' -f $statisticsStatus,$eventsLostStatus,$buffersLostStatus,$buffersWrittenStatus)
+}
 $eventsLost = [uint64](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'events_lost.value' -DefaultValue ([uint64]::MaxValue))
 $buffersLost = [uint64](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'buffers_lost.value' -DefaultValue ([uint64]::MaxValue))
 $buffersWritten = [uint64](Get-NxbSemanticRootTraceProperty -InputObject $statistics -Path 'buffers_written.value' -DefaultValue 0)
