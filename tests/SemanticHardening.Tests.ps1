@@ -14,8 +14,11 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
                 power = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
                 root_trace = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticRootTraceExperiment.ps1'
                 certification = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticHardeningCertification.ps1'
+                top_certification = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticHardeningCertificationV2.ps1'
+                host_preflight = Join-Path $fullRoot 'scripts\Test-NxbSemanticHardeningHostCapability.ps1'
                 profile = Join-Path $fullRoot 'profiles\Nxb.SemanticHardeningSequential.wprp'
                 python = Join-Path $fullRoot 'tools\validate_semantic_hardening.py'
+                deep_python = Join-Path $fullRoot 'tools\validate_semantic_root_trace_evidence.py'
                 policy = Join-Path $fullRoot 'config\adaptive-observability-policy.default.json'
                 ledger = Join-Path $fullRoot 'docs\NXB-KNOWN-ERROR-LEDGER.md'
             }
@@ -24,7 +27,10 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
 
     It 'keeps every current Part 2 component repo-owned' {
         $context = Get-NxbSemanticHardeningTestContext
-        foreach ($path in @($context.config,$context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.profile,$context.python)) {
+        foreach ($path in @(
+            $context.config,$context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,
+            $context.top_certification,$context.host_preflight,$context.profile,$context.python,$context.deep_python
+        )) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -105,7 +111,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('sequential_capacity_reached=$capacityReached'))
     }
 
-    It 'requires the independent validator to own all eight final claim names' {
+    It 'requires independent validators to own all final claim and deep evidence gates' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.python -Raw
         foreach ($claim in @(
@@ -115,6 +121,11 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             $source | Should -Match ([regex]::Escape('"' + $claim + '"'))
         }
         $source | Should -Match ([regex]::Escape('requested=8 validated=8'))
+
+        $deepSource = Get-Content -LiteralPath $context.deep_python -Raw
+        foreach ($token in @('events_lost','buffers_lost','buffers_written','all_on_domain_counts','kernel_interventions','summary_replay','events_replay')) {
+            $deepSource | Should -Match ([regex]::Escape($token))
+        }
     }
 
     It 'does not pre-promote semantic targets inside the repository default policy' {
@@ -136,7 +147,14 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape("status='validated'"))
         $source | Should -Match ([regex]::Escape('independent_validation_passed=$true'))
 
-        foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification)) {
+        $topSource = Get-Content -LiteralPath $context.top_certification -Raw
+        $topSource | Should -Match ([regex]::Escape('Fail-fast native host capability gate'))
+        $topSource | Should -Match ([regex]::Escape('Deep independent root-cause + trace evidence replay'))
+        $topSource | Should -Match ([regex]::Escape('deep_root_trace_validation = $true'))
+        $preflightSource = Get-Content -LiteralPath $context.host_preflight -Raw
+        $preflightSource | Should -Match ([regex]::Escape('No Windows feature enablement, reboot, host-firmware mutation, or service start was attempted.'))
+
+        foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.top_certification,$context.host_preflight)) {
             $runtimeSource = Get-Content -LiteralPath $path -Raw
             $runtimeSource | Should -Not -Match '(?im)^\s*\$matches\s*='
             $runtimeSource | Should -Not -Match '(?im)^\s*\$profile\s*='
