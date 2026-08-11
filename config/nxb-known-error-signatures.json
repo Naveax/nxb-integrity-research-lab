@@ -94,6 +94,12 @@
         "tests/KnownErrorLedger.Tests.ps1"
       ],
       "regex": "(?im)^\\s*\\$profile\\s*="
+    },
+    {
+      "id": "NXB-ERR-022",
+      "description": "Semantic Python expected-failure helper reaches native stderr merge before establishing a scoped ErrorAction guard",
+      "include_globs": ["tests/Semantic*.Tests.ps1"],
+      "regex": "(?ims)function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)"
     }
   ]
 }
