@@ -74,6 +74,6 @@ Native history relevant to the current stack:
 - Combined Part 2+3+4+5 Portable V3 proved ERR-031, the 20-rule fast gate, PnP, PCIe and power/firmware semantics, then exposed ERR-032 when root/trace dotted-path traversal treated nested ordered dictionaries as PSObject-only objects and substituted sentinel fallback values for valid trace-statistic keys.
 - Combined Part 2+3+4+5 Portable V4 proved ERR-032, the 21-rule fast gate, complete Part 2 semantic hardening `8/8`, deep root/trace replay, then exposed ERR-033 when the deliberately empty initial Part 3 transport transcript was rejected by mandatory collection binding before the first loopback request could be recorded.
 
-Current candidate authority: Portable V9 is the next native authority after ERR-033 repair; exact-head binding is external and must match the frozen branch head before certification.
+Current candidate authority: the next external combined portable is pinned to the exact frozen branch head and must prove ERR-033 before certification.
 
 When a genuinely new recurring class is discovered, append it here before issuing the next portable authority.
