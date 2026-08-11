@@ -50,6 +50,7 @@ Statuses: `observed-native`, `caught-preflight`, and `workflow`.
 | NXB-ERR-028 | observed-native | Cross-runtime ASCII text-regex false positive | Prove ASCII cleanliness from raw bytes and fail on any byte above `0x7F`; do not use Unicode-range `Should -Not -Match` encoding assertions. |
 | NXB-ERR-029 | observed-native | Brittle ledger prose assertion drift | Ledger contracts must bind stable error IDs, machine rules, and behavioral regression fixtures, not exact explanatory sentences that may be edited without changing semantics. |
 | NXB-ERR-030 | observed-native | Mandatory collection rejects valid empty evidence set | When zero records are a valid negative-control result, collection parameters must explicitly permit empty input with `AllowEmptyCollection()` and handle zero cardinality without invoking scalar-only logic. Scanner rejects the old mandatory `object[] Record` signature on the active PnP shaper. |
+| NXB-ERR-031 | observed-native | Hyper-V VMFirmware Secure Boot readback property-name drift | Treat `Set-VMFirmware -EnableSecureBoot` as the write contract but never assume the returned `VMFirmware` object exposes `.EnableSecureBoot`. Read through a bounded adapter that accepts only a present `SecureBoot` or `EnableSecureBoot` property and normalizes only `On`/`Off` or boolean values. Scanner rejects direct `.EnableSecureBoot` readback from `Get-VMFirmware`. |
 
 ## Current IRL-005 application
 
@@ -57,7 +58,7 @@ IRL-005 must run the exact-tree known-error scanner before its V4/V5 authority c
 
 ## IRL-006 inheritance
 
-NXB-IRL-006 inherits `NXB-ERR-001` through `NXB-ERR-030`. Active Part 1/2/3/4/5 authorities must carry the applicable machine signatures forward. `NXB-ERR-023` remains human-ledger-only because it occurs while generating an external portable. The ledger contract remains exactly 12 tests per PowerShell runtime.
+NXB-IRL-006 inherits `NXB-ERR-001` through `NXB-ERR-031`. Active Part 1/2/3/4/5 authorities must carry the applicable machine signatures forward. `NXB-ERR-023` remains human-ledger-only because it occurs while generating an external portable. The ledger contract remains exactly 12 tests per PowerShell runtime.
 
 Native history relevant to the current stack:
 
@@ -67,5 +68,6 @@ Native history relevant to the current stack:
 - Combined Part 2+3+4 Portable V1 exposed ERR-028 in the PS5.1 ASCII assertion.
 - Combined Part 2+3+4 Portable V2 proved the 17-rule fast gate and then exposed ERR-029 because the ledger test expected stale prose for ERR-024 even though the rule semantics and machine signature were intact.
 - Combined Part 2+3+4+5 Portable V1 proved ERR-029, the 18-rule fast gate, Part 1 and inherited IRL-005 V5, then exposed ERR-030 when the expected empty idle EventSource evidence set was rejected by the mandatory `Record` collection parameter before shaping logic could run.
+- Combined Part 2+3+4+5 Portable V2 proved ERR-030, the 19-rule fast gate, PnP/EventSource semantics and PCIe BDF semantics, then exposed ERR-031 when the host `VMFirmware` readback object did not expose the hard-coded `.EnableSecureBoot` property.
 
 When a genuinely new recurring class is discovered, append it here before issuing the next portable authority.
