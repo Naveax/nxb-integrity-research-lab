@@ -12,6 +12,8 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
                 pnp = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1'
                 pcie = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPcieBdfExperiment.ps1'
                 power = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
+                root_trace = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticRootTraceExperiment.ps1'
+                certification = Join-Path $fullRoot 'scripts\Invoke-NxbSemanticHardeningCertification.ps1'
                 profile = Join-Path $fullRoot 'profiles\Nxb.SemanticHardeningSequential.wprp'
                 python = Join-Path $fullRoot 'tools\validate_semantic_hardening.py'
                 policy = Join-Path $fullRoot 'config\adaptive-observability-policy.default.json'
@@ -20,9 +22,9 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         }
     }
 
-    It 'keeps the current Part 2 components repo-owned' {
+    It 'keeps every current Part 2 component repo-owned' {
         $context = Get-NxbSemanticHardeningTestContext
-        foreach ($path in @($context.config,$context.pnp,$context.pcie,$context.power,$context.profile,$context.python)) {
+        foreach ($path in @($context.config,$context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification,$context.profile,$context.python)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -67,7 +69,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $context = Get-NxbSemanticHardeningTestContext
         $source = Get-Content -LiteralPath $context.pcie -Raw
         $source | Should -Match ([regex]::Escape('foreach ($index in 1..3)'))
-        $source | Should -Match ([regex]::Escape("cross_boot_bdf_stability_claimed = `$false"))
+        $source | Should -Match ([regex]::Escape('cross_boot_bdf_stability_claimed = $false'))
     }
 
     It 'uses reversible temporary power-scheme transitions with cleanup' {
@@ -88,7 +90,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Not -Match '(?im)^\s*Start-VM\b'
     }
 
-    It 'uses sequential bounded WPR file collectors for the Part 2 completeness gate' {
+    It 'uses sequential bounded WPR collectors and scenario continuity for trace completeness' {
         $context = Get-NxbSemanticHardeningTestContext
         [xml]$xml = Get-Content -LiteralPath $context.profile -Raw
         $fileCollectors = @($xml.WindowsPerformanceRecorder.Profiles.SystemCollector,$xml.WindowsPerformanceRecorder.Profiles.EventCollector)
@@ -97,6 +99,10 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             [string]$collector.MaximumFileSize.FileMode | Should -BeExactly 'Sequential'
             [int]$collector.MaximumFileSize.Value | Should -Be 512
         }
+        $source = Get-Content -LiteralPath $context.root_trace -Raw
+        $source | Should -Match ([regex]::Escape("scenario_count=10"))
+        $source | Should -Match ([regex]::Escape("observation_gap_count=`$observationGapCount"))
+        $source | Should -Match ([regex]::Escape("sequential_capacity_reached=`$capacityReached"))
     }
 
     It 'requires the independent validator to own all eight final claim names' {
@@ -120,9 +126,20 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         @($targets | Where-Object { -not [bool]$_.target_requested }).Count | Should -Be 0
     }
 
+    It 'binds eight validated receipts only after independent 8-of-8 validation' {
+        $context = Get-NxbSemanticHardeningTestContext
+        $source = Get-Content -LiteralPath $context.certification -Raw
+        $matrixPosition = $source.IndexOf("[5/8] Independent Python 8/8 replay",[StringComparison]::Ordinal)
+        $receiptPosition = $source.IndexOf("[6/8] Generate and independently validate eight Part 1-compatible receipts",[StringComparison]::Ordinal)
+        $matrixPosition | Should -BeGreaterThan -1
+        $receiptPosition | Should -BeGreaterThan $matrixPosition
+        $source | Should -Match ([regex]::Escape("status='validated'"))
+        $source | Should -Match ([regex]::Escape('independent_validation_passed=$true'))
+    }
+
     It 'keeps inherited recurring PowerShell error classes out of the new runtime surface' {
         $context = Get-NxbSemanticHardeningTestContext
-        foreach ($path in @($context.pnp,$context.pcie,$context.power)) {
+        foreach ($path in @($context.pnp,$context.pcie,$context.power,$context.root_trace,$context.certification)) {
             $source = Get-Content -LiteralPath $path -Raw
             $source | Should -Not -Match '(?im)^\s*\$matches\s*='
             $source | Should -Not -Match '(?im)^\s*\$profile\s*='
