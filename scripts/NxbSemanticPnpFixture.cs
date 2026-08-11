@@ -323,25 +323,29 @@ namespace Nxb.Semantic
             catch (Exception creationFailure)
             {
                 Exception cleanupFailure = null;
+                bool uninstallCompleted = false;
                 if (registered)
                 {
                     int lastError;
                     bool rebootRequired;
-                    if (!TryUninstallSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError, out rebootRequired) || rebootRequired)
+                    uninstallCompleted = TryUninstallSetupDevice(deviceInfoSet, ref deviceInfoData, out lastError, out rebootRequired);
+                    if (!uninstallCompleted)
                     {
-                        cleanupFailure = rebootRequired
-                            ? new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error.")
-                            : new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
+                        cleanupFailure = new Win32Exception(lastError, "SetupAPI fallback cleanup failed after creation error.");
                     }
-                    else
+                    else if (rebootRequired)
                     {
-                        registered = false;
+                        cleanupFailure = new InvalidOperationException("SetupAPI fallback cleanup requires reboot after creation error.");
                     }
+                    registered = !uninstallCompleted;
                 }
 
                 if (!registered)
                 {
-                    PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                    if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(deviceInfoSet) && cleanupFailure == null)
+                    {
+                        cleanupFailure = new Win32Exception(Marshal.GetLastWin32Error(), "SetupDiDestroyDeviceInfoList failed after creation error.");
+                    }
                 }
 
                 if (cleanupFailure != null)
@@ -457,6 +461,7 @@ namespace Nxb.Semantic
                 softwareDeviceHandle = IntPtr.Zero;
             }
 
+            bool rebootRequiredAfterSuccessfulUninstall = false;
             if (setupDeviceInfoSet != IntPtr.Zero && setupDeviceInfoSet != PnpNativeMethods.INVALID_HANDLE_VALUE)
             {
                 if (setupDeviceRegistered)
@@ -467,12 +472,9 @@ namespace Nxb.Semantic
                     {
                         throw new Win32Exception(removalError, "DiUninstallDevice failed after bounded retries.");
                     }
-                    if (rebootRequired)
-                    {
-                        CleanupRebootRequired = true;
-                        throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot.");
-                    }
                     setupDeviceRegistered = false;
+                    CleanupRebootRequired = rebootRequired;
+                    rebootRequiredAfterSuccessfulUninstall = rebootRequired;
                 }
 
                 if (!PnpNativeMethods.SetupDiDestroyDeviceInfoList(setupDeviceInfoSet))
@@ -483,6 +485,10 @@ namespace Nxb.Semantic
             }
 
             Closed = true;
+            if (rebootRequiredAfterSuccessfulUninstall)
+            {
+                throw new InvalidOperationException("DiUninstallDevice reported that cleanup requires a reboot.");
+            }
         }
 
         public void Dispose()
