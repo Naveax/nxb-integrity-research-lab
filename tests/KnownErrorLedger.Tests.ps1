@@ -68,9 +68,13 @@ Describe 'NXB known-error ledger pre-final contract' {
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
         $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-001'
         $regex = [regex]::new([string]$rule.regex)
-        $regex.IsMatch('throw "repeat $Repeat: exit=$exitCode"') | Should -BeTrue
-        $regex.IsMatch('throw "repeat ${Repeat}: exit=$exitCode"') | Should -BeFalse
-        $regex.IsMatch('Write-Output "$env:OS"') | Should -BeFalse
+        $quote = [char]34
+        $bad = 'throw ' + $quote + 'repeat $Repeat' + ': exit=$exitCode' + $quote
+        $goodDelimited = 'throw ' + $quote + 'repeat ${Repeat}' + ': exit=$exitCode' + $quote
+        $goodScope = 'Write-Output ' + $quote + '$env' + ':OS' + $quote
+        $regex.IsMatch($bad) | Should -BeTrue
+        $regex.IsMatch($goodDelimited) | Should -BeFalse
+        $regex.IsMatch($goodScope) | Should -BeFalse
     }
 
     It 'detects assignment to the automatic Matches variable case-insensitively' {
@@ -93,7 +97,8 @@ Describe 'NXB known-error ledger pre-final contract' {
     It 'detects double-quoted expected-source regex interpolation' {
         $rule = Get-NxbKnownErrorRule -Id 'NXB-ERR-015'
         $regex = [regex]::new([string]$rule.regex)
-        $bad = '[regex]::Escape("throw -f $stateFull")'.Replace('\"','"')
+        $quote = [char]34
+        $bad = '[regex]::Escape(' + $quote + 'throw -f $stateFull' + $quote + ')'
         $good = "[regex]::Escape('-f `$stateFull')"
         $regex.IsMatch($bad) | Should -BeTrue
         $regex.IsMatch($good) | Should -BeFalse
