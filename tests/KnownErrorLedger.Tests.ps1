@@ -51,7 +51,7 @@ Describe 'NXB known-error ledger pre-final contract' {
             @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
-        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-015')) {
+        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
         }
@@ -66,7 +66,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-021 and locks automatic-variable regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-021 and locks analyzer regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
         foreach ($number in 1..21) {
@@ -91,6 +91,15 @@ Describe 'NXB known-error ledger pre-final contract' {
         $resolver = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
         $resolver | Should -Not -Match '(?im)^\s*\$profile\s*='
         $resolver | Should -Match ([regex]::Escape('$modeProfile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value'))
+
+        $assignedRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-014'
+        $assignedRegex = [regex]::new([string]$assignedRule.regex)
+        $assignedRegex.IsMatch('$pythonValidatorPath = Join-Path $root ''tools\validate_semantic_evidence_receipt.py''') | Should -BeTrue
+        $assignedRegex.IsMatch('$context = Get-NxbSemanticTestContext') | Should -BeFalse
+
+        $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
+        $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
+        $semanticTest | Should -Not -Match '(?im)^\s*\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\s*='
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
