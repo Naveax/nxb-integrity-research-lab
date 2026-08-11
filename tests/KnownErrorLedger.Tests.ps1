@@ -40,7 +40,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         [string]$document.ledger_path | Should -BeExactly 'docs/NXB-KNOWN-ERROR-LEDGER.md'
     }
 
-    It 'keeps machine-detectable rule ids unique and extends generic coverage to semantic authority' {
+    It 'keeps machine-detectable rule ids unique and extends generic coverage to semantic and transport authority' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
@@ -50,15 +50,20 @@ Describe 'NXB known-error ledger pre-final contract' {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
+            @($rule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
+            @($rule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
         }
-        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-022','NXB-ERR-024')) {
+        foreach ($ruleId in @('NXB-ERR-007','NXB-ERR-014','NXB-ERR-015','NXB-ERR-024')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
             @($rule.include_globs) | Should -Contain 'tests/Semantic*.Tests.ps1'
+            @($rule.include_globs) | Should -Contain 'tests/ControllerTarget*.Tests.ps1'
         }
         $stderrRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-022'
         @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1'
+        @($stderrRule.include_globs) | Should -Contain 'scripts/Invoke-NxbControllerTargetTransportCertification.ps1'
         $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
         @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbSemantic*.ps1'
+        @($arrayRule.include_globs) | Should -Contain 'scripts/*NxbControllerTarget*.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -124,9 +129,28 @@ function Invoke-NxbSemanticPythonTest {
 }
 '@
         $unsafePower = '$output = @(& $PowerCfgPath /list 2>&1)'
+        $unsafeTransport = @'
+function Invoke-NxbTransportCertificationNative {
+    $nativeOutput = @(& $Executable @ArgumentList 2>&1)
+}
+'@
+        $safeTransport = @'
+function Invoke-NxbTransportCertificationNative {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $nativeOutput = @(& $Executable @ArgumentList 2>&1)
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+'@
         $stderrRegex.IsMatch($unsafeNative) | Should -BeTrue
         $stderrRegex.IsMatch($safeNative) | Should -BeFalse
         $stderrRegex.IsMatch($unsafePower) | Should -BeTrue
+        $stderrRegex.IsMatch($unsafeTransport) | Should -BeTrue
+        $stderrRegex.IsMatch($safeTransport) | Should -BeFalse
 
         $semanticTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticEvidenceAuthority.Tests.ps1') -Raw
         $semanticTest | Should -Match ([regex]::Escape('function Get-NxbSemanticTestContext'))
@@ -141,6 +165,11 @@ function Invoke-NxbSemanticPythonTest {
         $powerSource | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
         $stderrRegex.IsMatch($powerSource) | Should -BeFalse
 
+        $transportCertification = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbControllerTargetTransportCertification.ps1') -Raw
+        $transportCertification | Should -Match ([regex]::Escape('function Invoke-NxbTransportCertificationNative'))
+        $transportCertification | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+        $stderrRegex.IsMatch($transportCertification) | Should -BeFalse
+
         $arrayRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-024'
         $arrayRegex = [regex]::new([string]$arrayRule.regex)
         $arrayRegex.IsMatch('$policy.claim_targets.PSObject.Properties') | Should -BeTrue
@@ -148,6 +177,8 @@ function Invoke-NxbSemanticPythonTest {
         $hardeningTest = Get-Content -LiteralPath (Join-Path $root 'tests\SemanticHardening.Tests.ps1') -Raw
         $arrayRegex.IsMatch($hardeningTest) | Should -BeFalse
         $hardeningTest | Should -Match ([regex]::Escape('$targets = @($policy.claim_targets)'))
+        $transportTest = Get-Content -LiteralPath (Join-Path $root 'tests\ControllerTargetTransport.Tests.ps1') -Raw
+        $arrayRegex.IsMatch($transportTest) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
