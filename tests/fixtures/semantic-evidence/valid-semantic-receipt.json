@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "receipt_id": "sem-fixture-0001",
+  "claim_name": "pnp_lifecycle_semantics",
+  "status": "validated",
+  "authority": {
+    "repository": "Naveax/nxb-integrity-research-lab",
+    "exact_head": "1111111111111111111111111111111111111111",
+    "policy_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "machine": {
+    "machine_id_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "capture": {
+    "scope": "owned-virtual-devnode-fixture",
+    "source_kind": "controlled_fixture",
+    "started_utc": "2026-08-11T09:00:00Z",
+    "ended_utc": "2026-08-11T09:00:10Z",
+    "bounded_session_seconds": 30
+  },
+  "evidence": {
+    "artifact_count": 3,
+    "artifact_index_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "validation": {
+    "negative_controls_passed": true,
+    "cleanup_verified": true,
+    "independent_validation_passed": true,
+    "validator_name": "nxb-semantic-reference",
+    "validator_version": "1.0.0",
+    "validator_implementation_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+    "limitations": [
+      "bounded-owned-fixture-only"
+    ]
+  },
+  "receipt_fingerprint_sha256": "c1731bc3d7f45107b45a7bb11c06a62de4036199c0795ed749279d25a53baecb"
+}
