@@ -90,7 +90,7 @@
       "id": "NXB-ERR-026",
       "description": "Non-ASCII character in active IRL-006 PowerShell authority or test source",
       "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
-      "regex": "[^\\x00-\\x7F]"
+      "regex": "[^\\u0000-\\u007F]"
     }
   ]
 }
