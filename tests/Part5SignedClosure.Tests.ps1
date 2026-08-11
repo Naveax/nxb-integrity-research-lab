@@ -89,7 +89,7 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
     It 'binds public key fingerprint to algorithm modulus and exponent' {
         $context = Get-NxbPart5TestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        $source | Should -Match ([regex]::Escape("@('RSA-PKCS1-SHA256',$ModulusB64,$ExponentB64) -join"))
+        $source | Should -Match ([regex]::Escape('@(''RSA-PKCS1-SHA256'',$ModulusB64,$ExponentB64) -join'))
         $source | Should -Match ([regex]::Escape('fingerprint_sha256'))
     }
 
