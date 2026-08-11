@@ -44,7 +44,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         $document = Get-NxbKnownErrorSignatureDocument
         $ids = @($document.rules | ForEach-Object { [string]$_.id })
         @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
-        $ids.Count | Should -BeGreaterOrEqual 16
+        $ids.Count | Should -BeGreaterOrEqual 17
 
         foreach ($ruleId in @('NXB-ERR-001','NXB-ERR-005','NXB-ERR-006','NXB-ERR-008','NXB-ERR-021','NXB-ERR-026')) {
             $rule = Get-NxbKnownErrorRule -Id $ruleId
@@ -53,6 +53,8 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
         $eventRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-027'
         @($eventRule.include_globs) | Should -Contain 'scripts/Invoke-NxbSemanticPnpEventExperiment.ps1'
+        $asciiAssertionRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-028'
+        @($asciiAssertionRule.include_globs) | Should -Contain 'tests/Part4*.Tests.ps1'
     }
 
     It 'lists every machine rule in the human ledger' {
@@ -64,10 +66,10 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the complete observed workflow ledger through NXB-ERR-027' {
+    It 'retains the complete observed workflow ledger through NXB-ERR-028' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..27) {
+        foreach ($number in 1..28) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
@@ -75,9 +77,10 @@ Describe 'NXB known-error ledger pre-final contract' {
         $ledger | Should -Match ([regex]::Escape('Never use `.PSObject.Properties` to enumerate a JSON array.'))
         $ledger | Should -Match ([regex]::Escape('Keep active IRL-006 PowerShell authority/test `.ps1` files ASCII-only'))
         $ledger | Should -Match ([regex]::Escape('Do not use optional Windows diagnostic EventLog channels as claim authority'))
+        $ledger | Should -Match ([regex]::Escape('Read the file bytes with `[IO.File]::ReadAllBytes()`'))
     }
 
-    It 'locks recent analyzer runtime array encoding and EventLog regression classes' {
+    It 'locks recent analyzer runtime array encoding EventLog and ASCII assertion regression classes' {
         $root = Get-NxbKnownErrorTestRoot
 
         $wildcardRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-019').regex)
@@ -111,13 +114,25 @@ Describe 'NXB known-error ledger pre-final contract' {
         $eventRegex.IsMatch($badEventRead) | Should -BeTrue
         $eventRegex.IsMatch('[Nxb.Semantic.PnpLifecycleCollector]::new()') | Should -BeFalse
 
+        $asciiAssertionRegex = [regex]::new([string](Get-NxbKnownErrorRule -Id 'NXB-ERR-028').regex)
+        $singleQuote = [char]39
+        $backslash = [char]92
+        $badAsciiAssertion = 'Should -Not -Match ' + $singleQuote + '[^' + $backslash + 'u0000-' + $backslash + 'u007F]' + $singleQuote
+        $asciiAssertionRegex.IsMatch($badAsciiAssertion) | Should -BeTrue
+        $asciiAssertionRegex.IsMatch('Test-NxbPart4AsciiFile -Path $path | Should -BeTrue') | Should -BeFalse
+
         $pnpSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSemanticPnpEventExperiment.ps1') -Raw
         $eventRegex.IsMatch($pnpSource) | Should -BeFalse
         $pnpSource | Should -Match ([regex]::Escape('repo_owned_eventsource_lifecycle_bridge_v1'))
         $pnpSource | Should -Match ([regex]::Escape('optional_windows_eventlog_used_as_authority = $false'))
 
+        $part4TestSource = Get-Content -LiteralPath (Join-Path $root 'tests\Part4ResumableRunner.Tests.ps1') -Raw
+        $asciiAssertionRegex.IsMatch($part4TestSource) | Should -BeFalse
+        $part4TestSource | Should -Match ([regex]::Escape('[IO.File]::ReadAllBytes($Path)'))
+
         $ledgerTestSource = Get-Content -LiteralPath (Join-Path $root 'tests\KnownErrorLedger.Tests.ps1') -Raw
         $encodingRegex.IsMatch($ledgerTestSource) | Should -BeFalse
+        $asciiAssertionRegex.IsMatch($ledgerTestSource) | Should -BeFalse
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
@@ -173,7 +188,7 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
         [string]$result.status | Should -BeExactly 'passed'
         [int]$result.finding_count | Should -Be 0
-        [int]$result.rule_count | Should -BeGreaterOrEqual 16
+        [int]$result.rule_count | Should -BeGreaterOrEqual 17
 
         $source = Get-Content -LiteralPath $scanner -Raw
         $source | Should -Match ([regex]::Escape('if ($orderedFinding.Count -gt 0 -and -not $NoThrow)'))
