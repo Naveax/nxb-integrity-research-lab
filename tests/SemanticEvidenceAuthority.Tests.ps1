@@ -106,11 +106,20 @@ Describe 'NXB IRL-006 semantic evidence authority contract' {
             if (-not [string]::IsNullOrWhiteSpace($ExpectedMachine)) {
                 $argumentList += @('--expected-machine-id-sha256',$ExpectedMachine)
             }
-            $nativeOutput = @(& $pythonPath @argumentList 2>&1)
-            $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+
+            $previousErrorActionPreference = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $nativeOutput = @(& $pythonPath @argumentList 2>&1)
+                $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+            }
+            finally {
+                $ErrorActionPreference = $previousErrorActionPreference
+            }
+
             return [pscustomobject][ordered]@{
                 exit_code = $exitCode
-                output = ($nativeOutput -join "`n")
+                output = ($nativeOutput | ForEach-Object { [string]$_ }) -join "`n"
             }
         }
     }
