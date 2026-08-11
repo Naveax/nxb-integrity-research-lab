@@ -170,8 +170,8 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
     It 'clamps forensic payload detail when payload privacy is disabled' {
         $root = Get-NxbAdaptiveTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
-        $source | Should -Match ([regex]::Escape("if ($detail -ceq 'payload' -and -not [bool]$policy.privacy.payload_fields)"))
-        $source | Should -Match ([regex]::Escape("$detail = 'semantic'"))
+        $source | Should -Match ([regex]::Escape('if ($detail -ceq ''payload'' -and -not [bool]$policy.privacy.payload_fields)'))
+        $source | Should -Match ([regex]::Escape('$detail = ''semantic'''))
     }
 
     It 'emits a deterministic SHA-256 plan fingerprint' {
@@ -224,7 +224,7 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
         $root = Get-NxbAdaptiveTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-NxbAdaptiveObservabilityPanel.ps1') -Raw
         $source | Should -Match ([regex]::Escape("[ValidateSet('127.0.0.1','localhost')]"))
-        $source | Should -Match ([regex]::Escape("if ($BindAddress -notin @('127.0.0.1','localhost'))"))
+        $source | Should -Match ([regex]::Escape('if ($BindAddress -notin @(''127.0.0.1'',''localhost''))'))
     }
 
     It 'bounds manual override duration and maximum mode' {
