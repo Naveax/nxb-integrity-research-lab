@@ -91,6 +91,12 @@
       "description": "Non-ASCII character in active IRL-006 PowerShell authority or test source",
       "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "[^\\u0000-\\u007F]"
+    },
+    {
+      "id": "NXB-ERR-027",
+      "description": "Optional Windows diagnostic EventLog used as mandatory PnP semantic evidence authority",
+      "include_globs": ["scripts/Invoke-NxbSemanticPnpEventExperiment.ps1"],
+      "regex": "(?im)\\bGet-WinEvent\\b"
     }
   ]
 }
