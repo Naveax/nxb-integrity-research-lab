@@ -20,6 +20,14 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
                 ledger=Join-Path $fullRoot 'docs\NXB-KNOWN-ERROR-LEDGER.md'
             }
         }
+
+        function Test-NxbPart4AsciiFile {
+            param([Parameter(Mandatory)][string]$Path)
+            foreach ($byteValue in [IO.File]::ReadAllBytes($Path)) {
+                if ([int]$byteValue -gt 0x7F) { return $false }
+            }
+            return $true
+        }
     }
 
     It 'keeps every Part 4 authority component repo-owned' {
@@ -171,13 +179,13 @@ Describe 'NXB IRL-006 Part 4 resumable runner scheduler sharding contract' {
     It 'inherits permanent error gates and keeps Part 4 PowerShell source ASCII-clean' {
         $context = Get-NxbPart4TestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-027'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-028'))
         foreach ($path in @($context.common,$context.worker,$context.experiment,$context.certification,$context.combined)) {
             $source = Get-Content -LiteralPath $path -Raw
             $source | Should -Not -Match '(?im)^\s*\$matches\s*='
             $source | Should -Not -Match '(?im)^\s*\$profile\s*='
             $source | Should -Not -Match '(?ims)catch\s*\{\s*\}'
-            $source | Should -Not -Match '[^\u0000-\u007F]'
+            Test-NxbPart4AsciiFile -Path $path | Should -BeTrue
         }
     }
 }
