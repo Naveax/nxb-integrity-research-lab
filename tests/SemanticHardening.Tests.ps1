@@ -58,6 +58,9 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('repo_owned_eventsource_lifecycle_bridge_v1'))
         $source | Should -Match ([regex]::Escape('optional_windows_eventlog_used_as_authority = $false'))
         $source | Should -Match ([regex]::Escape('cim_presence_probe_used = $false'))
+        $source | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Record'))
+        $source | Should -Match ([regex]::Escape('if ($Record.Count -eq 0) { return @() }'))
+        $source | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Record'))
         $source | Should -Not -Match '(?im)\bGet-WinEvent\b'
         $source | Should -Not -Match '(?im)Get-CimInstance\s+Win32_PnPEntity\b'
         $source | Should -Not -Match '(?i)Disable-PnpDevice|Remove-PnpDevice|Uninstall-PnpDevice'
@@ -177,6 +180,6 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
             $runtimeSource | Should -Not -Match '(?ims)catch\s*\{\s*\}'
         }
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-027'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-030'))
     }
 }
