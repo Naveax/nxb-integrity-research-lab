@@ -162,10 +162,10 @@ Describe 'NXB IRL-006 Part 3 controller target transport contract' {
         }
     }
 
-    It 'inherits the permanent error ledger and excludes known active bad patterns' {
+    It 'inherits the permanent error ledger through ERR-025 and excludes known active bad patterns' {
         $context = Get-NxbTransportTestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        $ledger | Should -Match ([regex]::Escape('NXB-ERR-024'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-025'))
         foreach ($path in @($context.common,$context.target,$context.experiment,$context.certification)) {
             $source = Get-Content -LiteralPath $path -Raw
             $source | Should -Not -Match '(?im)^\s*\$matches\s*='
