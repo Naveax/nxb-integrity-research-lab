@@ -66,6 +66,12 @@
       "regex": "(?is)catch\\s*\\{[^}]{0,400}(?:starting\\s+from\\s+empty\\s+state|previousState\\s*=\\s*\\$null)"
     },
     {
+      "id": "NXB-ERR-014",
+      "description": "Pester shared-path or expected-value assignment pattern that can trigger PSUseDeclaredVarsMoreThanAssignments across BeforeAll/It scopes",
+      "include_globs": ["tests/Semantic*.Tests.ps1"],
+      "regex": "(?im)^\\s*\\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\\s*="
+    },
+    {
       "id": "NXB-ERR-015",
       "description": "Double-quoted Regex.Escape expected-source literal containing a PowerShell variable",
       "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
