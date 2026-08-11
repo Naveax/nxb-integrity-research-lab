@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-irl006-part4-resumable-runner-v1",
+  "scope": "bounded-local-synthetic-runner-certification-only",
+  "task_count": 24,
+  "domains": ["auth", "network", "storage", "workflow"],
+  "shard_count": 4,
+  "budget": {
+    "maximum_committed_tasks": 24,
+    "maximum_ticks": 256,
+    "maximum_attempts_per_task": 3,
+    "maximum_ready_queue_depth": 24
+  },
+  "scheduler": {
+    "base_priority_weight": 100,
+    "coverage_deficit_weight": 20,
+    "fairness_credit_weight": 3,
+    "saturation_penalty_weight": 7,
+    "retry_penalty_weight": 11,
+    "maximum_starvation_gap_ticks": 20,
+    "base_backoff_ticks": 2,
+    "maximum_backoff_ticks": 16
+  },
+  "fault_injection": {
+    "crash_after_committed_tasks": 7,
+    "graceful_stop_after_committed_tasks": 14,
+    "emergency_stop_after_committed_tasks": 18,
+    "fail_once_task_ids": ["task-005", "task-013"]
+  },
+  "review": {
+    "raw_payload_reviewable": false,
+    "task_receipt_body_reviewable": false,
+    "synthetic_only": true
+  }
+}
