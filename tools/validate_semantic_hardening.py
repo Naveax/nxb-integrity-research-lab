@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 CLAIMS = (
     "pnp_lifecycle_semantics",
@@ -203,6 +204,55 @@ def validate_root_trace(document: Dict[str, Any]) -> Dict[str, bool]:
     return {"root_cause_validated": True, "continuous_trace_completeness": True}
 
 
+def expect_rejection(validator: Callable[[Dict[str, Any]], Dict[str, bool]], document: Dict[str, Any], label: str) -> bool:
+    try:
+        validator(document)
+    except SystemExit:
+        return True
+    fail(f"negative control was accepted: {label}")
+    return False
+
+
+def validate_fail_closed_controls(documents: Dict[str, Dict[str, Any]]) -> Dict[str, bool]:
+    result: Dict[str, bool] = {}
+
+    pnp_lifecycle = copy.deepcopy(documents["pnp"])
+    pnp_lifecycle["repeats"][0]["direct_state"]["create_present_observed"] = False
+    result["pnp_lifecycle_semantics"] = expect_rejection(validate_pnp, pnp_lifecycle, "pnp direct-state mutation")
+
+    event_id = copy.deepcopy(documents["pnp"])
+    event_id["repeated_event_mapping"]["common_create_provider_log_id_count"] = 0
+    result["event_id_semantics"] = expect_rejection(validate_pnp, event_id, "event-id mapping mutation")
+
+    event_shape = copy.deepcopy(documents["pnp"])
+    event_shape["repeated_event_mapping"]["common_create_full_shape_count"] = 0
+    result["event_task_opcode_semantics"] = expect_rejection(validate_pnp, event_shape, "event-shape mapping mutation")
+
+    pcie = copy.deepcopy(documents["pcie"])
+    pcie["negative_controls"]["passed"] = False
+    result["pcie_bdf_semantics"] = expect_rejection(validate_pcie, pcie, "pcie mismatch-control mutation")
+
+    power = copy.deepcopy(documents["power_firmware"])
+    power["power"]["repeats"][0]["original_scheme_restored"] = False
+    result["power_causality"] = expect_rejection(validate_power_firmware, power, "power restore mutation")
+
+    firmware = copy.deepcopy(documents["power_firmware"])
+    firmware["firmware"]["host_firmware_changed"] = True
+    result["firmware_causality"] = expect_rejection(validate_power_firmware, firmware, "firmware host-boundary mutation")
+
+    root_cause = copy.deepcopy(documents["root_trace"])
+    root_cause["controls"]["selective_interventions_passed"] = False
+    result["root_cause_validated"] = expect_rejection(validate_root_trace, root_cause, "root-cause intervention mutation")
+
+    trace = copy.deepcopy(documents["root_trace"])
+    trace["trace"]["events_lost"] = 1
+    result["continuous_trace_completeness"] = expect_rejection(validate_root_trace, trace, "trace-loss mutation")
+
+    if set(result) != set(CLAIMS) or not all(result.values()):
+        fail("independent fail-closed negative-control matrix did not reach 8/8")
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Independently validate NXB IRL-006 Part 2 semantic experiments.")
     parser.add_argument("--pnp", type=Path, required=True)
@@ -212,23 +262,24 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    documents = {
+    paths = {
         "pnp": args.pnp.resolve(),
         "pcie": args.pcie.resolve(),
         "power_firmware": args.power_firmware.resolve(),
         "root_trace": args.root_trace.resolve(),
     }
-    for label, path in documents.items():
+    for label, path in paths.items():
         if not path.is_file():
             fail(f"{label} input is missing: {path}")
     if args.output.exists():
         fail(f"output already exists: {args.output}")
 
+    documents = {label: load_json(path) for label, path in paths.items()}
     matrix: Dict[str, bool] = {}
-    matrix.update(validate_pnp(load_json(documents["pnp"])))
-    matrix.update(validate_pcie(load_json(documents["pcie"])))
-    matrix.update(validate_power_firmware(load_json(documents["power_firmware"])))
-    matrix.update(validate_root_trace(load_json(documents["root_trace"])))
+    matrix.update(validate_pnp(documents["pnp"]))
+    matrix.update(validate_pcie(documents["pcie"]))
+    matrix.update(validate_power_firmware(documents["power_firmware"]))
+    matrix.update(validate_root_trace(documents["root_trace"]))
 
     if set(matrix) != set(CLAIMS):
         fail(f"claim matrix mismatch: observed={sorted(matrix)} expected={sorted(CLAIMS)}")
@@ -236,22 +287,25 @@ def main() -> None:
     if len(validated) != 8:
         fail(f"semantic hardening did not reach 8/8: {len(validated)}/8")
 
+    negative_controls = validate_fail_closed_controls(documents)
     result: Dict[str, Any] = {
         "schema_version": 1,
         "status": "passed",
         "requested": 8,
         "validated": 8,
         "claims": {name: matrix[name] for name in CLAIMS},
+        "negative_control_rejections": {name: negative_controls[name] for name in CLAIMS},
+        "negative_controls_validated": 8,
         "inputs": {
             label: {"sha256": file_sha256(path), "file_name": path.name}
-            for label, path in sorted(documents.items())
+            for label, path in sorted(paths.items())
         },
         "scope_boundary": "bounded-owned-experiments-only",
         "generalized_system_semantics_claimed": False,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
-    print("NXB semantic hardening validation passed: requested=8 validated=8")
+    print("NXB semantic hardening validation passed: requested=8 validated=8 negative_controls=8/8")
 
 
 if __name__ == "__main__":
