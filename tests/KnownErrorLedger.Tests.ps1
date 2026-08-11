@@ -154,8 +154,8 @@ foreach ($segment in $Path.Split('.')) {
         $firmwareSource | Should -Match ([regex]::Escape('secure_boot_readback = ''vmfirmware_property_adapter_v1'''))
         $rootTraceSource | Should -Match ([regex]::Escape('if ($current -is [System.Collections.IDictionary])'))
         $rootTraceSource | Should -Match ([regex]::Escape('$current = $current[$segment]'))
-        $rootTraceSource | Should -Match ([regex]::Escape("$eventsLostStatus -cne 'measured'"))
-        $rootTraceSource | Should -Match ([regex]::Escape("$buffersWrittenStatus -cne 'measured'"))
+        $rootTraceSource | Should -Match ([regex]::Escape('$eventsLostStatus -cne ''measured'''))
+        $rootTraceSource | Should -Match ([regex]::Escape('$buffersWrittenStatus -cne ''measured'''))
     }
 
     It 'detects ambiguous variable-colon interpolation but permits explicit scope variables' {
