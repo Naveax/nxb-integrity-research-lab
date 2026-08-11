@@ -121,6 +121,12 @@
       "description": "Direct Hyper-V VMFirmware EnableSecureBoot readback assumes a property name that can vary by host module object shape",
       "include_globs": ["scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1"],
       "regex": "(?im)\\(\\s*Get-VMFirmware\\b[^\\r\\n]*\\)\\.EnableSecureBoot\\b"
+    },
+    {
+      "id": "NXB-ERR-032",
+      "description": "Nested ordered dictionary evidence is traversed only through PSObject.Properties, causing valid dictionary keys to fall through to sentinel defaults",
+      "include_globs": ["scripts/Invoke-NxbSemanticRootTraceExperiment.ps1"],
+      "regex": "(?ims)foreach\\s*\\(\\$segment\\s+in\\s+\\$Path\\.Split\\('\\.'\\)\\)\\s*\\{\\s*if\\s*\\(\\$null\\s+-eq\\s+\\$current\\)\\s*\\{\\s*return\\s+\\$DefaultValue\\s*\\}\\s*\\$property\\s*=\\s*\\$current\\.PSObject\\.Properties\\[\\$segment\\]"
     }
   ]
 }
