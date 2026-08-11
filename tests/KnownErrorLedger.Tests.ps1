@@ -68,13 +68,15 @@ Describe 'NXB known-error ledger pre-final contract' {
         }
     }
 
-    It 'retains the full observed preflight and workflow ledger through NXB-ERR-022 and locks analyzer/runtime regressions' {
+    It 'retains the full observed preflight and workflow ledger through NXB-ERR-023 and locks analyzer/runtime regressions' {
         $root = Get-NxbKnownErrorTestRoot
         $ledger = Get-Content -LiteralPath (Join-Path $root 'docs\NXB-KNOWN-ERROR-LEDGER.md') -Raw
-        foreach ($number in 1..22) {
+        foreach ($number in 1..23) {
             $id = 'NXB-ERR-{0:D3}' -f $number
             $ledger | Should -Match ([regex]::Escape($id))
         }
+        $ledger | Should -Match ([regex]::Escape('Do not generate a regex quantifier through nested Python/PowerShell brace formatting.'))
+        $ledger | Should -Match ([regex]::Escape('fixed `^[0-9a-f]+$` regex'))
 
         $wildcardRule = Get-NxbKnownErrorRule -Id 'NXB-ERR-019'
         $wildcardRegex = [regex]::new([string]$wildcardRule.regex)
