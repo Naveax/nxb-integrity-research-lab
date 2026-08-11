@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-irl006-part2-semantic-hardening-v1",
+  "maximum_total_session_seconds": 1800,
+  "privacy": {
+    "raw_device_instance_ids_in_review": false,
+    "raw_event_payloads_in_review": false,
+    "formatted_event_messages_in_review": false,
+    "raw_etl_in_review": false,
+    "raw_firmware_host_mutation": false
+  },
+  "experiment_families": [
+    {
+      "id": "owned_software_device_lifecycle",
+      "claims": ["pnp_lifecycle_semantics", "event_id_semantics", "event_task_opcode_semantics"],
+      "scope": "owned-ephemeral-software-device-lifecycle-a-b",
+      "repeats": 2,
+      "requires_administrator": true,
+      "cleanup_required": true,
+      "review_artifacts": ["pnp-event-experiment.json"]
+    },
+    {
+      "id": "bounded_pcie_inventory",
+      "claims": ["pcie_bdf_semantics"],
+      "scope": "bounded-same-boot-pcie-bdf-inventory",
+      "repeats": 3,
+      "requires_administrator": false,
+      "cleanup_required": false,
+      "review_artifacts": ["pcie-bdf-experiment.json"]
+    },
+    {
+      "id": "owned_power_and_virtual_firmware",
+      "claims": ["power_causality", "firmware_causality"],
+      "scope": "owned-temporary-power-scheme-and-ephemeral-hyperv-gen2-firmware",
+      "repeats": 2,
+      "requires_administrator": true,
+      "cleanup_required": true,
+      "review_artifacts": ["power-firmware-experiment.json"]
+    },
+    {
+      "id": "repeated_superblock_semantic_controls",
+      "claims": ["root_cause_validated", "continuous_trace_completeness"],
+      "scope": "bounded-owned-repeated-superblock-control-session",
+      "repeats": 2,
+      "requires_administrator": true,
+      "cleanup_required": true,
+      "review_artifacts": ["root-trace-experiment.json"]
+    }
+  ],
+  "claim_requirements": {
+    "pnp_lifecycle_semantics": ["two_successful_create_present_remove_repeats", "matched_idle_controls", "no_physical_device_mutation", "cleanup_verified"],
+    "pcie_bdf_semantics": ["three_same_boot_snapshots", "address_decode_valid", "location_path_cross_check", "stable_sanitized_identity_mapping"],
+    "event_id_semantics": ["controlled_positive_windows", "matched_idle_windows", "provider_log_id_repeated_shape", "independent_differential_validation"],
+    "event_task_opcode_semantics": ["event_id_gate_passed", "repeated_id_version_level_task_opcode_shape", "negative_controls", "unobserved_labels_rejected"],
+    "power_causality": ["two_direct_state_a_b_transitions", "matched_idle_controls", "original_scheme_restored", "temporary_scheme_deleted"],
+    "firmware_causality": ["ephemeral_generation2_vm_only", "two_secure_boot_configuration_transitions", "host_firmware_unchanged", "vm_removed"],
+    "root_cause_validated": ["three_or_more_correlated_domains", "repeated_all_on_controls", "selective_interventions", "deterministic_replay"],
+    "continuous_trace_completeness": ["one_bounded_owned_session", "events_lost_zero", "buffers_lost_zero", "buffers_written_positive", "ten_scenario_continuity", "deterministic_replay"]
+  }
+}
