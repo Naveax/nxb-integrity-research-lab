@@ -5,7 +5,7 @@
     {
       "id": "NXB-ERR-001",
       "description": "Ambiguous non-scope PowerShell variable immediately followed by colon in a double-quoted string",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?m)\"[^\"\\r\\n]*\\$(?!(?:env|global|script|local|private|using):)[A-Za-z_][A-Za-z0-9_]*:[^\"\\r\\n]*\""
     },
     {
@@ -17,25 +17,25 @@
     {
       "id": "NXB-ERR-005",
       "description": "Empty catch block",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?ims)catch\\s*\\{\\s*\\}"
     },
     {
       "id": "NXB-ERR-006",
       "description": "Assignment to PowerShell automatic Matches variable",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*\\$matches\\s*="
     },
     {
       "id": "NXB-ERR-007",
       "description": "New-Nxb test/helper function likely to trigger ShouldProcess analyzer rule",
-      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+New-Nxb[^\\r\\n]*(?:Test|Fixture|Plan)[A-Za-z0-9_-]*\\b"
     },
     {
       "id": "NXB-ERR-008",
       "description": "Known plural-noun helper declarations",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+(?:Write-Nxb(?:HysteresisSignals|AdaptiveTestSignals)|Get-NxbStableUniqueDomains)\\b"
     },
     {
@@ -47,13 +47,13 @@
     {
       "id": "NXB-ERR-014",
       "description": "Pester shared-path or expected-value assignment pattern that can trigger PSUseDeclaredVarsMoreThanAssignments across BeforeAll/It scopes",
-      "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1"],
+      "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1"],
       "regex": "(?im)^\\s*\\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\\s*="
     },
     {
       "id": "NXB-ERR-015",
       "description": "Double-quoted Regex.Escape expected-source literal containing a PowerShell variable",
-      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
     },
     {
@@ -65,19 +65,19 @@
     {
       "id": "NXB-ERR-021",
       "description": "Assignment to the automatic PROFILE variable through case-insensitive profile spelling",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*\\$profile\\s*="
     },
     {
       "id": "NXB-ERR-022",
       "description": "Native stderr merge under inherited Stop preference without a scoped ErrorAction guard",
-      "include_globs": ["tests/Semantic*.Tests.ps1","scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1","scripts/Invoke-NxbControllerTargetTransportCertification.ps1","scripts/Invoke-NxbPart4ResumableRunnerExperiment.ps1","scripts/Invoke-NxbPart4ResumableRunnerCertification.ps1"],
-      "regex": "(?ims)(?:function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)|\\$[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*@\\(&\\s+\\$PowerCfgPath\\b[^\\r\\n]*2>&1\\)|function\\s+Invoke-NxbTransportCertificationNative\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$Executable\\s+@ArgumentList\\s+2>&1\\)|function\\s+Invoke-NxbPart4WorkerProcess\\b(?:(?!\\$previous\\s*=\\s*\\$ErrorActionPreference).){0,5000}\\$output\\s*=\\s*@\\(&\\s+\\$PwshPath\\s+@arguments\\s+2>&1\\)|function\\s+Invoke-NxbPart4CertificationNative\\b(?:(?!\\$previousErrorActionPreference).){0,5000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$Executable\\s+@ArgumentList\\s+2>&1\\))"
+      "include_globs": ["tests/Semantic*.Tests.ps1","scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1","scripts/Invoke-NxbControllerTargetTransportCertification.ps1","scripts/Invoke-NxbPart4ResumableRunnerExperiment.ps1","scripts/Invoke-NxbPart4ResumableRunnerCertification.ps1","scripts/Invoke-NxbPart5SignedClosureCertification.ps1"],
+      "regex": "(?ims)(?:function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)|\\$[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*@\\(&\\s+\\$PowerCfgPath\\b[^\\r\\n]*2>&1\\)|function\\s+Invoke-NxbTransportCertificationNative\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$Executable\\s+@ArgumentList\\s+2>&1\\)|function\\s+Invoke-NxbPart4WorkerProcess\\b(?:(?!\\$previous\\s*=\\s*\\$ErrorActionPreference).){0,5000}\\$output\\s*=\\s*@\\(&\\s+\\$PwshPath\\s+@arguments\\s+2>&1\\)|function\\s+Invoke-NxbPart4CertificationNative\\b(?:(?!\\$previousErrorActionPreference).){0,5000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$Executable\\s+@ArgumentList\\s+2>&1\\)|function\\s+Invoke-NxbPart5CertificationNative\\b(?:(?!\\$previousErrorActionPreference).){0,5000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$Executable\\s+@ArgumentList\\s+2>&1\\))"
     },
     {
       "id": "NXB-ERR-024",
       "description": "Treating a JSON array as PSObject.Properties instead of enumerating its elements",
-      "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\.claim_targets\\.PSObject\\.Properties\\b"
     },
     {
@@ -89,7 +89,7 @@
     {
       "id": "NXB-ERR-026",
       "description": "Non-ASCII character in active IRL-006 PowerShell authority or test source",
-      "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["scripts/*NxbSemantic*.ps1","scripts/*NxbControllerTarget*.ps1","scripts/*NxbPart4*.ps1","scripts/*NxbPart5*.ps1","tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "[^\\u0000-\\u007F]"
     },
     {
@@ -101,7 +101,7 @@
     {
       "id": "NXB-ERR-028",
       "description": "Fragile text-regex ASCII source assertion that can false-positive in the Windows PowerShell 5.1 Pester path",
-      "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Semantic*.Tests.ps1","tests/ControllerTarget*.Tests.ps1","tests/Part4*.Tests.ps1","tests/Part5*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)Should\\s+-Not\\s+-Match\\s+['\"]\\[\\^\\\\u0000-\\\\u007F\\]['\"]"
     },
     {
