@@ -163,8 +163,10 @@ Describe 'NXB IRL-005 adaptive observability control-plane contract' {
     It 'clamps per-mode rate and disk budgets to global policy limits' {
         $root = Get-NxbAdaptiveTestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-NxbAdaptiveObservabilityPlan.ps1') -Raw
-        $source | Should -Match ([regex]::Escape('[Math]::Min([int]$profile.max_event_rate_per_second,[int]$policy.budgets.max_event_rate_per_second)'))
-        $source | Should -Match ([regex]::Escape('[Math]::Min([int]$profile.max_disk_mb_per_hour,[int]$policy.budgets.max_disk_mb_per_hour)'))
+        $source | Should -Not -Match '(?im)^\s*\$profile\s*='
+        $source | Should -Match ([regex]::Escape('$modeProfile = $policy.mode_profiles.PSObject.Properties[$effectiveMode].Value'))
+        $source | Should -Match ([regex]::Escape('[Math]::Min([int]$modeProfile.max_event_rate_per_second,[int]$policy.budgets.max_event_rate_per_second)'))
+        $source | Should -Match ([regex]::Escape('[Math]::Min([int]$modeProfile.max_disk_mb_per_hour,[int]$policy.budgets.max_disk_mb_per_hour)'))
     }
 
     It 'clamps forensic payload detail when payload privacy is disabled' {
