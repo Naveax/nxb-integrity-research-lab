@@ -5,14 +5,7 @@
     {
       "id": "NXB-ERR-001",
       "description": "Ambiguous non-scope PowerShell variable immediately followed by colon in a double-quoted string",
-      "include_globs": [
-        "scripts/*NxbAdaptive*.ps1",
-        "scripts/*NxbSemantic*.ps1",
-        "scripts/Invoke-NxbKnownErrorScan.ps1",
-        "tests/Adaptive*.Tests.ps1",
-        "tests/Semantic*.Tests.ps1",
-        "tests/KnownErrorLedger.Tests.ps1"
-      ],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?m)\"[^\"\\r\\n]*\\$(?!(?:env|global|script|local|private|using):)[A-Za-z_][A-Za-z0-9_]*:[^\"\\r\\n]*\""
     },
     {
@@ -24,39 +17,25 @@
     {
       "id": "NXB-ERR-005",
       "description": "Empty catch block",
-      "include_globs": [
-        "scripts/*NxbAdaptive*.ps1",
-        "scripts/*NxbSemantic*.ps1",
-        "scripts/Invoke-NxbKnownErrorScan.ps1",
-        "tests/Adaptive*.Tests.ps1",
-        "tests/Semantic*.Tests.ps1",
-        "tests/KnownErrorLedger.Tests.ps1"
-      ],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?ims)catch\\s*\\{\\s*\\}"
     },
     {
       "id": "NXB-ERR-006",
       "description": "Assignment to PowerShell automatic Matches variable",
-      "include_globs": [
-        "scripts/*NxbAdaptive*.ps1",
-        "scripts/*NxbSemantic*.ps1",
-        "scripts/Invoke-NxbKnownErrorScan.ps1",
-        "tests/Adaptive*.Tests.ps1",
-        "tests/Semantic*.Tests.ps1",
-        "tests/KnownErrorLedger.Tests.ps1"
-      ],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","scripts/Invoke-NxbKnownErrorScan.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*\\$matches\\s*="
     },
     {
       "id": "NXB-ERR-007",
       "description": "New-Nxb test/helper function likely to trigger ShouldProcess analyzer rule",
-      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+New-Nxb[^\\r\\n]*(?:Test|Fixture|Plan)[A-Za-z0-9_-]*\\b"
     },
     {
       "id": "NXB-ERR-008",
       "description": "Known plural-noun helper declarations",
-      "include_globs": ["scripts/*NxbAdaptive*.ps1", "scripts/*NxbSemantic*.ps1", "tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1"],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1"],
       "regex": "(?im)^\\s*function\\s+(?:Write-Nxb(?:HysteresisSignals|AdaptiveTestSignals)|Get-NxbStableUniqueDomains)\\b"
     },
     {
@@ -74,7 +53,7 @@
     {
       "id": "NXB-ERR-015",
       "description": "Double-quoted Regex.Escape expected-source literal containing a PowerShell variable",
-      "include_globs": ["tests/Adaptive*.Tests.ps1", "tests/Semantic*.Tests.ps1", "tests/KnownErrorLedger.Tests.ps1"],
+      "include_globs": ["tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
     },
     {
@@ -86,20 +65,14 @@
     {
       "id": "NXB-ERR-021",
       "description": "Assignment to the automatic PROFILE variable through case-insensitive profile spelling",
-      "include_globs": [
-        "scripts/*NxbAdaptive*.ps1",
-        "scripts/*NxbSemantic*.ps1",
-        "tests/Adaptive*.Tests.ps1",
-        "tests/Semantic*.Tests.ps1",
-        "tests/KnownErrorLedger.Tests.ps1"
-      ],
+      "include_globs": ["scripts/*NxbAdaptive*.ps1","scripts/*NxbSemantic*.ps1","tests/Adaptive*.Tests.ps1","tests/Semantic*.Tests.ps1","tests/KnownErrorLedger.Tests.ps1"],
       "regex": "(?im)^\\s*\\$profile\\s*="
     },
     {
       "id": "NXB-ERR-022",
-      "description": "Semantic Python expected-failure helper reaches native stderr merge before establishing a scoped ErrorAction guard",
-      "include_globs": ["tests/Semantic*.Tests.ps1"],
-      "regex": "(?ims)function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)"
+      "description": "Native stderr merge under inherited Stop preference without a scoped ErrorAction guard",
+      "include_globs": ["tests/Semantic*.Tests.ps1","scripts/Invoke-NxbSemanticPowerFirmwareExperiment.ps1"],
+      "regex": "(?ims)(?:function\\s+Invoke-NxbSemanticPythonTest\\b(?:(?!\\$previousErrorActionPreference).){0,4000}\\$nativeOutput\\s*=\\s*@\\(&\\s+\\$pythonPath\\s+@argumentList\\s+2>&1\\)|\\$[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*@\\(&\\s+\\$PowerCfgPath\\b[^\\r\\n]*2>&1\\))"
     }
   ]
 }
