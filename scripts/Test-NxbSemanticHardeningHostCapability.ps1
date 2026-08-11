@@ -16,8 +16,29 @@ function Get-NxbSemanticHardeningCommandPath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Name)
     $command = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($null -eq $command) { return $null }
-    return [string]$command.Source
+    if ($null -ne $command) {
+        $pathProperty = $command.PSObject.Properties['Path']
+        if ($null -ne $pathProperty -and -not [string]::IsNullOrWhiteSpace([string]$pathProperty.Value)) {
+            return [string]$pathProperty.Value
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$command.Source)) { return [string]$command.Source }
+    }
+
+    if ($Name -ceq 'xperf.exe') {
+        foreach ($candidate in @(
+            "${env:ProgramFiles(x86)}\Windows Kits\10\Windows Performance Toolkit\xperf.exe",
+            "$env:ProgramFiles\Windows Kits\10\Windows Performance Toolkit\xperf.exe"
+        )) {
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+            $directory = Split-Path -Parent $candidate
+            $pathEntries = @($env:PATH -split [IO.Path]::PathSeparator)
+            if (@($pathEntries | Where-Object { [string]::Equals($_,$directory,[StringComparison]::OrdinalIgnoreCase) }).Count -eq 0) {
+                $env:PATH = $directory + [IO.Path]::PathSeparator + $env:PATH
+            }
+            return [IO.Path]::GetFullPath($candidate)
+        }
+    }
+    return $null
 }
 
 if ($env:OS -cne 'Windows_NT') { throw 'Part 2 host capability preflight requires Windows.' }
@@ -35,6 +56,10 @@ foreach ($commandName in @('git.exe','pwsh.exe','python.exe','wpr.exe','xperf.ex
         path = $resolved
     }
 }
+
+$windowsPowerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$windowsPowerShellAvailable = (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)
+$pesterAvailable = (@(Get-Module -ListAvailable -Name Pester).Count -gt 0)
 
 $softwareDeviceDll = Join-Path $env:SystemRoot 'System32\CfgMgr32.dll'
 $softwareDeviceApiAvailable = (Test-Path -LiteralPath $softwareDeviceDll -PathType Leaf)
@@ -68,6 +93,8 @@ if ($vsWherePath.Count -eq 1) {
     $nativePreferenceVariable = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
     $nativePreferenceAvailable = ($null -ne $nativePreferenceVariable)
     $previousNativePreference = if ($nativePreferenceAvailable) { [bool]$nativePreferenceVariable.Value } else { $null }
+    $vsOutput = @()
+    $vsExit = 1
     try {
         $ErrorActionPreference = 'Continue'
         if ($nativePreferenceAvailable) { Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $false -Scope Local }
@@ -97,6 +124,8 @@ $requiredCommandNames = @('git.exe','pwsh.exe','python.exe','wpr.exe','xperf.exe
 $missingCommands = @($requiredCommandNames | Where-Object { -not [bool]$commandResult[$_].available })
 $blockers = [System.Collections.Generic.List[string]]::new()
 foreach ($missing in $missingCommands) { $blockers.Add('missing_command:' + $missing) }
+if (-not $windowsPowerShellAvailable) { $blockers.Add('windows_powershell_5_1_unavailable') }
+if (-not $pesterAvailable) { $blockers.Add('pester_module_unavailable') }
 if (-not $softwareDeviceApiAvailable) { $blockers.Add('software_device_api_unavailable') }
 if (-not $hyperVCmdletsAvailable) { $blockers.Add('hyper_v_cmdlets_unavailable') }
 if (-not $vmmsRunning) { $blockers.Add('hyper_v_vmms_not_running') }
@@ -108,6 +137,11 @@ $result = [pscustomobject][ordered]@{
     schema_version = 1
     status = if ($blockers.Count -eq 0) { 'passed' } else { 'blocked' }
     commands = [pscustomobject]$commandResult
+    cross_runtime = [pscustomobject][ordered]@{
+        windows_powershell_5_1_available = $windowsPowerShellAvailable
+        windows_powershell_path = if ($windowsPowerShellAvailable) { $windowsPowerShellPath } else { $null }
+        pester_available = $pesterAvailable
+    }
     software_device_api = [pscustomobject][ordered]@{
         available = $softwareDeviceApiAvailable
         dll_path = if ($softwareDeviceApiAvailable) { $softwareDeviceDll } else { $null }
@@ -128,11 +162,15 @@ $result = [pscustomobject][ordered]@{
         kernel_pnp_provider_readable = $pnpProviderReadable
         linked_log_count = $pnpLogCount
     }
+    process_local_path_normalization = [pscustomobject][ordered]@{
+        xperf_path = [string]$commandResult['xperf.exe'].path
+        persistent_path_modified = $false
+    }
     blockers = @($blockers)
 }
 
 if ([string]$result.status -cne 'passed') {
-    throw ('Part 2 host capability preflight blocked: {0}. No Windows feature enablement, reboot, host-firmware mutation, or service start was attempted.' -f (@($blockers) -join ', '))
+    throw ('Part 2 host capability preflight blocked: {0}. No Windows feature enablement, reboot, persistent PATH change, host-firmware mutation, or service start was attempted.' -f (@($blockers) -join ', '))
 }
 Write-Information -InformationAction Continue -MessageData 'NXB Part 2 host capability preflight passed.'
 if ($PassThru) { return $result }
