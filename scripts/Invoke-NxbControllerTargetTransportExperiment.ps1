@@ -105,7 +105,7 @@ function Invoke-NxbTransportExperimentRequest {
         [Parameter(Mandatory)][AllowNull()][object]$Payload,
         [Parameter(Mandatory)][string]$KeyHex,
         [Parameter(Mandatory)][long]$ExpectedResponseSequence,
-        [Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript,
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript,
         [Parameter()][switch]$TamperAuthentication,
         [Parameter()][AllowNull()][string]$ControlLabel
     )
