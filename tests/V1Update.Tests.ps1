@@ -63,12 +63,16 @@ Describe 'NXB v1 signed staged update contract' {
         [string]$s.properties.envelope_sha256.pattern | Should -BeExactly '^[0-9a-f]{64}$'
     }
 
-    It 'defines persistent update state with current and rollback channels' {
-        $s=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).state_schema -Raw | ConvertFrom-Json
+    It 'defines persistent update state and atomic authoritative JSON publication' {
+        $c=Get-NxbV1UpdateTestContext
+        $s=Get-Content -LiteralPath $c.state_schema -Raw | ConvertFrom-Json
         [bool]$s.additionalProperties | Should -BeFalse
         @($s.required) | Should -Contain 'current_channel'
         @($s.required) | Should -Contain 'rollback_channel'
         @($s.required) | Should -Contain 'rollback_tree_sha256'
+        $source=Get-Content -LiteralPath $c.state -Raw
+        foreach ($token in @("'.nxb-json-'",'[IO.FileStream]::new','[IO.FileOptions]::WriteThrough','$stream.Flush($true)','[IO.File]::Replace($tempPath,$full,$null)','[IO.File]::Move($tempPath,$full)')) { $source | Should -Match ([regex]::Escape($token)) }
+        $source | Should -Not -Match '(?im)^\s*\[IO\.File\]::WriteAllText\(\$full\b'
     }
 
     It 'defines update operation receipts with explicit no-auto-apply evidence' {
@@ -94,7 +98,7 @@ Describe 'NXB v1 signed staged update contract' {
         [string]$s.properties.ps7.const | Should -BeExactly '24/24'
         [int]$s.properties.independent_requirements.const | Should -Be 16
         [int]$s.properties.independent_negative_controls.const | Should -Be 12
-        [int]$s.properties.update_known_error_rules.const | Should -Be 4
+        [int]$s.properties.update_known_error_rules.const | Should -Be 5
     }
 
     It 'requires RSA verification and an exact pinned signer fingerprint' {
@@ -166,11 +170,11 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'carries four update successor rules without duplicating release ERR-036' {
+    It 'carries five update successor rules without duplicating release ERR-036' {
         $d=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).update_errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 4
+        @($d.rules).Count | Should -Be 5
         $ids=@($d.rules | ForEach-Object { [string]$_.id })
-        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037')) { $ids | Should -Contain $id }
+        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037','NXB-ERR-038')) { $ids | Should -Contain $id }
         $ids | Should -Not -Contain 'NXB-ERR-036'
     }
 
