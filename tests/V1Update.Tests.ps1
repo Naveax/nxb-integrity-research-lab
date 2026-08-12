@@ -63,16 +63,19 @@ Describe 'NXB v1 signed staged update contract' {
         [string]$s.properties.envelope_sha256.pattern | Should -BeExactly '^[0-9a-f]{64}$'
     }
 
-    It 'defines persistent update state and atomic authoritative JSON publication' {
+    It 'defines persistent update state, anti-replay floor and atomic authoritative JSON publication' {
         $c=Get-NxbV1UpdateTestContext
         $s=Get-Content -LiteralPath $c.state_schema -Raw | ConvertFrom-Json
         [bool]$s.additionalProperties | Should -BeFalse
         @($s.required) | Should -Contain 'current_channel'
         @($s.required) | Should -Contain 'rollback_channel'
         @($s.required) | Should -Contain 'rollback_tree_sha256'
+        @($s.required) | Should -Contain 'highest_seen_release_sequence'
+        [int]$s.properties.highest_seen_release_sequence.minimum | Should -Be 0
         $source=Get-Content -LiteralPath $c.state -Raw
-        foreach ($token in @("'.nxb-json-'",'[IO.FileStream]::new','[IO.FileOptions]::WriteThrough','$stream.Flush($true)','[IO.File]::Replace($tempPath,$full,$null)','[IO.File]::Move($tempPath,$full)')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("'.nxb-json-'",'[IO.FileStream]::new','[IO.FileOptions]::WriteThrough','$stream.Flush($true)','[IO.File]::Replace($tempPath,$full,$null)','[IO.File]::Move($tempPath,$full)','highest_seen_release_sequence','return [int]$state.highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
         $source | Should -Not -Match '(?im)^\s*\[IO\.File\]::WriteAllText\(\$full\b'
+        $source | Should -Not -Match '(?im)^\s*return\s+\[int\]\$state\.current_release_sequence\s*$'
     }
 
     It 'defines update operation receipts with explicit no-auto-apply evidence' {
@@ -98,7 +101,7 @@ Describe 'NXB v1 signed staged update contract' {
         [string]$s.properties.ps7.const | Should -BeExactly '24/24'
         [int]$s.properties.independent_requirements.const | Should -Be 16
         [int]$s.properties.independent_negative_controls.const | Should -Be 12
-        [int]$s.properties.update_known_error_rules.const | Should -Be 5
+        [int]$s.properties.update_known_error_rules.const | Should -Be 6
     }
 
     It 'requires RSA verification and an exact pinned signer fingerprint' {
@@ -138,7 +141,7 @@ Describe 'NXB v1 signed staged update contract' {
 
     It 'applies through candidate publish and a retained rollback snapshot' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).operator -Raw
-        foreach ($token in @('.nxb-update-candidate-','.nxb-update-rollback-','Invoke-NxbV1UpdateAtomicSwap','rollback_available=$true','rollback_tree_sha256=$previousTreeSha')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('.nxb-update-candidate-','.nxb-update-rollback-','Invoke-NxbV1UpdateAtomicSwap','rollback_available=$true','rollback_tree_sha256=$previousTreeSha','highest_seen_release_sequence=[int]$descriptor.release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'restores the previous install if update state publication fails' {
@@ -146,14 +149,17 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('.nxb-update-failed-','[IO.Directory]::Move($rollbackRoot,$installFull)','Write-NxbV1UpdateJson -Path (Get-NxbV1UpdateStatePath')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'manual rollback verifies tree hash and preserves forward state until state write succeeds' {
+    It 'manual rollback verifies tree hash, preserves anti-replay floor and preserves forward state until state write succeeds' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).operator -Raw
-        foreach ($token in @('Rollback snapshot tree hash mismatch.','.nxb-update-displaced-','Restored rollback tree hash mismatch.','rollback_available=$false')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('Rollback snapshot tree hash mismatch.','.nxb-update-displaced-','Restored rollback tree hash mismatch.','rollback_available=$false','highest_seen_release_sequence=[int]$state.highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'rejects sequence replay downgrade revoked heads and channel mismatch' {
-        $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
+        $c=Get-NxbV1UpdateTestContext
+        $source=Get-Content -LiteralPath $c.common -Raw
         foreach ($token in @('release_sequence -le $CurrentReleaseSequence','minimum_release_sequence','revoked_release_heads','Descriptor.channel -cne [string]$Trust.channel')) { $source | Should -Match ([regex]::Escape($token)) }
+        $authoritySource=Get-Content -LiteralPath $c.authority -Raw
+        foreach ($token in @('rollbackFloorPreserved','rollbackReplayRejected','highest_seen_release_sequence','--update-state')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'keeps production and certification signer modes separate' {
@@ -168,16 +174,16 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('Invoke-NxbV1UpdateAtomicSwap','PostPublishValidation','Atomic update post-publish validation failed.','[IO.Directory]::Move($rollback,$current)')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'gives the independent validator sixteen requirements twelve negatives and raw RSA replay' {
+    It 'gives the independent validator sixteen requirements twelve negatives raw RSA and persisted anti-replay replay' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).validator -Raw
-        foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback','update_state','highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'carries five update successor rules without duplicating release ERR-036' {
+    It 'carries six update successor rules without duplicating release ERR-036' {
         $d=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).update_errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 5
+        @($d.rules).Count | Should -Be 6
         $ids=@($d.rules | ForEach-Object { [string]$_.id })
-        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037','NXB-ERR-038')) { $ids | Should -Contain $id }
+        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037','NXB-ERR-038','NXB-ERR-039')) { $ids | Should -Contain $id }
         $ids | Should -Not -Contain 'NXB-ERR-036'
     }
 
