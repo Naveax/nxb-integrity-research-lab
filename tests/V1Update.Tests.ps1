@@ -73,8 +73,9 @@ Describe 'NXB v1 signed staged update contract' {
         @($s.required) | Should -Contain 'highest_seen_release_sequence'
         [int]$s.properties.highest_seen_release_sequence.minimum | Should -Be 0
         $source=Get-Content -LiteralPath $c.state -Raw
-        foreach ($token in @("'.nxb-json-'",'[IO.FileStream]::new','[IO.FileOptions]::WriteThrough','$stream.Flush($true)','[IO.File]::Replace($tempPath,$full,$null)','[IO.File]::Move($tempPath,$full)','highest_seen_release_sequence','return [int]$state.highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("'.nxb-json-'","'.nxb-json-backup-'",'[IO.FileStream]::new','[IO.FileOptions]::WriteThrough','$stream.Flush($true)','[IO.File]::Replace($tempPath,$full,$backupPath)','[IO.File]::Move($tempPath,$full)','Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue','highest_seen_release_sequence','return [int]$state.highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
         $source | Should -Not -Match '(?im)^\s*\[IO\.File\]::WriteAllText\(\$full\b'
+        $source | Should -Not -Match '(?im)\[IO\.File\]::Replace\(\s*\$tempPath\s*,\s*\$full\s*,\s*\$null\s*\)'
         $source | Should -Not -Match '(?im)^\s*return\s+\[int\]\$state\.current_release_sequence\s*$'
     }
 
