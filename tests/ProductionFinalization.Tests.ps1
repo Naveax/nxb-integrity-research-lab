@@ -81,10 +81,10 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         [int]$policy.certification.maximum_requests | Should -BeLessOrEqual 8
     }
 
-    It 'requires permit scope host method and kill switch for non-certification validation' {
+    It 'requires canonical permit scope host method and kill switch for non-certification validation' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('$Plan.permit_sha256','$Plan.scope_authorized','$Plan.kill_switch_armed','$Plan.permit_host_authorized','$Plan.permit_method_authorized')) {
+        foreach ($token in @('$Plan.permit_sha256','$Plan.permit_scope_id','$Plan.permit_host','$Plan.permit_method','$Plan.scope_authorized','$Plan.kill_switch_armed',"@('nxb-part7-permit-v1',$permitScopeId,$permitHost,$permitMethod)",'Get-NxbFinalSha256Text -Text $permitMaterial')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
@@ -92,7 +92,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
     It 'performs a real loopback native probe and binds browser API credential references without production secrets' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.part7 -Raw
-        foreach ($token in @('Net.Sockets.TcpListener','127.0.0.1','GET /certification HTTP/1.1','production_secret_in_evidence = $false','browser_api_session_boundary = $true','credential_reference_only = $true',"adapter_modes = @('http-api','browser')",'secret_material_embedded = $false')) {
+        foreach ($token in @('Net.Sockets.TcpListener','127.0.0.1','GET /certification HTTP/1.1','production_secret_in_evidence = $false','permit_canonical_hash_binding = $true','browser_api_session_boundary = $true','credential_reference_only = $true',"adapter_modes = @('http-api','browser')",'secret_material_embedded = $false')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
