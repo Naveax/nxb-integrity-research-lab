@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-installer-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-004",
+      "description": "Package manifest file ordering must be ordinal and culture independent.",
+      "include": ["scripts/NxbV1Installer.Common.ps1"],
+      "regex": "(?im)Sort-Object\\b[^\\r\\n]*(?:path|relative)"
+    },
+    {
+      "id": "NXB-ERR-007",
+      "description": "Installer helper functions must not use state-changing New-* verbs without ShouldProcess.",
+      "include": ["scripts/NxbV1Installer.Common.ps1","scripts/NxbV1Installer.State.ps1","scripts/Invoke-NxbV1Installer.ps1","scripts/Invoke-NxbV1InstallerCertification.ps1"],
+      "regex": "(?im)^\\s*function\\s+New-NxbV1(?:Installer|Package)"
+    },
+    {
+      "id": "NXB-ERR-018",
+      "description": "Avoid parser-risk inline if expressions in installer evidence objects for Windows PowerShell 5.1.",
+      "include": ["scripts/Invoke-NxbV1Installer.ps1","scripts/Invoke-NxbV1InstallerCertification.ps1"],
+      "regex": "(?im)=\\s*\\(if\\s*\\("
+    },
+    {
+      "id": "NXB-ERR-036",
+      "description": "Do not pass bare typed member expressions to Join-Path in command argument mode.",
+      "include": ["scripts/NxbV1Installer.Common.ps1","scripts/NxbV1Installer.State.ps1","scripts/Export-NxbV1PackageManifest.ps1","scripts/Invoke-NxbV1Installer.ps1","scripts/Invoke-NxbV1InstallerCertification.ps1"],
+      "regex": "(?im)\\bJoin-Path\\s+\\$[A-Za-z_][A-Za-z0-9_]*\\s+\\[(?:string|int|long|int64|bool)\\]\\$[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*"
+    }
+  ]
+}
