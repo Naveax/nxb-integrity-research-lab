@@ -54,9 +54,20 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         [int]$policy.known_error_minimum_rules | Should -Be 22
         @($signatures.rules).Count | Should -BeGreaterOrEqual 23
         @($signatures.rules | Where-Object { [string]$_.id -ceq 'NXB-ERR-034' }).Count | Should -Be 1
+        [int]$extension.base_rule_floor | Should -Be 23
         @($extension.rules).Count | Should -Be 9
+        @($extension.schema_contracts).Count | Should -Be 1
+        [string]$extension.schema_contracts[0].id | Should -BeExactly 'NXB-ERR-035'
+        [string]$extension.schema_contracts[0].collection | Should -BeExactly 'guard_contracts'
+        @($extension.schema_contracts[0].required_fields) | Should -Contain 'path'
         @($extension.guard_contracts).Count | Should -Be 1
+        [string]$extension.guard_contracts[0].path | Should -BeExactly 'scripts/Invoke-NxbProductionFinalCertification.ps1'
         @($extension.authority_paths) | Should -Contain 'scripts/Invoke-NxbProductionFinalCertificationV2.ps1'
+        $scannerSource = Get-Content -LiteralPath $context.extensionScanner -Raw
+        $scannerSource | Should -Match ([regex]::Escape('function Get-NxbProductionConfigProperty'))
+        $scannerSource | Should -Match ([regex]::Escape('function Test-NxbProductionConfigField'))
+        $scannerSource | Should -Match ([regex]::Escape("id = 'NXB-ERR-035'"))
+        $scannerSource | Should -Not -Match '(?im)\$guard\.path\b'
     }
 
     It 'makes Part 6 finding IDs deterministic and evidence-hash bound' {
@@ -189,6 +200,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $v2Source = Get-Content -LiteralPath $context.finalV2 -Raw
         $v2Source | Should -Match ([regex]::Escape('Invoke-NxbProductionFinalCertification.ps1'))
         $v2Source | Should -Match ([regex]::Escape('Invoke-NxbProductionKnownErrorScan.ps1'))
+        $v2Source | Should -Match ([regex]::Escape('schema_contract_count'))
         $childSource = Get-Content -LiteralPath $context.final -Raw
         $childSource | Should -Match ([regex]::Escape('Invoke-NxbPart5SignedClosureCertificationV2.ps1'))
         $childSource | Should -Match ([regex]::Escape('Invoke-NxbPart6FindingEngineCertification.ps1'))
