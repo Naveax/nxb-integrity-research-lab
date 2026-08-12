@@ -57,8 +57,8 @@ foreach ($reserved in @($preScanPath,$postScanPath,$topReceiptPath,$topReviewRoo
 Write-Information '=== NXB IRL-006 PART 6-10 PRODUCTION FINAL CERTIFICATION V2 ==='
 Write-Information '[top 1/4] Permanent production known-error extension preflight'
 $preScan = & $extensionScannerPath -RepositoryRoot $repositoryRoot -ConfigurationPath $extensionConfigPath -OutputPath $preScanPath -NoThrow -PassThru
-if ([string]$preScan.status -cne 'passed' -or [int]$preScan.finding_count -ne 0 -or [int]$preScan.extension_rule_count -ne 9 -or [int]$preScan.guard_contract_count -ne 1) {
-    throw ('Production final V2 extension preflight failed: rules={0} guards={1} findings={2}' -f [int]$preScan.extension_rule_count,[int]$preScan.guard_contract_count,[int]$preScan.finding_count)
+if ([string]$preScan.status -cne 'passed' -or [int]$preScan.finding_count -ne 0 -or [int]$preScan.extension_rule_count -ne 9 -or [int]$preScan.schema_contract_count -ne 1 -or [int]$preScan.guard_contract_count -ne 1) {
+    throw ('Production final V2 extension preflight failed: rules={0} schemas={1} guards={2} findings={3}' -f [int]$preScan.extension_rule_count,[int]$preScan.schema_contract_count,[int]$preScan.guard_contract_count,[int]$preScan.finding_count)
 }
 
 Write-Information '[top 2/4] Run complete Part 5 predecessor plus Part 6-10 child authority'
@@ -83,8 +83,8 @@ if ([bool]$child.production_merge_performed -or -not [bool]$child.v1_freeze_cand
 
 Write-Information '[top 3/4] Permanent production known-error extension post-scan'
 $postScan = & $extensionScannerPath -RepositoryRoot $repositoryRoot -ConfigurationPath $extensionConfigPath -OutputPath $postScanPath -NoThrow -PassThru
-if ([string]$postScan.status -cne 'passed' -or [int]$postScan.finding_count -ne 0 -or [int]$postScan.extension_rule_count -ne 9 -or [int]$postScan.guard_contract_count -ne 1) {
-    throw ('Production final V2 extension post-scan failed: rules={0} guards={1} findings={2}' -f [int]$postScan.extension_rule_count,[int]$postScan.guard_contract_count,[int]$postScan.finding_count)
+if ([string]$postScan.status -cne 'passed' -or [int]$postScan.finding_count -ne 0 -or [int]$postScan.extension_rule_count -ne 9 -or [int]$postScan.schema_contract_count -ne 1 -or [int]$postScan.guard_contract_count -ne 1) {
+    throw ('Production final V2 extension post-scan failed: rules={0} schemas={1} guards={2} findings={3}' -f [int]$postScan.extension_rule_count,[int]$postScan.schema_contract_count,[int]$postScan.guard_contract_count,[int]$postScan.finding_count)
 }
 
 Write-Information '[top 4/4] Bind child review and extension scans into top production closure'
@@ -100,6 +100,7 @@ $topReceipt = [pscustomobject][ordered]@{
     extension_post_scan_sha256 = Get-NxbFinalFileSha256 -Path $postScanPath
     base_known_error_rules = [int]$child.known_error_rules
     production_extension_rules = [int]$postScan.extension_rule_count
+    production_schema_contracts = [int]$postScan.schema_contract_count
     production_guard_contracts = [int]$postScan.guard_contract_count
     known_error_findings = 0
     analyzer_findings = 0
@@ -131,7 +132,7 @@ foreach ($pair in $topFiles) {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($topReviewRoot,$topReviewZip,[IO.Compression.CompressionLevel]::Optimal,$false)
 
-Write-Information ('NXB production final V2 candidate passed: head={0} Part6=8/8 Part7=10/10 Part8=10/10 Part9=10/10 Part10=10/10 independent=48/48 negatives=12/12 base_rules={1} extension_rules=9 guards=1 findings=0.' -f $currentHead,[int]$child.known_error_rules)
+Write-Information ('NXB production final V2 candidate passed: head={0} Part6=8/8 Part7=10/10 Part8=10/10 Part9=10/10 Part10=10/10 independent=48/48 negatives=12/12 base_rules={1} extension_rules=9 schemas=1 guards=1 findings=0.' -f $currentHead,[int]$child.known_error_rules)
 if ($PassThru) {
     return [pscustomobject][ordered]@{
         status = 'passed'
@@ -148,6 +149,7 @@ if ($PassThru) {
         independent_negative_controls = 12
         base_known_error_rules = [int]$child.known_error_rules
         production_extension_rules = 9
+        production_schema_contracts = 1
         production_guard_contracts = 1
         known_error_findings = 0
         analyzer_findings = 0
