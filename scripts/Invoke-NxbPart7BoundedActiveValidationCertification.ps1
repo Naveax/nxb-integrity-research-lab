@@ -22,18 +22,16 @@ $allowedPlan = [pscustomobject][ordered]@{
     permit_sha256 = $null
     scope_authorized = $true
     kill_switch_armed = $true
-    permit_host_authorized = $true
-    permit_method_authorized = $true
 }
 if (-not (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $allowedPlan -CertificationMode $true)) {
     throw 'Part 7 certification loopback request plan was rejected.'
 }
 
 $negativePlan = @(
-    [pscustomobject][ordered]@{ host='example.com'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='POST'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=99; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$true; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true }
+    [pscustomobject][ordered]@{ host='example.com'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='POST'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=99; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$true; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true }
 )
 foreach ($plan in $negativePlan) {
     if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $plan -CertificationMode $true) {
@@ -41,41 +39,53 @@ foreach ($plan in $negativePlan) {
     }
 }
 
+$permitScopeId = 'part7-certification-scope'
+$permitHost = 'authorized.example'
+$permitMethod = 'GET'
+$permitMaterial = @('nxb-part7-permit-v1',$permitScopeId,$permitHost,$permitMethod) -join "`n"
+$permitSha = Get-NxbFinalSha256Text -Text $permitMaterial
 $productionWithoutPermit = [pscustomobject][ordered]@{
-    host = 'authorized.example'
-    method = 'GET'
+    host = $permitHost
+    method = $permitMethod
     request_count = 1
     maximum_response_bytes = 4096
     production_secret_attached = $false
+    permit_scope_id = $permitScopeId
+    permit_host = $permitHost
+    permit_method = $permitMethod
     permit_sha256 = ''
     scope_authorized = $true
     kill_switch_armed = $true
-    permit_host_authorized = $true
-    permit_method_authorized = $true
 }
 if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWithoutPermit -CertificationMode $false) {
     throw 'Part 7 production plan without permit unexpectedly passed.'
 }
 
 $productionAuthorized = [pscustomobject][ordered]@{
-    host = 'authorized.example'
-    method = 'GET'
+    host = $permitHost
+    method = $permitMethod
     request_count = 1
     maximum_response_bytes = 4096
     production_secret_attached = $false
-    permit_sha256 = Get-NxbFinalSha256Text -Text 'part7-certification-permit'
+    permit_scope_id = $permitScopeId
+    permit_host = $permitHost
+    permit_method = $permitMethod
+    permit_sha256 = $permitSha
     scope_authorized = $true
     kill_switch_armed = $true
-    permit_host_authorized = $true
-    permit_method_authorized = $true
 }
 if (-not (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionAuthorized -CertificationMode $false)) {
     throw 'Part 7 fully authorized production request plan was rejected.'
 }
 $productionWrongHost = $productionAuthorized | ConvertTo-Json -Depth 8 | ConvertFrom-Json
-$productionWrongHost.permit_host_authorized = $false
+$productionWrongHost.host = 'other.example'
 if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWrongHost -CertificationMode $false) {
     throw 'Part 7 production plan outside the permit host boundary unexpectedly passed.'
+}
+$productionWrongMethod = $productionAuthorized | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$productionWrongMethod.method = 'HEAD'
+if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWrongMethod -CertificationMode $false) {
+    throw 'Part 7 production plan outside the permit method boundary unexpectedly passed.'
 }
 
 $sessionBoundary = [pscustomobject][ordered]@{
@@ -153,7 +163,7 @@ $receipt = [pscustomobject][ordered]@{
     certification_network_mode = [string]$policy.certification.network_mode
     loopback_native_probe = $true
     native_probe_requests = 1
-    rejected_request_plans = $negativePlan.Count + 2
+    rejected_request_plans = $negativePlan.Count + 3
     request_budget_enforced = $true
     response_budget_enforced = $true
     secret_redaction = $true
@@ -161,6 +171,7 @@ $receipt = [pscustomobject][ordered]@{
     permit_required_for_noncertification = $true
     permit_target_binding = $true
     permit_method_binding = $true
+    permit_canonical_hash_binding = $true
     kill_switch_required_for_noncertification = $true
     browser_api_session_boundary = $true
     credential_reference_only = $true
