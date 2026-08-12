@@ -139,9 +139,11 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('Stage package root binding drift.','Trust anchor changed after Stage.','Staged metadata hash drift.','Staged update failed revalidation before Apply.')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'applies through candidate publish and a retained rollback snapshot' {
-        $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).operator -Raw
-        foreach ($token in @('.nxb-update-candidate-','.nxb-update-rollback-','Invoke-NxbV1UpdateAtomicSwap','rollback_available=$true','rollback_tree_sha256=$previousTreeSha','highest_seen_release_sequence=[int]$descriptor.release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
+    It 'applies through candidate publish, retained rollback snapshot and failed-validation atomic restore' {
+        $operatorSource=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).operator -Raw
+        foreach ($token in @('.nxb-update-candidate-','.nxb-update-rollback-','Invoke-NxbV1UpdateAtomicSwap','rollback_available=$true','rollback_tree_sha256=$previousTreeSha','highest_seen_release_sequence=[int]$descriptor.release_sequence')) { $operatorSource | Should -Match ([regex]::Escape($token)) }
+        $commonSource=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
+        foreach ($token in @('Invoke-NxbV1UpdateAtomicSwap','PostPublishValidation','Atomic update post-publish validation failed.','[IO.Directory]::Move($rollback,$current)')) { $commonSource | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'restores the previous install if update state publication fails' {
@@ -167,11 +169,6 @@ Describe 'NXB v1 signed staged update contract' {
         $source | Should -Match ([regex]::Escape("Envelope.signer_mode -cne 'certification-ephemeral'"))
         $source | Should -Match ([regex]::Escape("Envelope.signer_mode -cne 'production-windows-certificate-store'"))
         $source | Should -Match ([regex]::Escape('production_signer_claimed'))
-    }
-
-    It 'uses a rollback-on-failed-validation atomic swap helper' {
-        $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
-        foreach ($token in @('Invoke-NxbV1UpdateAtomicSwap','PostPublishValidation','Atomic update post-publish validation failed.','[IO.Directory]::Move($rollback,$current)')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'gives the independent validator sixteen requirements twelve negatives raw RSA and persisted anti-replay replay' {
