@@ -83,7 +83,7 @@ function Get-NxbFinalCanonicalJsonSha256 {
     return Get-NxbFinalSha256Text -Text $json
 }
 
-function New-NxbFinalFindingId {
+function Get-NxbFinalFindingId {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$TargetId,
@@ -91,10 +91,8 @@ function New-NxbFinalFindingId {
         [Parameter(Mandatory)][string]$Class,
         [Parameter(Mandatory)][string]$EvidenceSha256
     )
-    foreach ($hex in @($EvidenceSha256)) {
-        if ($hex.Length -ne 64 -or $hex -cnotmatch '^[0-9a-f]+$') {
-            throw 'Evidence SHA-256 must be 64 lowercase hex characters.'
-        }
+    if ($EvidenceSha256.Length -ne 64 -or $EvidenceSha256 -cnotmatch '^[0-9a-f]+$') {
+        throw 'Evidence SHA-256 must be 64 lowercase hex characters.'
     }
     $material = @($TargetId,$RootCauseKey,$Class,$EvidenceSha256) -join "`n"
     return 'finding-' + (Get-NxbFinalSha256Text -Text $material).Substring(0,32)
@@ -138,7 +136,7 @@ function Invoke-NxbFinalFindingCorrelation {
         $first = $rows[0]
         $evidenceHashes = @($rows | ForEach-Object { [string]$_.evidence_sha256 } | Sort-Object -Unique)
         $aggregateEvidenceSha = Get-NxbFinalSha256Text -Text ($evidenceHashes -join "`n")
-        $findingId = New-NxbFinalFindingId -TargetId ([string]$first.target_id) -RootCauseKey ([string]$first.root_cause_key) -Class ([string]$first.class) -EvidenceSha256 $aggregateEvidenceSha
+        $findingId = Get-NxbFinalFindingId -TargetId ([string]$first.target_id) -RootCauseKey ([string]$first.root_cause_key) -Class ([string]$first.class) -EvidenceSha256 $aggregateEvidenceSha
         $severityHints = @($rows | ForEach-Object { [string]$_.severity_hint } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
         $findings.Add([pscustomobject][ordered]@{
             finding_id = $findingId
@@ -185,6 +183,8 @@ function Test-NxbFinalAuthorizedRequestPlan {
     if ($permitSha.Length -ne 64 -or $permitSha -cnotmatch '^[0-9a-f]+$') { return $false }
     if (-not [bool]$Plan.scope_authorized) { return $false }
     if (-not [bool]$Plan.kill_switch_armed) { return $false }
+    if (-not [bool]$Plan.permit_host_authorized) { return $false }
+    if (-not [bool]$Plan.permit_method_authorized) { return $false }
     return $true
 }
 
@@ -202,7 +202,7 @@ function Protect-NxbFinalSecretText {
     return $result
 }
 
-function New-NxbFinalArtifactManifest {
+function Get-NxbFinalArtifactManifest {
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Path)
     $rows = foreach ($itemPath in @($Path | Sort-Object -Unique)) {
@@ -239,7 +239,7 @@ function Test-NxbFinalPackageManifest {
     return $true
 }
 
-function New-NxbFinalReportObject {
+function Get-NxbFinalReportObject {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$ExactHead,
