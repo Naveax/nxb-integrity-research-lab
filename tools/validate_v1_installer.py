@@ -97,7 +97,7 @@ def validate_receipt(receipt, action, mode, expected_head, manifest_sha):
     )
 
 
-def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_paths, expected_head):
+def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_paths, data_sentinel, evidence_sentinel, expected_head):
     failures = []
     max_files = int(policy.get("maximum_files", 0))
     max_bytes = int(policy.get("maximum_package_bytes", 0))
@@ -141,6 +141,8 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
     checks.append(
         lifecycle.get("data_preserved") is True
         and lifecycle.get("evidence_preserved") is True
+        and lifecycle.get("data_sentinel_sha256") == sha256_file(data_sentinel)
+        and lifecycle.get("evidence_sentinel_sha256") == sha256_file(evidence_sentinel)
         and lifecycle.get("machine_install_performed") is False
         and lifecycle.get("production_release_installed") is False
     )
@@ -161,14 +163,14 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
     return failures
 
 
-def negative_controls(policy, manifest, package_root, host, lifecycle, receipts, receipt_paths, expected_head):
+def negative_controls(policy, manifest, package_root, host, lifecycle, receipts, receipt_paths, data_sentinel, evidence_sentinel, expected_head):
     controls = {}
 
     def rejected(mut_manifest=None, mut_lifecycle=None, mut_receipts=None):
         m = mut_manifest if mut_manifest is not None else manifest
         l = mut_lifecycle if mut_lifecycle is not None else lifecycle
         r = mut_receipts if mut_receipts is not None else receipts
-        return len(evaluate(policy, m, package_root, host, l, r, receipt_paths, expected_head)) > 0
+        return len(evaluate(policy, m, package_root, host, l, r, receipt_paths, data_sentinel, evidence_sentinel, expected_head)) > 0
 
     duplicate = copy.deepcopy(manifest)
     duplicate["files"].append(copy.deepcopy(duplicate["files"][0]))
@@ -228,6 +230,8 @@ def main():
     parser.add_argument("--install-receipt", required=True)
     parser.add_argument("--repair-receipt", required=True)
     parser.add_argument("--uninstall-receipt", required=True)
+    parser.add_argument("--data-sentinel", required=True)
+    parser.add_argument("--evidence-sentinel", required=True)
     parser.add_argument("--expected-head", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -245,9 +249,11 @@ def main():
     lifecycle = load_json(Path(args.lifecycle))
     receipts = {name: load_json(path) for name, path in paths.items() if name != "manifest"}
     package_root = Path(args.package_root)
+    data_sentinel = Path(args.data_sentinel)
+    evidence_sentinel = Path(args.evidence_sentinel)
 
-    requirements_failures = evaluate(policy, manifest, package_root, host, lifecycle, receipts, paths, args.expected_head)
-    controls = negative_controls(policy, manifest, package_root, host, lifecycle, receipts, paths, args.expected_head)
+    requirements_failures = evaluate(policy, manifest, package_root, host, lifecycle, receipts, paths, data_sentinel, evidence_sentinel, args.expected_head)
+    controls = negative_controls(policy, manifest, package_root, host, lifecycle, receipts, paths, data_sentinel, evidence_sentinel, args.expected_head)
     negative_failures = [name for name, passed in controls.items() if not passed]
     failures = requirements_failures + negative_failures
     result = {
