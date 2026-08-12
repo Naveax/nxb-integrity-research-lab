@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import copy
 import hashlib
+import hmac
 import json
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
+
+
+DIGEST_INFO_SHA256 = bytes.fromhex("3031300d060960864801650304020105000420")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -26,6 +31,10 @@ def load_json(path: Path) -> Dict[str, Any]:
 def lower_hex(value: Any, length: int) -> bool:
     text = str(value or "")
     return len(text) == length and all(c in "0123456789abcdef" for c in text)
+
+
+def bool_text(value: Any) -> str:
+    return "true" if value is True else "false"
 
 
 def canonical_sha256(value: Any) -> str:
@@ -90,6 +99,104 @@ def validate_part8_faults(part8: Dict[str, Any], expected_head: str) -> bool:
     if wrong_hash.get("head_sha") != expected_head or wrong_hash.get("session_id") != base.get("session_id") or wrong_hash.get("evidence_sha256") == base.get("evidence_sha256") or wrong_hash.get("payload_sha256") != base.get("payload_sha256") or canonical_sha256(wrong_hash) == canonical_sha256(base):
         return False
     return True
+
+
+def part10_canonical_material(part10: Dict[str, Any]) -> Optional[str]:
+    public_key = part10.get("public_key", {})
+    rows = part10.get("part6_to_9", [])
+    if len(rows) != 4:
+        return None
+    names = [str(row.get("name", "")) for row in rows]
+    if names != sorted(names) or len(set(names)) != 4:
+        return None
+    receipt_material = "\n".join(
+        "|".join(
+            [
+                str(row.get("name", "")),
+                str(row.get("sha256", "")),
+                str(row.get("contract_id", "")),
+                str(int(row.get("requirements_validated", -1))),
+            ]
+        )
+        for row in rows
+    )
+    fields = [
+        "nxb-irl006-part10-v1-freeze-signed-v1",
+        str(int(part10.get("schema_version", -1))),
+        str(part10.get("status", "")),
+        str(part10.get("contract_id", "")),
+        str(part10.get("release_version", "")),
+        str(part10.get("head_sha", "")),
+        str(part10.get("predecessor_part5_signed_receipt_sha256", "")),
+        str(part10.get("predecessor_part5_review_zip_sha256", "")),
+        str(part10.get("evidence_index_sha256", "")),
+        str(part10.get("report_sha256", "")),
+        str(int(part10.get("known_error_rules", -1))),
+        str(int(part10.get("known_error_findings", -1))),
+        str(int(part10.get("analyzer_findings", -1))),
+        bool_text(part10.get("independent_validation")),
+        bool_text(part10.get("production_safety_gate")),
+        bool_text(part10.get("production_merge_performed")),
+        bool_text(part10.get("v1_freeze_candidate")),
+        str(int(part10.get("requirements_validated", -1))),
+        bool_text(part10.get("private_key_persisted")),
+        bool_text(part10.get("production_signer_claimed")),
+        str(part10.get("signing_algorithm", "")),
+        str(public_key.get("modulus_b64", "")),
+        str(public_key.get("exponent_b64", "")),
+        str(public_key.get("fingerprint_sha256", "")),
+        str(part10.get("nonce_b64", "")),
+        str(part10.get("created_utc", "")),
+        receipt_material,
+    ]
+    return "\n".join(fields)
+
+
+def verify_part10_signature(part10: Dict[str, Any]) -> bool:
+    if part10.get("signing_algorithm") != "RSA-PKCS1-SHA256":
+        return False
+    if part10.get("private_key_persisted") is not False or part10.get("production_signer_claimed") is not False:
+        return False
+    material = part10_canonical_material(part10)
+    if material is None or sha256_text(material) != part10.get("canonical_sha256"):
+        return False
+
+    public_key = part10.get("public_key", {})
+    modulus_b64 = str(public_key.get("modulus_b64", ""))
+    exponent_b64 = str(public_key.get("exponent_b64", ""))
+    fingerprint = str(public_key.get("fingerprint_sha256", ""))
+    if sha256_text("\n".join(["RSA-PKCS1-SHA256", modulus_b64, exponent_b64])) != fingerprint:
+        return False
+    try:
+        modulus_bytes = base64.b64decode(modulus_b64, validate=True)
+        exponent_bytes = base64.b64decode(exponent_b64, validate=True)
+        signature = base64.b64decode(str(part10.get("signature_b64", "")), validate=True)
+        nonce = base64.b64decode(str(part10.get("nonce_b64", "")), validate=True)
+    except Exception:
+        return False
+    if len(nonce) != 32 or not modulus_bytes or not exponent_bytes:
+        return False
+
+    modulus = int.from_bytes(modulus_bytes, "big")
+    exponent = int.from_bytes(exponent_bytes, "big")
+    modulus_bits = modulus.bit_length()
+    if modulus_bits < 3072 or exponent <= 1:
+        return False
+    key_bytes = (modulus_bits + 7) // 8
+    if len(signature) != key_bytes:
+        return False
+    signature_int = int.from_bytes(signature, "big")
+    if signature_int <= 0 or signature_int >= modulus:
+        return False
+
+    digest = hashlib.sha256(material.encode("utf-8")).digest()
+    digest_info = DIGEST_INFO_SHA256 + digest
+    padding_length = key_bytes - len(digest_info) - 3
+    if padding_length < 8:
+        return False
+    expected = b"\x00\x01" + (b"\xff" * padding_length) + b"\x00" + digest_info
+    recovered = pow(signature_int, exponent, modulus).to_bytes(key_bytes, "big")
+    return hmac.compare_digest(recovered, expected)
 
 
 def validate_all(
@@ -208,6 +315,8 @@ def validate_all(
         failures.append("part10_zero_error_gate")
     if part10.get("independent_validation") is not True:
         failures.append("part10_independent_validation")
+    if not verify_part10_signature(part10):
+        failures.append("part10_rsa_signature")
 
     if evidence_index.get("exact_head") != head:
         failures.append("evidence_index_head")
@@ -318,6 +427,7 @@ def main() -> int:
         "negative_controls_validated": sum(1 for row in negatives if row["rejected"]),
         "negative_controls": negatives,
         "failures": failures,
+        "part10_rsa_signature_valid": verify_part10_signature(objects["part10"]),
         "receipt_hashes": {name: file_sha256(path) for name, path in paths.items()},
         "canonical_report_sha256": canonical_sha256(objects["report"]),
     }
