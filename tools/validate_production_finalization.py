@@ -58,6 +58,40 @@ def safe_package_path(text: str) -> Optional[PurePosixPath]:
     return path
 
 
+def validate_part8_faults(part8: Dict[str, Any], expected_head: str) -> bool:
+    base = part8.get("base_evidence", {})
+    if base.get("head_sha") != expected_head:
+        return False
+    if not lower_hex(base.get("evidence_sha256"), 64) or not lower_hex(base.get("payload_sha256"), 64):
+        return False
+    if canonical_sha256(base) != part8.get("base_evidence_canonical_sha256"):
+        return False
+    rows = part8.get("fault_matrix", [])
+    if len(rows) != 5:
+        return False
+    by_name = {str(row.get("name")): row for row in rows}
+    expected_names = {"stale_head", "cross_session", "missing_evidence", "tampered_payload", "evidence_hash_mismatch"}
+    if set(by_name) != expected_names or any(row.get("rejected") is not True for row in rows):
+        return False
+
+    stale = by_name["stale_head"].get("mutation", {})
+    if stale.get("head_sha") == expected_head or stale.get("session_id") != base.get("session_id") or stale.get("evidence_sha256") != base.get("evidence_sha256") or stale.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    cross = by_name["cross_session"].get("mutation", {})
+    if cross.get("head_sha") != expected_head or cross.get("session_id") == base.get("session_id") or cross.get("evidence_sha256") != base.get("evidence_sha256") or cross.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    missing = by_name["missing_evidence"].get("mutation", {})
+    if missing.get("head_sha") != expected_head or missing.get("session_id") != base.get("session_id") or missing.get("evidence_sha256") != "" or missing.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    tampered = by_name["tampered_payload"].get("mutation", {})
+    if tampered.get("head_sha") != expected_head or tampered.get("session_id") != base.get("session_id") or tampered.get("evidence_sha256") != base.get("evidence_sha256") or tampered.get("payload_sha256") == base.get("payload_sha256") or canonical_sha256(tampered) == canonical_sha256(base):
+        return False
+    wrong_hash = by_name["evidence_hash_mismatch"].get("mutation", {})
+    if wrong_hash.get("head_sha") != expected_head or wrong_hash.get("session_id") != base.get("session_id") or wrong_hash.get("evidence_sha256") == base.get("evidence_sha256") or wrong_hash.get("payload_sha256") != base.get("payload_sha256") or canonical_sha256(wrong_hash) == canonical_sha256(base):
+        return False
+    return True
+
+
 def validate_all(
     head: str,
     repository_root: Path,
@@ -102,7 +136,7 @@ def validate_all(
         failures.append("part7_secret_boundary")
     if part7.get("permit_required_for_noncertification") is not True:
         failures.append("part7_permit_boundary")
-    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True:
+    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True or part7.get("permit_canonical_hash_binding") is not True:
         failures.append("part7_permit_binding")
     if part7.get("kill_switch_required_for_noncertification") is not True:
         failures.append("part7_kill_switch")
@@ -116,9 +150,8 @@ def validate_all(
     if not lower_hex(session.get("credential_reference_sha256"), 64):
         failures.append("part7_credential_reference")
 
-    faults = part8.get("fault_matrix", [])
-    if len(faults) < 5 or any(row.get("rejected") is not True for row in faults):
-        failures.append("part8_fault_matrix")
+    if not validate_part8_faults(part8, head):
+        failures.append("part8_independent_fault_replay")
     if part8.get("ps7_compatibility") is not True or part8.get("ps51_compatibility") is not True:
         failures.append("part8_dual_runtime")
     if int(part8.get("artifact_bytes", -1)) < 0:
@@ -214,6 +247,37 @@ def run_negative_controls(head: str, repository_root: Path, objects: Dict[str, D
     return cases
 
 
+def validate_artifact_hashes(objects: Dict[str, Dict[str, Any]], paths: Dict[str, Path]) -> List[str]:
+    failures: List[str] = []
+    part9 = objects["part9"]
+    part10 = objects["part10"]
+    index = objects["index"]
+    if part9.get("package_manifest_sha256") != file_sha256(paths["package"]):
+        failures.append("part9_manifest_file_hash")
+    report_sha = file_sha256(paths["report"])
+    index_sha = file_sha256(paths["index"])
+    if part10.get("report_sha256") != report_sha or index.get("report_sha256") != report_sha:
+        failures.append("part10_report_file_hash")
+    if part10.get("evidence_index_sha256") != index_sha:
+        failures.append("part10_index_file_hash")
+
+    receipt_paths = {paths[name].name: file_sha256(paths[name]) for name in ["part6", "part7", "part8", "part9"]}
+    index_rows = index.get("part6_to_9", [])
+    if len(index_rows) != 4:
+        failures.append("part10_index_cardinality")
+    else:
+        seen = set()
+        for row in index_rows:
+            name = str(row.get("name", ""))
+            if name in seen or name not in receipt_paths or row.get("sha256") != receipt_paths[name]:
+                failures.append("part10_index_receipt_hash")
+                break
+            seen.add(name)
+        if seen != set(receipt_paths):
+            failures.append("part10_index_receipt_set")
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-head", required=True)
@@ -239,6 +303,10 @@ def main() -> int:
         objects["part6"], objects["part7"], objects["part8"], objects["part9"], objects["part10"],
         objects["package"], objects["index"], objects["report"],
     )
+    artifact_failures = validate_artifact_hashes(objects, paths)
+    failures.extend(artifact_failures)
+    passed = passed and not artifact_failures
+
     negatives = run_negative_controls(args.expected_head, repository_root, objects)
     negative_pass = all(row["rejected"] for row in negatives) and len(negatives) == 12
 
