@@ -8,6 +8,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
             return [pscustomobject][ordered]@{
                 root = [IO.Path]::GetFullPath($root)
                 policy = Join-Path $root 'config\nxb-production-finalization-policy.json'
+                extensionConfig = Join-Path $root 'config\nxb-production-known-error-extension.json'
                 common = Join-Path $root 'scripts\NxbProductionFinalization.Common.ps1'
                 part6 = Join-Path $root 'scripts\Invoke-NxbPart6FindingEngineCertification.ps1'
                 part7 = Join-Path $root 'scripts\Invoke-NxbPart7BoundedActiveValidationCertification.ps1'
@@ -15,6 +16,8 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
                 part9 = Join-Path $root 'scripts\Invoke-NxbPart9SupplyChainCertification.ps1'
                 part10 = Join-Path $root 'scripts\Invoke-NxbPart10ProductionFreezeCertification.ps1'
                 final = Join-Path $root 'scripts\Invoke-NxbProductionFinalCertification.ps1'
+                finalV2 = Join-Path $root 'scripts\Invoke-NxbProductionFinalCertificationV2.ps1'
+                extensionScanner = Join-Path $root 'scripts\Invoke-NxbProductionKnownErrorScan.ps1'
                 cli = Join-Path $root 'scripts\nxb.ps1'
                 prefreeze = Join-Path $root 'tools\validate_production_prefreeze.py'
                 validator = Join-Path $root 'tools\validate_production_finalization.py'
@@ -26,7 +29,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
 
     It 'keeps every Part 6-10 authority component repo-owned' {
         $context = Get-NxbFinalTestContext
-        foreach ($path in @($context.policy,$context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.cli,$context.prefreeze,$context.validator,$context.scanner,$context.signatures)) {
+        foreach ($path in @($context.policy,$context.extensionConfig,$context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.finalV2,$context.extensionScanner,$context.cli,$context.prefreeze,$context.validator,$context.scanner,$context.signatures)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -42,11 +45,15 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         @($policy.part10.requirements).Count | Should -Be 10
     }
 
-    It 'binds the new roadmap stack to the certified Part 5 predecessor' {
+    It 'binds the new roadmap stack to certified Part 5 and permanent scanner extension' {
         $context = Get-NxbFinalTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
+        $extension = Get-Content -LiteralPath $context.extensionConfig -Raw | ConvertFrom-Json
         [string]$policy.certified_predecessor_head | Should -BeExactly '7dad7f15eccf074078573f8bbe2d89877218672d'
         [int]$policy.known_error_minimum_rules | Should -Be 22
+        @($extension.rules).Count | Should -Be 9
+        @($extension.guard_contracts).Count | Should -Be 1
+        @($extension.authority_paths) | Should -Contain 'scripts/Invoke-NxbProductionFinalCertificationV2.ps1'
     }
 
     It 'makes Part 6 finding IDs deterministic and evidence-hash bound' {
@@ -135,14 +142,19 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         foreach ($token in @("'status'","'hash'","'inspect-manifest'","'certify-final'")) {
             $source | Should -Match ([regex]::Escape($token))
         }
+        $source | Should -Match ([regex]::Escape('Invoke-NxbProductionFinalCertificationV2.ps1'))
         $source | Should -Not -Match '(?im)\b(Format-Volume|Clear-Disk|Invoke-Expression)\b'
     }
 
-    It 'validates package hashes signer fingerprint and rejects auto-apply' {
+    It 'validates complete package hashes signer fingerprint and rejects auto-apply' {
         $context = Get-NxbFinalTestContext
-        $source = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('Test-NxbFinalPackageManifest','signer_fingerprint_sha256','staged_only','auto_apply')) {
+        $source = Get-Content -LiteralPath $context.part9 -Raw
+        foreach ($token in @('Invoke-NxbProductionFinalCertificationV2.ps1','Invoke-NxbProductionKnownErrorScan.ps1','validate_production_finalization.py','ProductionFinalization.Tests.ps1')) {
             $source | Should -Match ([regex]::Escape($token))
+        }
+        $commonSource = Get-Content -LiteralPath $context.common -Raw
+        foreach ($token in @('Test-NxbFinalPackageManifest','signer_fingerprint_sha256','staged_only','auto_apply')) {
+            $commonSource | Should -Match ([regex]::Escape($token))
         }
     }
 
@@ -170,18 +182,21 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $source | Should -Match ([regex]::Escape('len(negatives) == 12'))
     }
 
-    It 'requires the final authority to re-certify Part 5 before Parts 6-10' {
+    It 'requires V2 to wrap the final child and permanent production scanner' {
         $context = Get-NxbFinalTestContext
-        $source = Get-Content -LiteralPath $context.final -Raw
-        $source | Should -Match ([regex]::Escape('Invoke-NxbPart5SignedClosureCertificationV2.ps1'))
-        $source | Should -Match ([regex]::Escape('Invoke-NxbPart6FindingEngineCertification.ps1'))
-        $source | Should -Match ([regex]::Escape('Invoke-NxbPart10ProductionFreezeCertification.ps1'))
-        $source | Should -Match ([regex]::Escape('validate_production_prefreeze.py'))
+        $v2Source = Get-Content -LiteralPath $context.finalV2 -Raw
+        $v2Source | Should -Match ([regex]::Escape('Invoke-NxbProductionFinalCertification.ps1'))
+        $v2Source | Should -Match ([regex]::Escape('Invoke-NxbProductionKnownErrorScan.ps1'))
+        $childSource = Get-Content -LiteralPath $context.final -Raw
+        $childSource | Should -Match ([regex]::Escape('Invoke-NxbPart5SignedClosureCertificationV2.ps1'))
+        $childSource | Should -Match ([regex]::Escape('Invoke-NxbPart6FindingEngineCertification.ps1'))
+        $childSource | Should -Match ([regex]::Escape('Invoke-NxbPart10ProductionFreezeCertification.ps1'))
+        $childSource | Should -Match ([regex]::Escape('validate_production_prefreeze.py'))
     }
 
     It 'keeps active production-finalization PowerShell authority ASCII clean' {
         $context = Get-NxbFinalTestContext
-        foreach ($path in @($context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.cli)) {
+        foreach ($path in @($context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.finalV2,$context.extensionScanner,$context.cli)) {
             $bad = @([IO.File]::ReadAllBytes($path) | Where-Object { [int]$_ -gt 0x7F })
             $bad.Count | Should -Be 0
         }
