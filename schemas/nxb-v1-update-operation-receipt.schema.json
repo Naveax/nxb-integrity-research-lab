@@ -21,7 +21,7 @@
     "update_root": {"type": "string", "minLength": 1},
     "rollback_used": {"type": "boolean"},
     "auto_apply": {"const": false},
-    "production_release_updated": {"const": false},
+    "production_release_updated": {"type": "boolean"},
     "created_utc": {"type": "string", "minLength": 1}
   }
 }
