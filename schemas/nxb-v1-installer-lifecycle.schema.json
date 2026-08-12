@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-installer-lifecycle.schema.json",
+  "title": "NXB v1 Installer Certification Lifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","authority","source_head","package_manifest_sha256","host_preflight_passed","portable_stage_passed","per_user_install_passed","corruption_detected","repair_passed","repair_restored_bytes","uninstall_passed","install_root_absent_after_uninstall","data_preserved","evidence_preserved","data_sentinel_sha256","evidence_sentinel_sha256","machine_install_performed","production_release_installed","receipt_hashes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "authority": {"const": "nxb-v1-installer-lifecycle-v1"},
+    "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "host_preflight_passed": {"const": true},
+    "portable_stage_passed": {"const": true},
+    "per_user_install_passed": {"const": true},
+    "corruption_detected": {"const": true},
+    "repair_passed": {"const": true},
+    "repair_restored_bytes": {"const": true},
+    "uninstall_passed": {"const": true},
+    "install_root_absent_after_uninstall": {"const": true},
+    "data_preserved": {"const": true},
+    "evidence_preserved": {"const": true},
+    "data_sentinel_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidence_sentinel_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "machine_install_performed": {"const": false},
+    "production_release_installed": {"const": false},
+    "receipt_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage","install","repair","uninstall"],
+      "properties": {
+        "stage": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "install": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "repair": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "uninstall": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

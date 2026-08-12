@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-installer-operation-receipt.schema.json",
+  "title": "NXB v1 Installer Operation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","status","authority","action","install_mode","release_version","source_head","install_root","package_manifest_sha256","files_verified","bytes_verified","data_removed","evidence_removed","rollback_used","created_utc"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"const": "passed"},
+    "authority": {"const": "nxb-v1-installer-operation-v1"},
+    "action": {"enum": ["Stage","Install","Repair","Uninstall"]},
+    "install_mode": {"enum": ["Portable","PerUser","PerMachine"]},
+    "release_version": {"const": "1.0.0"},
+    "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "install_root": {"type": "string", "minLength": 1},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "files_verified": {"type": "integer", "minimum": 0, "maximum": 2048},
+    "bytes_verified": {"type": "integer", "minimum": 0, "maximum": 1073741824},
+    "data_removed": {"const": false},
+    "evidence_removed": {"const": false},
+    "rollback_used": {"type": "boolean"},
+    "created_utc": {"type": "string", "minLength": 1}
+  }
+}

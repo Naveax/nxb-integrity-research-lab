@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-install-state.schema.json",
+  "title": "NXB v1 Install State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","release_version","source_head","install_mode","install_root","package_manifest_sha256","installed_utc","managed_file_count","managed_total_bytes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-install-state-v1"},
+    "release_version": {"const": "1.0.0"},
+    "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "install_mode": {"enum": ["Portable","PerUser","PerMachine"]},
+    "install_root": {"type": "string", "minLength": 1},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "installed_utc": {"type": "string", "minLength": 1},
+    "managed_file_count": {"type": "integer", "minimum": 1, "maximum": 2048},
+    "managed_total_bytes": {"type": "integer", "minimum": 0, "maximum": 1073741824}
+  }
+}
