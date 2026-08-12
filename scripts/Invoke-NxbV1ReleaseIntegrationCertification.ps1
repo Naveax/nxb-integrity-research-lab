@@ -122,6 +122,8 @@ foreach ($reserved in @($outputFull,$workRoot,$reviewRoot,$reviewZip)) {
 
 $policyPath = Join-Path $repositoryRoot 'config\nxb-v1-release-integration-policy.json'
 $schemaPath = Join-Path $repositoryRoot 'schemas\nxb-v1-release-integration-receipt.schema.json'
+$releaseSignaturePath = Join-Path $repositoryRoot 'config\nxb-v1-release-known-error-signatures.json'
+$releaseKnownErrorDocPath = Join-Path $repositoryRoot 'docs\NXB-V1-RELEASE-KNOWN-ERRORS.md'
 $preflightPath = Join-Path $PSScriptRoot 'Test-NxbV1ReleaseIntegration.ps1'
 $testPath = Join-Path $repositoryRoot 'tests\V1ReleaseIntegration.Tests.ps1'
 $validatorPath = Join-Path $repositoryRoot 'tools\validate_v1_release_integration.py'
@@ -132,7 +134,7 @@ $productionScannerPath = Join-Path $PSScriptRoot 'Invoke-NxbProductionKnownError
 $productionScannerConfigPath = Join-Path $repositoryRoot 'config\nxb-production-known-error-extension.json'
 $authorityPaths = @($PSCommandPath,$preflightPath,$testPath)
 foreach ($requiredPath in @(
-    $policyPath,$schemaPath,$preflightPath,$testPath,$validatorPath,$docsPath,
+    $policyPath,$schemaPath,$releaseSignaturePath,$releaseKnownErrorDocPath,$preflightPath,$testPath,$validatorPath,$docsPath,
     $baseScannerPath,$baseSignaturePath,$productionScannerPath,$productionScannerConfigPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -141,7 +143,7 @@ foreach ($requiredPath in @(
 }
 
 Write-Information '=== NXB V1 RELEASE INTEGRATION CERTIFICATION ==='
-Write-Information '[1/6] Parser, analyzer, JSON/Python syntax and inherited scanner gates'
+Write-Information '[1/6] Parser, analyzer, JSON/Python syntax and inherited/release known-error gates'
 foreach ($scriptPath in $authorityPaths) {
     $tokens = $null
     $parseErrors = $null
@@ -157,6 +159,7 @@ $analyzerFindings = @(foreach ($scriptPath in $authorityPaths) {
 if ($analyzerFindings.Count -gt 0) {
     throw ('NXB v1 release integration PSScriptAnalyzer findings: {0}{1}{2}' -f $analyzerFindings.Count,[Environment]::NewLine,(@($analyzerFindings | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join [Environment]::NewLine))
 }
+
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
 if ([int]$policy.schema_version -ne 1 -or [string]$policy.contract_id -cne 'nxb-v1-release-integration-v1') {
@@ -182,6 +185,31 @@ $productionScan = & $productionScannerPath -RepositoryRoot $repositoryRoot -Conf
 if ([string]$productionScan.status -cne 'passed' -or [int]$productionScan.finding_count -ne 0 -or
     [int]$productionScan.extension_rule_count -ne 9 -or [int]$productionScan.schema_contract_count -ne 1 -or [int]$productionScan.guard_contract_count -ne 1) {
     throw ('NXB v1 production extension gate failed: rules={0} schemas={1} guards={2} findings={3}' -f [int]$productionScan.extension_rule_count,[int]$productionScan.schema_contract_count,[int]$productionScan.guard_contract_count,[int]$productionScan.finding_count)
+}
+
+$releaseSignatures = Get-Content -LiteralPath $releaseSignaturePath -Raw | ConvertFrom-Json
+$releaseRules = @($releaseSignatures.rules)
+if ($releaseRules.Count -ne 1 -or [string]$releaseRules[0].id -cne 'NXB-ERR-036') {
+    throw 'NXB v1 release known-error signature contract drift.'
+}
+$releaseKnownErrorFindings = [Collections.Generic.List[string]]::new()
+foreach ($rule in $releaseRules) {
+    $regexText = [string]$rule.regex
+    foreach ($relativeObject in @($rule.include)) {
+        $relativePath = [string]$relativeObject
+        $sourcePath = Join-Path $repositoryRoot $relativePath.Replace('/',[IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            $releaseKnownErrorFindings.Add(('missing:{0}:{1}' -f [string]$rule.id,$relativePath))
+            continue
+        }
+        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        if ([regex]::IsMatch($sourceText,$regexText)) {
+            $releaseKnownErrorFindings.Add(('{0}:{1}' -f [string]$rule.id,$relativePath))
+        }
+    }
+}
+if ($releaseKnownErrorFindings.Count -ne 0) {
+    throw ('NXB v1 release known-error gate failed: {0}' -f (@($releaseKnownErrorFindings) -join ', '))
 }
 
 $testSource = Get-Content -LiteralPath $testPath -Raw
@@ -223,7 +251,7 @@ $independentRun = Invoke-NxbV1CertificationNative -Executable $pythonPath -Argum
     $validatorPath,
     '--policy',$policyPath,
     '--receipt',$preflightReceiptPath,
-    '--expected-certified-head',[string]$policy.certified_implementation_head,
+    '--expected-certified-head',([string]$policy.certified_implementation_head),
     '--expected-release-head',$currentHead,
     '--output',$independentPath
 )
@@ -257,6 +285,8 @@ $certificationReceipt = [pscustomobject][ordered]@{
     production_schema_contracts = [int]$productionScan.schema_contract_count
     production_guard_contracts = [int]$productionScan.guard_contract_count
     production_extension_findings = [int]$productionScan.finding_count
+    release_known_error_rules = $releaseRules.Count
+    release_known_error_findings = $releaseKnownErrorFindings.Count
     analyzer_findings = $analyzerFindings.Count
     changed_path_count = @($preflight.changed_paths).Count
     production_merge_performed = $false
@@ -279,7 +309,10 @@ $reviewFiles = [ordered]@{
     'v1-release-integration-certification-receipt.json' = $certificationReceiptPath
 }
 foreach ($entry in $reviewFiles.GetEnumerator()) {
-    [IO.File]::Copy([string]$entry.Value,(Join-Path $reviewRoot [string]$entry.Key),$false)
+    $sourcePath = [string]($entry.Value)
+    $entryName = [string]($entry.Key)
+    $destinationPath = Join-Path -Path $reviewRoot -ChildPath $entryName
+    [IO.File]::Copy($sourcePath,$destinationPath,$false)
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($reviewRoot,$reviewZip,[IO.Compression.CompressionLevel]::Optimal,$false)
@@ -314,7 +347,8 @@ $result = [pscustomobject][ordered]@{
     production_extension_rules = [int]$productionScan.extension_rule_count
     production_schema_contracts = [int]$productionScan.schema_contract_count
     production_guard_contracts = [int]$productionScan.guard_contract_count
-    known_error_findings = ([int]$baseScan.finding_count + [int]$productionScan.finding_count)
+    release_known_error_rules = $releaseRules.Count
+    known_error_findings = ([int]$baseScan.finding_count + [int]$productionScan.finding_count + $releaseKnownErrorFindings.Count)
     analyzer_findings = $analyzerFindings.Count
     production_merge_performed = $false
     release_tag_created = $false
@@ -326,5 +360,5 @@ $result = [pscustomobject][ordered]@{
     review_zip_sha256 = Get-NxbV1CertificationSha256 -Path $reviewZip
 }
 
-Write-Information ('NXB v1 release integration certification passed: head={0} PS7=16/16 PS5.1=16/16 independent=10/10 negatives=6/6 base_rules={1} production=9+1+1 findings=0 merge=false tag=false.' -f $currentHead,[int]$baseScan.rule_count)
+Write-Information ('NXB v1 release integration certification passed: head={0} PS7=16/16 PS5.1=16/16 independent=10/10 negatives=6/6 base_rules={1} production=9+1+1 release_rules=1 findings=0 merge=false tag=false.' -f $currentHead,[int]$baseScan.rule_count)
 if ($PassThru) { $result }
