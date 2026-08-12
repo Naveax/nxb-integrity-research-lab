@@ -6,7 +6,7 @@ Describe 'NXB v1 production signing contract' {
             $root = [string]$env:NXB_V1_SIGNING_REPOSITORY_ROOT
             if ([string]::IsNullOrWhiteSpace($root)) { throw 'NXB_V1_SIGNING_REPOSITORY_ROOT is required.' }
             $fullRoot = [IO.Path]::GetFullPath($root)
-            return [pscustomobject][ordered]@{
+            [pscustomobject][ordered]@{
                 policy = Join-Path $fullRoot 'config\nxb-v1-production-signing-policy.json'
                 integration_policy = Join-Path $fullRoot 'config\nxb-v1-release-integration-policy.json'
                 signature_schema = Join-Path $fullRoot 'schemas\nxb-v1-release-signature-envelope.schema.json'
@@ -112,7 +112,7 @@ Describe 'NXB v1 production signing contract' {
 
     It 'hashes real package notes and artifact files and performs a post-signing TOCTOU recheck' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).operator -Raw
-        foreach ($token in @('Get-NxbV1ReleaseSigningFileSha256','Package manifest changed during signing.','Release notes changed during signing.','Artifact changed during signing: {0}','[IO.FileAttributes]::ReparsePoint')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('Get-NxbV1ReleaseSigningFileSha256','Package manifest changed during signing.','Release notes changed during signing.','Artifact changed during signing: {0}','[IO.FileAttributes]::ReparsePoint','$trimChars = [char[]]@(')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'creates certification RSA without persistence or production signer claims' {
@@ -127,14 +127,13 @@ Describe 'NXB v1 production signing contract' {
 
     It 'gives the independent validator twelve requirements and all eight adversarial controls' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).validator -Raw
-        $source | Should -Match ([regex]::Escape('requirement_count": 12'))
-        $source | Should -Match ([regex]::Escape('negative_count": 8'))
+        $source | Should -Match ([regex]::Escape('requirement_count": 12'.Replace('\','')))
+        $source | Should -Match ([regex]::Escape('negative_count": 8'.Replace('\','')))
         foreach ($token in @('tampered_release_head','tampered_package_manifest_sha256','tampered_artifact_sha256','tampered_signer_fingerprint','malformed_signature','weak_key_metadata','wrong_signer_key_id','duplicate_artifact_path','pow(signature_int, exponent, modulus)','hmac.compare_digest')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'extends the release known-error rule over the signing PowerShell authority surface' {
-        $c = Get-NxbV1SigningTestContext
-        $d = Get-Content -LiteralPath $c.release_errors -Raw | ConvertFrom-Json
+        $d = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).release_errors -Raw | ConvertFrom-Json
         @($d.rules).Count | Should -Be 1
         [string]$d.rules[0].id | Should -BeExactly 'NXB-ERR-036'
         $include = @($d.rules[0].include | ForEach-Object { [string]$_ })
