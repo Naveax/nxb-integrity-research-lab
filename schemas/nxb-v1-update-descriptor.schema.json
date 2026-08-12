@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-update-descriptor.schema.json",
+  "title": "NXB v1 Signed Update Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","channel","release_version","release_sequence","release_head","certified_implementation_head","package_manifest_sha256","created_utc"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-update-descriptor-v1"},
+    "channel": {"enum": ["stable","beta"]},
+    "release_version": {"const": "1.0.0"},
+    "release_sequence": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "certified_implementation_head": {"const": "a10535b294c4d7ba8a4c3683154609087bf50c4b"},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "created_utc": {"type": "string", "minLength": 1}
+  }
+}
