@@ -61,7 +61,7 @@ function Test-NxbV1AllowedSuccessorPath {
         [Parameter(Mandatory)][object[]]$AllowedPrefixes
     )
 
-    $normalized = $Path.Replace('\\','/')
+    $normalized = $Path.Replace('\','/')
     foreach ($prefixObject in @($AllowedPrefixes)) {
         $prefix = [string]$prefixObject
         if (-not [string]::IsNullOrWhiteSpace($prefix) -and $normalized.StartsWith($prefix,[StringComparison]::Ordinal)) {
@@ -141,7 +141,7 @@ if ($certifiedMainRun.exit_code -ne 0) { $failures.Add('certified_main_ancestor_
 $diffRun = Invoke-NxbV1Native -Executable $git -ArgumentList @('-C',$RepositoryRoot,'diff','--name-only','--diff-filter=ACMRTUXB',('{0}...{1}' -f $certifiedHead,$releaseHead))
 if ($diffRun.exit_code -ne 0) { throw ('Unable to enumerate release successor paths: {0}' -f $diffRun.output) }
 foreach ($pathLine in @($diffRun.lines)) {
-    $pathText = $pathLine.Trim().Replace('\\','/')
+    $pathText = $pathLine.Trim().Replace('\','/')
     if (-not [string]::IsNullOrWhiteSpace($pathText)) { $changedPaths.Add($pathText) }
 }
 
@@ -166,10 +166,21 @@ foreach ($changedPath in @($changedPaths)) {
     }
 }
 
+$privateKeyMarkerMap = @{
+    pkcs8 = ('-----BEGIN ' + 'PRIVATE KEY-----')
+    rsa = ('-----BEGIN RSA ' + 'PRIVATE KEY-----')
+    ec = ('-----BEGIN EC ' + 'PRIVATE KEY-----')
+    openssh = ('-----BEGIN OPENSSH ' + 'PRIVATE KEY-----')
+}
 $privateKeyMaterialAbsent = $true
-foreach ($markerObject in @($policy.integration.forbidden_private_key_markers)) {
-    $marker = [string]$markerObject
-    if ([string]::IsNullOrWhiteSpace($marker)) { continue }
+foreach ($markerIdObject in @($policy.integration.forbidden_private_key_marker_ids)) {
+    $markerId = [string]$markerIdObject
+    if ([string]::IsNullOrWhiteSpace($markerId) -or -not $privateKeyMarkerMap.ContainsKey($markerId)) {
+        $privateKeyMaterialAbsent = $false
+        $failures.Add(('private_key_marker_id_unknown:{0}' -f $markerId))
+        continue
+    }
+    $marker = [string]$privateKeyMarkerMap[$markerId]
     $grepRun = Invoke-NxbV1Native -Executable $git -ArgumentList @('-C',$RepositoryRoot,'grep','-I','-l','-F','--',$marker,'HEAD')
     if ($grepRun.exit_code -eq 0) {
         $privateKeyMaterialAbsent = $false
