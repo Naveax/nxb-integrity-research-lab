@@ -106,9 +106,12 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('Test-NxbV1SignedReleaseEnvelope','trusted_signer_fingerprint','Envelope.public_key.fingerprint','production-windows-certificate-store','certification-ephemeral')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'binds signed descriptor manifest and package artifacts' {
-        $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
+    It 'binds signed descriptor manifest and package artifacts to real fixture bytes' {
+        $c=Get-NxbV1UpdateTestContext
+        $source=Get-Content -LiteralPath $c.common -Raw
         foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap')) { $source | Should -Match ([regex]::Escape($token)) }
+        $authoritySource=Get-Content -LiteralPath $c.authority -Raw
+        foreach ($token in @('$artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative','$artifactItem=Get-Item -LiteralPath $artifactPath','bytes=[int64]$artifactItem.Length','sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath)')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'uses ordinal update tree canonicalization' {
