@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-update-operation-receipt.schema.json",
+  "title": "NXB v1 Update Operation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","status","authority","action","channel","release_sequence","release_head","package_manifest_sha256","descriptor_sha256","envelope_sha256","trusted_signer_fingerprint","install_root","update_root","rollback_used","auto_apply","production_release_updated","created_utc"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"const": "passed"},
+    "authority": {"const": "nxb-v1-update-operation-v1"},
+    "action": {"enum": ["Stage","Apply","Rollback"]},
+    "channel": {"enum": ["stable","beta"]},
+    "release_sequence": {"type": "integer", "minimum": 0},
+    "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "descriptor_sha256": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|none)$"},
+    "envelope_sha256": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|none)$"},
+    "trusted_signer_fingerprint": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|none)$"},
+    "install_root": {"type": "string", "minLength": 1},
+    "update_root": {"type": "string", "minLength": 1},
+    "rollback_used": {"type": "boolean"},
+    "auto_apply": {"const": false},
+    "production_release_updated": {"const": false},
+    "created_utc": {"type": "string", "minLength": 1}
+  }
+}
