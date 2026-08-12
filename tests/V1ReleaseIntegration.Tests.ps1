@@ -145,7 +145,8 @@ Describe 'NXB v1 release integration contract' {
         $source | Should -Match ([regex]::Escape('private_key_marker_id_unknown:{0}'))
         $source | Should -Match ([regex]::Escape('private_key_material:{0}'))
         $source | Should -Match ([regex]::Escape('private_key_scan_failed'))
-        $source | Should -Not -Match ([regex]::Escape('-----BEGIN PRIVATE KEY-----'))
+        $pkcs8Marker = '-----BEGIN ' + 'PRIVATE KEY-----'
+        $source | Should -Not -Match ([regex]::Escape($pkcs8Marker))
     }
 
     It 'preserves the certified candidate version instead of rewriting historical evidence' {
