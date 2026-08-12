@@ -40,15 +40,17 @@ $currentInstallState = Get-NxbV1InstallerStateObject -InstallRoot $installFull
 $currentUpdateState = Get-NxbV1UpdateStateObject -UpdateRoot $updateFull
 $currentSequence = 0
 $currentEnvelopeSha = 'none'
+$currentChannel = 'stable'
 if ($null -ne $currentUpdateState) {
     $currentSequence = [int]$currentUpdateState.current_release_sequence
     $currentEnvelopeSha = [string]$currentUpdateState.current_envelope_sha256
+    $currentChannel = [string]$currentUpdateState.current_channel
 }
 
 $productionMutation = $false
 if (-not $CertificationMode -and $Action -ne 'Stage') { $productionMutation = $true }
 
-function Write-NxbV1UpdateOperationReceipt {
+function Out-NxbV1UpdateOperationReceipt {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Operation,
@@ -62,23 +64,10 @@ function Write-NxbV1UpdateOperationReceipt {
         [Parameter(Mandatory)][bool]$RollbackUsed
     )
     $receipt = [pscustomobject][ordered]@{
-        schema_version=1
-        status='passed'
-        authority='nxb-v1-update-operation-v1'
-        action=$Operation
-        channel=$Channel
-        release_sequence=$Sequence
-        release_head=$ReleaseHead
-        package_manifest_sha256=$ManifestSha
-        descriptor_sha256=$DescriptorSha
-        envelope_sha256=$EnvelopeSha
-        trusted_signer_fingerprint=$SignerFingerprint
-        install_root=$installFull
-        update_root=$updateFull
-        rollback_used=$RollbackUsed
-        auto_apply=$false
-        production_release_updated=$productionMutation
-        created_utc=[DateTime]::UtcNow.ToString('o')
+        schema_version=1; status='passed'; authority='nxb-v1-update-operation-v1'; action=$Operation; channel=$Channel; release_sequence=$Sequence;
+        release_head=$ReleaseHead; package_manifest_sha256=$ManifestSha; descriptor_sha256=$DescriptorSha; envelope_sha256=$EnvelopeSha;
+        trusted_signer_fingerprint=$SignerFingerprint; install_root=$installFull; update_root=$updateFull; rollback_used=$RollbackUsed;
+        auto_apply=$false; production_release_updated=$productionMutation; created_utc=[DateTime]::UtcNow.ToString('o')
     }
     Write-NxbV1UpdateJson -Path $receiptFull -Value $receipt
     return $receipt
@@ -104,7 +93,7 @@ if ($Action -ceq 'Stage') {
     if (Test-Path -LiteralPath $stageStatePath) { throw 'An update is already staged.' }
     $stagePackageRoot = Join-Path -Path $updateFull -ChildPath 'staged-package'
     $metadataRoot = Join-Path -Path $updateFull -ChildPath 'staged-metadata'
-    if (Test-Path -LiteralPath $stagePackageRoot -or Test-Path -LiteralPath $metadataRoot) { throw 'Stage package/metadata roots must be absent.' }
+    if ((Test-Path -LiteralPath $stagePackageRoot) -or (Test-Path -LiteralPath $metadataRoot)) { throw 'Stage package/metadata roots must be absent.' }
     if ($PSCmdlet.ShouldProcess($updateFull,('Stage signed release {0} sequence {1}' -f [string]$descriptor.release_head,[int]$descriptor.release_sequence))) {
         Copy-NxbV1UpdatePackageVerified -PackageRoot $packageFull -Manifest $manifest -DestinationRoot $stagePackageRoot
         [IO.Directory]::CreateDirectory($metadataRoot) | Out-Null
@@ -120,7 +109,7 @@ if ($Action -ceq 'Stage') {
             trusted_signer_fingerprint=[string]$trust.trusted_signer_fingerprint; stage_package_root=$stagePackageRoot; created_utc=[DateTime]::UtcNow.ToString('o')
         }
         Write-NxbV1UpdateJson -Path $stageStatePath -Value $stageState
-        $outReceipt = Write-NxbV1UpdateOperationReceipt -Operation 'Stage' -Channel ([string]$descriptor.channel) -Sequence ([int]$descriptor.release_sequence) -ReleaseHead ([string]$descriptor.release_head) -ManifestSha $manifestSha -DescriptorSha $descriptorSha -EnvelopeSha $envelopeSha -SignerFingerprint ([string]$trust.trusted_signer_fingerprint) -RollbackUsed $false
+        $outReceipt = Out-NxbV1UpdateOperationReceipt -Operation 'Stage' -Channel ([string]$descriptor.channel) -Sequence ([int]$descriptor.release_sequence) -ReleaseHead ([string]$descriptor.release_head) -ManifestSha $manifestSha -DescriptorSha $descriptorSha -EnvelopeSha $envelopeSha -SignerFingerprint ([string]$trust.trusted_signer_fingerprint) -RollbackUsed $false
         Write-Information ('NXB v1 update Stage passed: channel={0} sequence={1} head={2}' -f [string]$descriptor.channel,[int]$descriptor.release_sequence,[string]$descriptor.release_head)
         return $outReceipt
     }
@@ -132,7 +121,9 @@ if ($Action -ceq 'Apply') {
     $trustFull = [IO.Path]::GetFullPath($TrustPath)
     if (-not (Test-Path -LiteralPath $trustFull -PathType Leaf)) { throw 'Apply TrustPath is missing.' }
     $stageState = Get-NxbV1UpdateStageStateObject -UpdateRoot $updateFull
+    $expectedStagePackageRoot = [IO.Path]::GetFullPath((Join-Path -Path $updateFull -ChildPath 'staged-package'))
     $stagePackageRoot = [IO.Path]::GetFullPath([string]$stageState.stage_package_root)
+    if (-not [string]::Equals($stagePackageRoot,$expectedStagePackageRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'Stage package root binding drift.' }
     $metadataRoot = Join-Path -Path $updateFull -ChildPath 'staged-metadata'
     $manifestFull = Join-Path -Path $metadataRoot -ChildPath 'package-manifest.json'
     $descriptorFull = Join-Path -Path $metadataRoot -ChildPath 'update-descriptor.json'
@@ -155,6 +146,7 @@ if ($Action -ceq 'Apply') {
     $previousHead = [string]$currentInstallState.source_head
     $previousManifestSha = [string]$currentInstallState.package_manifest_sha256
     $previousEnvelopeSha = $currentEnvelopeSha
+    $previousChannel = $currentChannel
     if ($PSCmdlet.ShouldProcess($installFull,('Apply signed release {0} sequence {1}' -f [string]$descriptor.release_head,[int]$descriptor.release_sequence))) {
         Copy-NxbV1UpdatePackageVerified -PackageRoot $stagePackageRoot -Manifest $manifest -DestinationRoot $candidateRoot
         $newInstallState = Get-NxbV1InstallerStateDocument -Manifest $manifest -InstallMode ([string]$currentInstallState.install_mode) -InstallRoot $installFull -ManifestSha256 $manifestSha
@@ -164,10 +156,11 @@ if ($Action -ceq 'Apply') {
         try {
             $swapResult = Invoke-NxbV1UpdateAtomicSwap -CurrentRoot $installFull -CandidateRoot $candidateRoot -RollbackRoot $rollbackRoot -PostPublishValidation $validation
             $newState = [pscustomobject][ordered]@{
-                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_release_sequence=[int]$descriptor.release_sequence; current_release_head=[string]$descriptor.release_head;
-                current_package_manifest_sha256=$manifestSha; current_envelope_sha256=$envelopeSha; rollback_available=$true; rollback_release_sequence=$previousSequence;
-                rollback_release_head=$previousHead; rollback_package_manifest_sha256=$previousManifestSha; rollback_envelope_sha256=$previousEnvelopeSha;
-                rollback_tree_sha256=$previousTreeSha; rollback_root=$rollbackRoot; updated_utc=[DateTime]::UtcNow.ToString('o')
+                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$descriptor.channel; current_release_sequence=[int]$descriptor.release_sequence;
+                current_release_head=[string]$descriptor.release_head; current_package_manifest_sha256=$manifestSha; current_envelope_sha256=$envelopeSha;
+                rollback_available=$true; rollback_channel=$previousChannel; rollback_release_sequence=$previousSequence; rollback_release_head=$previousHead;
+                rollback_package_manifest_sha256=$previousManifestSha; rollback_envelope_sha256=$previousEnvelopeSha; rollback_tree_sha256=$previousTreeSha;
+                rollback_root=$rollbackRoot; updated_utc=[DateTime]::UtcNow.ToString('o')
             }
             try { Write-NxbV1UpdateJson -Path (Get-NxbV1UpdateStatePath -UpdateRoot $updateFull) -Value $newState }
             catch {
@@ -179,7 +172,7 @@ if ($Action -ceq 'Apply') {
             }
         }
         catch { if (Test-Path -LiteralPath $candidateRoot) { Remove-Item -LiteralPath $candidateRoot -Recurse -Force }; throw }
-        $outReceipt = Write-NxbV1UpdateOperationReceipt -Operation 'Apply' -Channel ([string]$descriptor.channel) -Sequence ([int]$descriptor.release_sequence) -ReleaseHead ([string]$descriptor.release_head) -ManifestSha $manifestSha -DescriptorSha $descriptorSha -EnvelopeSha $envelopeSha -SignerFingerprint ([string]$trust.trusted_signer_fingerprint) -RollbackUsed ([bool]$swapResult.rollback_used)
+        $outReceipt = Out-NxbV1UpdateOperationReceipt -Operation 'Apply' -Channel ([string]$descriptor.channel) -Sequence ([int]$descriptor.release_sequence) -ReleaseHead ([string]$descriptor.release_head) -ManifestSha $manifestSha -DescriptorSha $descriptorSha -EnvelopeSha $envelopeSha -SignerFingerprint ([string]$trust.trusted_signer_fingerprint) -RollbackUsed ([bool]$swapResult.rollback_used)
         Write-Information ('NXB v1 update Apply passed: sequence={0} head={1} rollback_snapshot={2}' -f [int]$descriptor.release_sequence,[string]$descriptor.release_head,$rollbackRoot)
         return $outReceipt
     }
@@ -201,23 +194,31 @@ if ($Action -ceq 'Rollback') {
             [IO.Directory]::Move($rollbackRoot,$installFull)
             $restored = $true
             if ((Get-NxbV1UpdateTreeDigest -Root $installFull) -cne [string]$state.rollback_tree_sha256) { throw 'Restored rollback tree hash mismatch.' }
+            $rolledState = [pscustomobject][ordered]@{
+                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$state.rollback_channel; current_release_sequence=[int]$state.rollback_release_sequence;
+                current_release_head=[string]$state.rollback_release_head; current_package_manifest_sha256=[string]$state.rollback_package_manifest_sha256;
+                current_envelope_sha256=[string]$state.rollback_envelope_sha256; rollback_available=$false; rollback_channel=[string]$state.rollback_channel;
+                rollback_release_sequence=[int]$state.rollback_release_sequence; rollback_release_head=[string]$state.rollback_release_head;
+                rollback_package_manifest_sha256=[string]$state.rollback_package_manifest_sha256; rollback_envelope_sha256=[string]$state.rollback_envelope_sha256;
+                rollback_tree_sha256=[string]$state.rollback_tree_sha256; rollback_root=''; updated_utc=[DateTime]::UtcNow.ToString('o')
+            }
+            try { Write-NxbV1UpdateJson -Path (Get-NxbV1UpdateStatePath -UpdateRoot $updateFull) -Value $rolledState }
+            catch {
+                if (Test-Path -LiteralPath $installFull) { Remove-Item -LiteralPath $installFull -Recurse -Force }
+                if (Test-Path -LiteralPath $displacedRoot -PathType Container) { [IO.Directory]::Move($displacedRoot,$installFull) }
+                throw
+            }
             if (Test-Path -LiteralPath $displacedRoot) { Remove-Item -LiteralPath $displacedRoot -Recurse -Force }
         }
         catch {
-            if ($restored -and (Test-Path -LiteralPath $installFull)) { Remove-Item -LiteralPath $installFull -Recurse -Force }
-            if (Test-Path -LiteralPath $displacedRoot -PathType Container) { [IO.Directory]::Move($displacedRoot,$installFull) }
+            if ($restored -and (Test-Path -LiteralPath $installFull) -and (Test-Path -LiteralPath $displacedRoot -PathType Container)) {
+                Remove-Item -LiteralPath $installFull -Recurse -Force
+                [IO.Directory]::Move($displacedRoot,$installFull)
+            }
             throw
         }
-        $rolledState = [pscustomobject][ordered]@{
-            schema_version=1; contract_id='nxb-v1-update-state-v1'; current_release_sequence=[int]$state.rollback_release_sequence; current_release_head=[string]$state.rollback_release_head;
-            current_package_manifest_sha256=[string]$state.rollback_package_manifest_sha256; current_envelope_sha256=[string]$state.rollback_envelope_sha256;
-            rollback_available=$false; rollback_release_sequence=[int]$state.rollback_release_sequence; rollback_release_head=[string]$state.rollback_release_head;
-            rollback_package_manifest_sha256=[string]$state.rollback_package_manifest_sha256; rollback_envelope_sha256=[string]$state.rollback_envelope_sha256;
-            rollback_tree_sha256=[string]$state.rollback_tree_sha256; rollback_root=''; updated_utc=[DateTime]::UtcNow.ToString('o')
-        }
-        Write-NxbV1UpdateJson -Path (Get-NxbV1UpdateStatePath -UpdateRoot $updateFull) -Value $rolledState
-        $outReceipt = Write-NxbV1UpdateOperationReceipt -Operation 'Rollback' -Channel 'stable' -Sequence ([int]$state.rollback_release_sequence) -ReleaseHead ([string]$state.rollback_release_head) -ManifestSha ([string]$state.rollback_package_manifest_sha256) -DescriptorSha 'none' -EnvelopeSha ([string]$state.rollback_envelope_sha256) -SignerFingerprint 'none' -RollbackUsed $true
-        Write-Information ('NXB v1 update Rollback passed: sequence={0} head={1}' -f [int]$state.rollback_release_sequence,[string]$state.rollback_release_head)
+        $outReceipt = Out-NxbV1UpdateOperationReceipt -Operation 'Rollback' -Channel ([string]$state.rollback_channel) -Sequence ([int]$state.rollback_release_sequence) -ReleaseHead ([string]$state.rollback_release_head) -ManifestSha ([string]$state.rollback_package_manifest_sha256) -DescriptorSha 'none' -EnvelopeSha ([string]$state.rollback_envelope_sha256) -SignerFingerprint 'none' -RollbackUsed $true
+        Write-Information ('NXB v1 update Rollback passed: channel={0} sequence={1} head={2}' -f [string]$state.rollback_channel,[int]$state.rollback_release_sequence,[string]$state.rollback_release_head)
         return $outReceipt
     }
 }
