@@ -55,13 +55,13 @@ function Test-NxbV1InstallerRoot {
         $repo = [IO.Path]::GetFullPath($RepositoryRoot)
         $root = [IO.Path]::GetPathRoot($full)
         $trimChars = [char[]]@([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
-        if ($full.TrimEnd($trimChars) -ceq $root.TrimEnd($trimChars)) { return $false }
+        if ([string]::Equals($full.TrimEnd($trimChars),$root.TrimEnd($trimChars),[StringComparison]::OrdinalIgnoreCase)) { return $false }
 
         $windows = [IO.Path]::GetFullPath($env:WINDIR)
         $system = [IO.Path]::GetFullPath([Environment]::SystemDirectory)
         foreach ($forbidden in @($windows,$system,$repo)) {
             $prefix = $forbidden.TrimEnd($trimChars) + [IO.Path]::DirectorySeparatorChar
-            if ($full -ceq $forbidden -or $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { return $false }
+            if ([string]::Equals($full,$forbidden,[StringComparison]::OrdinalIgnoreCase) -or $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { return $false }
         }
 
         $parent = Split-Path -Parent $full
@@ -98,7 +98,7 @@ function Get-NxbV1PackageManifest {
         if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Package file is a reparse point: {0}' -f $file.FullName) }
         $full = [IO.Path]::GetFullPath($file.FullName)
         if (-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw ('Package file escaped root: {0}' -f $full) }
-        $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,'/')
+        $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,[char]'/')
         if (-not (Test-NxbV1InstallerRelativePath -Path $relative)) { throw ('Unsafe package relative path: {0}' -f $relative) }
         if ($rowMap.ContainsKey($relative)) { throw ('Duplicate package relative path: {0}' -f $relative) }
         $total += [int64]$file.Length
@@ -162,7 +162,7 @@ function Test-NxbV1PackageAgainstManifest {
             if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
             $full = [IO.Path]::GetFullPath($file.FullName)
             if (-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { return $false }
-            $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,'/')
+            $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,[char]'/')
             if ($actual.ContainsKey($relative)) { return $false }
             $actual[$relative] = [pscustomobject]@{ bytes=[int64]$file.Length; sha256=(Get-NxbV1InstallerSha256 -Path $full) }
         }
