@@ -8,7 +8,11 @@
       "include": [
         "scripts/Invoke-NxbV1ReleaseIntegrationCertification.ps1",
         "scripts/Test-NxbV1ReleaseIntegration.ps1",
-        "tests/V1ReleaseIntegration.Tests.ps1"
+        "tests/V1ReleaseIntegration.Tests.ps1",
+        "scripts/NxbV1ProductionSigning.Common.ps1",
+        "scripts/Invoke-NxbV1ReleaseManifestSigning.ps1",
+        "scripts/Invoke-NxbV1ProductionSigningCertification.ps1",
+        "tests/V1ProductionSigning.Tests.ps1"
       ],
       "regex": "(?im)\\bJoin-Path\\s+\\$[A-Za-z_][A-Za-z0-9_]*\\s+\\[(?:string|int|long|int64|bool)\\]\\$[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*"
     }

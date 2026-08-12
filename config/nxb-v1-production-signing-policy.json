@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-production-signing-v1",
+  "predecessor_release_integration_head": "9371399bab4fbb921ad94198aa148c597c7b6261",
+  "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
+  "target_version": "1.0.0",
+  "algorithm": "RSA-PKCS1-SHA256",
+  "minimum_rsa_bits": 3072,
+  "canonical_contract_id": "nxb-v1-release-signature-canonical-v1",
+  "canonical_artifact_order": "ordinal-path",
+  "certification": {
+    "signer_mode": "ephemeral-rsa",
+    "private_key_persisted": false,
+    "production_signer_claimed": false,
+    "minimum_rsa_bits": 3072
+  },
+  "production": {
+    "signer_mode": "windows-certificate-store",
+    "allowed_store_locations": ["CurrentUser", "LocalMachine"],
+    "allowed_store_names": ["My"],
+    "require_private_key": true,
+    "require_protected_private_key": true,
+    "allow_pfx_path": false,
+    "allow_pem_path": false,
+    "allow_raw_private_key_bytes": false,
+    "require_certificate_time_valid": true,
+    "require_exact_thumbprint": true,
+    "production_signer_claim_requires_production_mode": true
+  },
+  "release_manifest": {
+    "require_exact_release_head": true,
+    "require_exact_certified_implementation_head": true,
+    "require_package_manifest_sha256": true,
+    "require_release_notes_sha256": true,
+    "require_unique_artifact_paths": true,
+    "require_artifact_sha256": true,
+    "require_artifact_byte_count": true,
+    "maximum_artifacts": 256
+  },
+  "negative_controls": [
+    "tampered_release_head",
+    "tampered_package_manifest_sha256",
+    "tampered_artifact_sha256",
+    "tampered_signer_fingerprint",
+    "malformed_signature",
+    "weak_key_metadata",
+    "wrong_signer_key_id",
+    "duplicate_artifact_path"
+  ]
+}
