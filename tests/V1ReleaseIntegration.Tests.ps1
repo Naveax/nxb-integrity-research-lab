@@ -60,15 +60,18 @@ Describe 'NXB v1 release integration contract' {
         $prefixes | Should -Not -Contain 'config/'
     }
 
-    It 'rejects generated evidence artifacts and private-key material in release preparation' {
+    It 'rejects generated evidence artifacts and private-key marker classes in release preparation' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         @($policy.integration.forbidden_artifact_suffixes).Count | Should -Be 6
         @($policy.integration.forbidden_artifact_suffixes) | Should -Contain '.etl'
         @($policy.integration.forbidden_artifact_suffixes) | Should -Contain '.zip'
         @($policy.integration.forbidden_artifact_suffixes) | Should -Contain '.pfx'
-        @($policy.integration.forbidden_private_key_markers).Count | Should -Be 4
-        @($policy.integration.forbidden_private_key_markers) | Should -Contain '-----BEGIN PRIVATE KEY-----'
+        @($policy.integration.forbidden_private_key_marker_ids).Count | Should -Be 4
+        @($policy.integration.forbidden_private_key_marker_ids) | Should -Contain 'pkcs8'
+        @($policy.integration.forbidden_private_key_marker_ids) | Should -Contain 'rsa'
+        @($policy.integration.forbidden_private_key_marker_ids) | Should -Contain 'ec'
+        @($policy.integration.forbidden_private_key_marker_ids) | Should -Contain 'openssh'
         [bool]$policy.integration.allow_generated_evidence_in_tree | Should -BeFalse
     }
 
@@ -117,28 +120,32 @@ Describe 'NXB v1 release integration contract' {
     It 'requires both certified-head and live-main ancestry before release integration' {
         $context = Get-NxbV1ReleaseTestContext
         $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape("'merge-base','--is-ancestor',$certifiedHead,$releaseHead"))
-        $source | Should -Match ([regex]::Escape("'merge-base','--is-ancestor',$mainHead,$releaseHead"))
-        $source | Should -Match ([regex]::Escape("'merge-base','--is-ancestor',$certifiedMainAncestor,$certifiedHead"))
+        $source | Should -Match ([regex]::Escape('$certifiedAncestorRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$certifiedHead,$releaseHead)'))
+        $source | Should -Match ([regex]::Escape('$mainAncestorRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$mainHead,$releaseHead)'))
+        $source | Should -Match ([regex]::Escape('$certifiedMainRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$certifiedMainAncestor,$certifiedHead)'))
         $source | Should -Match ([regex]::Escape('main_ref_unavailable'))
     }
 
     It 'requires a clean tree and rejects modifications outside explicit successor paths' {
         $context = Get-NxbV1ReleaseTestContext
         $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape("'status','--porcelain=v1','--untracked-files=all'"))
-        $source | Should -Match ([regex]::Escape("'diff','--name-only','--diff-filter=ACMRTUXB'"))
+        $source | Should -Match ([regex]::Escape('$statusRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''status'',''--porcelain=v1'',''--untracked-files=all'')'))
+        $source | Should -Match ([regex]::Escape('$diffRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''diff'',''--name-only'',''--diff-filter=ACMRTUXB'',(''{0}...{1}'' -f $certifiedHead,$releaseHead))'))
         $source | Should -Match ([regex]::Escape('certified_runtime_modified:{0}'))
         $source | Should -Match ([regex]::Escape('Test-NxbV1AllowedSuccessorPath'))
+        $source | Should -Match ([regex]::Escape('$Path.Replace(''\'',''/'')'))
     }
 
-    It 'scans the tracked tree for private-key markers and successor changes for generated artifacts' {
+    It 'constructs private-key markers without scanner self-match and scans the tracked tree' {
         $context = Get-NxbV1ReleaseTestContext
         $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape("'grep','-I','-l','-F','--',$marker,'HEAD'"))
+        $source | Should -Match ([regex]::Escape('$privateKeyMarkerMap = @{'))
+        $source | Should -Match ([regex]::Escape('pkcs8 = (''-----BEGIN '' + ''PRIVATE KEY-----'')'))
+        $source | Should -Match ([regex]::Escape('$grepRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''grep'',''-I'',''-l'',''-F'',''--'',$marker,''HEAD'')'))
+        $source | Should -Match ([regex]::Escape('private_key_marker_id_unknown:{0}'))
         $source | Should -Match ([regex]::Escape('private_key_material:{0}'))
-        $source | Should -Match ([regex]::Escape('forbidden_release_artifact:{0}'))
         $source | Should -Match ([regex]::Escape('private_key_scan_failed'))
+        $source | Should -Not -Match ([regex]::Escape('-----BEGIN PRIVATE KEY-----'))
     }
 
     It 'preserves the certified candidate version instead of rewriting historical evidence' {
@@ -147,10 +154,10 @@ Describe 'NXB v1 release integration contract' {
         [string]$candidate.part10.release_version | Should -BeExactly '1.0.0-candidate'
         $source = Get-Content -LiteralPath $context.script -Raw
         $source | Should -Match ([regex]::Escape('certified_candidate_version_rewritten'))
-        $source | Should -Match ([regex]::Escape("[string]$candidatePolicy.part10.release_version -ceq '1.0.0-candidate'"))
+        $source | Should -Match ([regex]::Escape('$candidateVersionPreserved = ([string]$candidatePolicy.part10.release_version -ceq ''1.0.0-candidate'')'))
     }
 
-    It 'gives the independent Python validator ten requirements and six adversarial controls' {
+    It 'gives the independent Python validator ten requirements and six adversarial controls without release-signing code' {
         $context = Get-NxbV1ReleaseTestContext
         $source = Get-Content -LiteralPath $context.python -Raw
         $source | Should -Match ([regex]::Escape('requirement_count == 10'))
@@ -158,7 +165,8 @@ Describe 'NXB v1 release integration contract' {
         foreach ($token in @('tampered_certified_head','certified_runtime_change','generated_zip_artifact','certification_signer_reuse','private_key_material','version_drift')) {
             $source | Should -Match ([regex]::Escape($token))
         }
-        $source | Should -Match ([regex]::Escape('pow(')) -Because 'This assertion intentionally fails if RSA code is accidentally copied into the release-integration validator.'
+        $source | Should -Not -Match ([regex]::Escape('pow('))
+        $source | Should -Not -Match ([regex]::Escape('signature_b64'))
     }
 
     It 'documents that release preflight cannot merge tag push or create the production release' {
@@ -167,9 +175,9 @@ Describe 'NXB v1 release integration contract' {
         $docs | Should -Match ([regex]::Escape('This preflight does not merge, tag, push, create a GitHub Release, or mutate `main`.'))
         $docs | Should -Match ([regex]::Escape('The certification-only ephemeral RSA authorities are not production release signers.'))
         $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Not -Match ([regex]::Escape("@('push'"))
-        $source | Should -Not -Match ([regex]::Escape("@('tag'"))
-        $source | Should -Not -Match ([regex]::Escape("@('update-ref'"))
+        $source | Should -Not -Match ([regex]::Escape('@(''push'''))
+        $source | Should -Not -Match ([regex]::Escape('@(''tag'''))
+        $source | Should -Not -Match ([regex]::Escape('@(''update-ref'''))
     }
 
     It 'locks the v1 release integration contract at exactly sixteen tests' {
