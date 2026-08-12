@@ -21,7 +21,7 @@
     "production_extension_rules": {"const": 9},
     "release_known_error_rules": {"const": 1},
     "signing_known_error_rules": {"const": 2},
-    "installer_known_error_rules": {"const": 4},
+    "installer_known_error_rules": {"const": 5},
     "known_error_findings": {"const": 0},
     "analyzer_findings": {"const": 0},
     "host_preflight_passed": {"const": true},
