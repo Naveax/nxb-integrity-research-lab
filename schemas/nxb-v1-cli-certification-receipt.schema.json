@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nxb-v1-cli-certification-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","status","contract_id","head_sha","predecessor_update_head","ps7","ps51","independent_requirements","independent_negative_controls","cli_known_error_rules","release_known_error_rules","known_error_findings","analyzer_findings","legacy_commands_preserved","signed_update_delegation","stable_json_output","stable_exit_codes","explicit_mutation_confirmation","dry_run_supported","auto_apply","production_release_updated","review_entries"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"const": "passed"},
+    "contract_id": {"const": "nxb-v1-cli-certification-v1"},
+    "head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "predecessor_update_head": {"const": "27507531154099ab28a05cfe8e4e900d72f22e7b"},
+    "ps7": {"const": "24/24"},
+    "ps51": {"const": "24/24"},
+    "independent_requirements": {"const": 14},
+    "independent_negative_controls": {"const": 10},
+    "cli_known_error_rules": {"const": 4},
+    "release_known_error_rules": {"const": 1},
+    "known_error_findings": {"const": 0},
+    "analyzer_findings": {"const": 0},
+    "legacy_commands_preserved": {"const": true},
+    "signed_update_delegation": {"const": true},
+    "stable_json_output": {"const": true},
+    "stable_exit_codes": {"const": true},
+    "explicit_mutation_confirmation": {"const": true},
+    "dry_run_supported": {"const": true},
+    "auto_apply": {"const": false},
+    "production_release_updated": {"const": false},
+    "review_entries": {"const": 15}
+  }
+}
