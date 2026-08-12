@@ -106,6 +106,17 @@ Eight adversarial controls are mandatory:
 7. wrong signer key ID,
 8. duplicate artifact path.
 
+## Known-error inheritance
+
+The signing authority inherits the native-certified base known-error ledger and the release-layer ERR-036 contract.
+
+A separate signing-successor scanner carries two existing native classes without changing the certified release-integration rule count:
+
+- `NXB-ERR-007`: rejects the old `New-NxbV1CertificationSigner` and `New-NxbV1SignedReleaseEnvelope` helper names that triggered `PSUseShouldProcessForStateChangingFunctions`.
+- `NXB-ERR-014`: rejects hard-coded `ps7='18/18'` / `ps51='18/18'` receipt fields that would leave actual Pester result objects assigned but unused.
+
+The repaired helper surface uses `Get-NxbV1CertificationSigner` and `ConvertTo-NxbV1SignedReleaseEnvelope`. PS7 and Windows PowerShell 5.1 summary strings are computed from the real Pester result objects and carried into the certification receipt and result.
+
 ## Certification fixture
 
 The certification authority signs a bounded synthetic release fixture through the same operator-facing signing command used by production mode. The review ZIP includes the fixture package manifest, release notes, and both fixture artifacts so their signed hashes can be independently recalculated.
@@ -120,11 +131,30 @@ Negative controls           8/8
 Base known-error findings   0
 Production findings         0
 Release findings            0
+Signing findings            0
+Release known-error rules   1
+Signing known-error rules   2
 PSScriptAnalyzer            0
 RSA key size                >=3072
 Production signer claimed   false
 Actual production release   false
 Pipeline certified          true
+```
+
+The bounded review ZIP must contain exactly 11 entries:
+
+```text
+base-known-error-scan.json
+production-known-error-scan.json
+release-known-error-scan.json
+signing-known-error-scan.json
+v1-production-signing-envelope.json
+v1-production-signing-independent-validation.json
+v1-production-signing-certification-receipt.json
+fixture/package-manifest.json
+fixture/release-notes.txt
+fixture/packages/a-first.bin
+fixture/packages/z-last.bin
 ```
 
 ## Deliberate non-capabilities
