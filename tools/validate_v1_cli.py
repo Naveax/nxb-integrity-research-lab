@@ -106,25 +106,25 @@ def main():
     common = common_path.read_text(encoding="utf-8-sig")
 
     req = []
-    req.append(validate_policy(policy) and args.expected_head == args.expected_head.lower() and len(args.expected_head) == 40)
+    req.append(validate_policy(policy) and re.fullmatch(r"[0-9a-f]{40}", args.expected_head) is not None)
     req.append(policy.get("commands") == EXPECTED_COMMANDS and len(set(policy.get("commands", []))) == 13)
     req.append(policy.get("legacy_commands") == EXPECTED_COMMANDS[:5] and policy.get("mutation_commands") == ["stage-update","update-stage","update-apply","update-rollback"])
     req.append(policy.get("exit_codes") == EXPECTED_EXIT_CODES)
     req.append(output_schema.get("additionalProperties") is False and output_schema.get("properties",{}).get("contract_id",{}).get("const") == "nxb-v1-cli-output-v1")
     req.append(config_schema.get("additionalProperties") is False and config_schema.get("properties",{}).get("contract_id",{}).get("const") == "nxb-v1-cli-config-v1")
     req.append(validate_config(example))
-    req.append(all(repr(c) in cli or ("'" + c + "'") in cli for c in EXPECTED_COMMANDS[:5]))
+    req.append(all(("'" + c + "'") in cli for c in EXPECTED_COMMANDS[:5]))
     req.append(all(("'" + c + "'") in cli for c in EXPECTED_COMMANDS[5:]))
     req.append("[Array]::Sort($paths,[StringComparer]::Ordinal)" in cli and re.search(r"Sort-Object\b[^\r\n]*(?:path|relative|entry|file)", cli, re.I) is None)
     req.append(policy.get("delegation",{}).get("signed_update") == "scripts/Invoke-NxbV1Updater.ps1" and "Invoke-NxbV1CliSignedUpdate" in common)
     req.append(policy.get("delegation",{}).get("doctor") == "scripts/Test-NxbV1InstallerHost.ps1" and policy.get("delegation",{}).get("evidence_verify") == "scripts/Test-EvidenceBundle.ps1")
     req.append("$Host.SetShouldExit" in cli and "ConvertTo-Json -Depth 32 -Compress" in cli and "[Console]::Error.WriteLine" in cli)
-    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun."]) and len(errors.get("rules",[])) == 4)
+    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun."]) and len(errors.get("rules",[])) == 5)
 
     negatives = []
     p = copy.deepcopy(policy); p["predecessor_update_head"] = "0" * 40; negatives.append(not validate_policy(p))
     p = copy.deepcopy(policy); p["commands"] = p["commands"][:-1]; negatives.append(p.get("commands") != EXPECTED_COMMANDS)
-    p = copy.deepcopy(policy); p["commands"].append("status"); negatives.append(len(set(p["commands"])) != 13)
+    p = copy.deepcopy(policy); p["commands"].append("status"); negatives.append(len(p["commands"]) != len(set(p["commands"])))
     p = copy.deepcopy(policy); p["safety"]["auto_apply"] = True; negatives.append(p["safety"]["auto_apply"] is True and policy["safety"]["auto_apply"] is False)
     p = copy.deepcopy(policy); p["exit_codes"]["trust_integrity"] = 7; negatives.append(p["exit_codes"] != EXPECTED_EXIT_CODES)
     s = copy.deepcopy(output_schema); s["additionalProperties"] = True; negatives.append(s["additionalProperties"] is not False)
@@ -156,7 +156,7 @@ def main():
             and receipt.get("predecessor_update_head") == EXPECTED_HEAD
             and receipt.get("ps7") == "24/24"
             and receipt.get("ps51") == "24/24"
-            and receipt.get("cli_known_error_rules") == 4
+            and receipt.get("cli_known_error_rules") == 5
             and receipt.get("known_error_findings") == 0
             and receipt.get("analyzer_findings") == 0
         )
