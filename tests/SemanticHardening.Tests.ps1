@@ -143,7 +143,8 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('toolchain_binding=''xperf_sibling_wpr_v1'''))
         $source | Should -Match ([regex]::Escape('wpr_stop_recovery_used=$wprStopRecoveryUsed'))
         $source | Should -Not -Match '(?im)^\s*\$wpr\s*=\s*\(Get-Command\s+wpr\.exe\b'
-        $source | Should -Not -Match "(?im)@\('-start',\$profileReference,'-filemode'\)"
+        $legacyStartPattern = '(?im)@\(''-start'',\$profileReference,''-filemode''\)'
+        $source | Should -Not -Match $legacyStartPattern
     }
 
     It 'requires independent validators to own all final claim and deep evidence gates' {
