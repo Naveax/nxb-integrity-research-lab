@@ -155,7 +155,7 @@ if ($Action -ceq 'Apply') {
     $candidateRoot = Join-Path -Path $installParent -ChildPath ('.nxb-update-candidate-' + [Guid]::NewGuid().ToString('N'))
     $rollbackRoot = Join-Path -Path $installParent -ChildPath ('.nxb-update-rollback-' + [Guid]::NewGuid().ToString('N'))
     $previousTreeSha = Get-NxbV1UpdateTreeDigest -Root $installFull
-    $previousSequence = [int]$currentInstallState.source_head.Length * 0
+    $previousSequence = 0
     if ($null -ne $currentUpdateState) { $previousSequence = [int]$currentUpdateState.current_release_sequence }
     $previousHead = [string]$currentInstallState.source_head
     $previousManifestSha = [string]$currentInstallState.package_manifest_sha256
