@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-release-signature-envelope.schema.json",
+  "title": "NXB v1 Release Signature Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "canonical_contract_id",
+    "release_version",
+    "release_head",
+    "certified_implementation_head",
+    "package_manifest_sha256",
+    "release_notes_sha256",
+    "artifacts",
+    "signer_mode",
+    "signer_key_id",
+    "signing_algorithm",
+    "key_size_bits",
+    "public_key",
+    "created_utc",
+    "canonical_sha256",
+    "signature_b64",
+    "private_key_persisted",
+    "production_signer_claimed"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"const": "signed"},
+    "canonical_contract_id": {"const": "nxb-v1-release-signature-canonical-v1"},
+    "release_version": {"const": "1.0.0"},
+    "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "certified_implementation_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "release_notes_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "signer_mode": {"enum": ["certification-ephemeral", "production-windows-certificate-store"]},
+    "signer_key_id": {"type": "string", "minLength": 1},
+    "signing_algorithm": {"const": "RSA-PKCS1-SHA256"},
+    "key_size_bits": {"type": "integer", "minimum": 3072},
+    "public_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modulus_b64", "exponent_b64", "fingerprint"],
+      "properties": {
+        "modulus_b64": {"type": "string", "minLength": 1},
+        "exponent_b64": {"type": "string", "minLength": 1},
+        "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "created_utc": {"type": "string", "minLength": 1},
+    "canonical_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature_b64": {"type": "string", "minLength": 1},
+    "private_key_persisted": {"type": "boolean"},
+    "production_signer_claimed": {"type": "boolean"}
+  }
+}
