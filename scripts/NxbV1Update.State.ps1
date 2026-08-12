@@ -19,7 +19,27 @@ function Write-NxbV1UpdateJson {
     $full = [IO.Path]::GetFullPath($Path)
     $parent = Split-Path -Parent $full
     if ([string]::IsNullOrWhiteSpace($parent) -or -not (Test-Path -LiteralPath $parent -PathType Container)) { throw 'Update JSON parent must exist.' }
-    [IO.File]::WriteAllText($full,(($Value | ConvertTo-Json -Depth 12)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+    $payload = (($Value | ConvertTo-Json -Depth 12)+[Environment]::NewLine)
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($payload)
+    $tempPath = Join-Path -Path $parent -ChildPath ('.nxb-json-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $stream = $null
+    try {
+        $stream = [IO.FileStream]::new($tempPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None,4096,[IO.FileOptions]::WriteThrough)
+        $stream.Write($bytes,0,$bytes.Length)
+        $stream.Flush($true)
+        $stream.Dispose()
+        $stream = $null
+        if (Test-Path -LiteralPath $full -PathType Leaf) {
+            [IO.File]::Replace($tempPath,$full,$null)
+        }
+        else {
+            [IO.File]::Move($tempPath,$full)
+        }
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        if (Test-Path -LiteralPath $tempPath) { Remove-Item -LiteralPath $tempPath -Force }
+    }
 }
 
 function Get-NxbV1UpdateStageStateObject {
