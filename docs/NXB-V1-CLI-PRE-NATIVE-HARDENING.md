@@ -19,8 +19,17 @@ Repair:
 
 - retain ERR-004 scanning over active CLI implementation/certification PowerShell;
 - remove the CLI test file from the ERR-004 machine-signature include list;
-- keep the Pester source assertion that rejects culture-dependent path ordering in `scripts/nxb.ps1`;
-- CLI successor rule count remains four.
+- keep the Pester source assertion that rejects culture-dependent path ordering in `scripts/nxb.ps1`.
+
+## ERR-006 — automatic `$input` assignment caught pre-native
+
+The first CLI review-ZIP helper used `$input` for its source stream. `$input` is a PowerShell automatic pipeline variable and must not be repurposed as an ordinary local stream variable.
+
+Repair:
+
+- rename the stream to `$inputStream` and the entry stream to `$outputStream`;
+- add a CLI-successor ERR-006 machine signature rejecting `^\s*\$input\s*=` across active CLI PowerShell authority files;
+- CLI successor rule count advances from four to five without changing Pester cardinality.
 
 ## ERR-014 — unused authority declarations identified before native publication
 
@@ -29,9 +38,9 @@ Static review identified declarations that would otherwise be candidates for PSS
 - the top-level CLI `NonInteractive` switch must affect explicit CLI behavior rather than remain decorative;
 - PS7/PS5.1 Pester summaries and native config-validation result objects in the certification authority must be consumed by closure assertions rather than assigned and ignored.
 
-Repair contract:
+Repair:
 
-- consume `NonInteractive` in the CLI process behavior/output contract;
+- `NonInteractive` is accepted only with explicit CLI-process semantics and changes the success-mode contract;
 - validate both Pester summaries as exactly `24/24`;
 - validate both PS7 and PS5.1 config command results before certification continues;
 - do not suppress analyzer rules.
@@ -40,11 +49,28 @@ Repair contract:
 
 The initial CLI Pester contract searched for `$parameters['Confirm']`, while the implementation expressed the same updater delegation with `Confirm=$false` in the splatted hashtable. The test must bind to the actual stable no-prompt behavior instead of an incidental syntax form.
 
-Repair contract:
+Repair:
 
-- assert explicit `Confirm=$false` delegation or an equivalent stable semantic token;
+- assert explicit `Confirm=$false` delegation;
 - keep exact Pester cardinality at 24;
 - do not weaken the explicit `ConfirmMutation`/`DryRun` operator boundary.
+
+## Independent negative-control repair
+
+The first Python duplicate-command negative appended an existing command but compared the distinct-command count to the expected distinct cardinality, causing the adversarial check itself to evaluate false. The repair tests `len(commands) != len(set(commands))`, preserving the intended ten-negative closure.
+
+## Current pre-native contract
+
+```text
+commands                    13
+legacy commands             5
+mutation commands           4
+PS7 / PS5.1 tests           24 / 24
+independent                 14 requirements + 10 negatives
+CLI successor rules         5 (ERR-004/006/007/018/037)
+release ERR-036             inherited single-rule authority
+review closure              exactly 20 entries
+```
 
 ## Native boundary
 
