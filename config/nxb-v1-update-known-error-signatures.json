@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-update-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-004",
+      "description": "Update tree and package ordering must remain ordinal and culture independent.",
+      "include": ["scripts/NxbV1Update.Common.ps1","scripts/Invoke-NxbV1Updater.ps1","scripts/Invoke-NxbV1UpdateCertification.ps1"],
+      "regex": "(?im)Sort-Object\\b[^\\r\\n]*(?:path|relative|entry|file)"
+    },
+    {
+      "id": "NXB-ERR-007",
+      "description": "Update helpers must not use state-changing New-* verbs without ShouldProcess.",
+      "include": ["scripts/NxbV1Update.Common.ps1","scripts/NxbV1Update.State.ps1","scripts/Invoke-NxbV1Updater.ps1","scripts/Invoke-NxbV1UpdateCertification.ps1"],
+      "regex": "(?im)^\\s*function\\s+New-NxbV1Update"
+    },
+    {
+      "id": "NXB-ERR-018",
+      "description": "Avoid parser-risk inline if expressions in update evidence objects for Windows PowerShell 5.1.",
+      "include": ["scripts/NxbV1Update.Common.ps1","scripts/NxbV1Update.State.ps1","scripts/Invoke-NxbV1Updater.ps1","scripts/Invoke-NxbV1UpdateCertification.ps1"],
+      "regex": "(?im)=\\s*\\(if\\s*\\("
+    },
+    {
+      "id": "NXB-ERR-037",
+      "description": "Never assign readonly PowerShell platform automatic variables in update authority source.",
+      "include": ["scripts/NxbV1Update.Common.ps1","scripts/NxbV1Update.State.ps1","scripts/Invoke-NxbV1Updater.ps1","scripts/Invoke-NxbV1UpdateCertification.ps1","tests/V1Update.Tests.ps1"],
+      "regex": "(?im)^\\s*\\$(?:IsWindows|IsLinux|IsMacOS|IsCoreCLR)\\s*="
+    }
+  ]
+}
