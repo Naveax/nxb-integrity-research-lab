@@ -1,7 +1,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$updateRepositoryRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path -Path $PSScriptRoot -ChildPath 'NxbV1ProductionSigning.Common.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'NxbV1Installer.Common.ps1')
 . (Join-Path -Path $PSScriptRoot -ChildPath 'NxbV1Installer.State.ps1')
