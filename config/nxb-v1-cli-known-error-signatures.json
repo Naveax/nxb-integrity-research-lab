@@ -9,6 +9,12 @@
       "regex": "(?im)Sort-Object\\b[^\\r\\n]*(?:path|relative|entry|file)"
     },
     {
+      "id": "NXB-ERR-006",
+      "description": "CLI authority must not assign PowerShell automatic pipeline variable $input.",
+      "include": ["scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1","scripts/Invoke-NxbV1CliKnownErrorScan.ps1","scripts/nxb.ps1"],
+      "regex": "(?im)^\\s*\\$input\\s*="
+    },
+    {
       "id": "NXB-ERR-007",
       "description": "CLI helpers must not use state-changing New-* verbs without ShouldProcess.",
       "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1"],
