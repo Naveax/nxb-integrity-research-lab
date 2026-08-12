@@ -48,7 +48,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source = Get-Content -LiteralPath $context.pnp -Raw
         $fixtureSource = Get-Content -LiteralPath $context.pnp_fixture -Raw
         foreach ($token in @(
-            'SwDeviceCreate','SwDeviceClose','HTREE\\ROOT\\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
+            'SwDeviceCreate','SwDeviceClose','HTREE\ROOT\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
             'DIF_REGISTERDEVICE','DiUninstallDevice','CleanupRebootRequired','CM_Locate_DevNodeW','0x8007007E','setupapi_root_fallback',
             'EventSource','EventListener','NXB-Semantic-PnP-Fixture','EmitCreateIfPresent','EmitRemoveIfAbsent','FixtureCreateConfirmed','FixtureRemoveConfirmed'
         )) { $fixtureSource | Should -Match ([regex]::Escape($token)) }
@@ -113,7 +113,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Not -Match '(?im)^\s*Start-VM\b'
     }
 
-    It 'uses sequential bounded WPR collectors scenario continuity and measured dictionary-safe trace counters' {
+    It 'uses sequential bounded matched-WPT WPR collectors scenario continuity and measured dictionary-safe trace counters' {
         $context = Get-NxbSemanticHardeningTestContext
         [xml]$xml = Get-Content -LiteralPath $context.profile -Raw
         $fileCollectors = @($xml.WindowsPerformanceRecorder.Profiles.SystemCollector,$xml.WindowsPerformanceRecorder.Profiles.EventCollector)
@@ -134,6 +134,16 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source | Should -Match ([regex]::Escape('$buffersLostStatus -cne ''measured'''))
         $source | Should -Match ([regex]::Escape('$buffersWrittenStatus -cne ''measured'''))
         $source | Should -Match ([regex]::Escape('$eventsLost -ne 0 -or $buffersLost -ne 0 -or $buffersWritten -eq 0'))
+        $source | Should -Match ([regex]::Escape('$pairedWpr = Join-Path $xperfDirectory ''wpr.exe'''))
+        $source | Should -Match ([regex]::Escape('Matched WPT toolchain unavailable: xperf sibling wpr.exe missing beside {0}'))
+        $source | Should -Match ([regex]::Escape('''-recordtempto'',$wprTempRoot,''-instancename'',$wprInstanceName'))
+        $source | Should -Match ([regex]::Escape('$stop.exit_code -eq -2147417850'))
+        $source | Should -Match ([regex]::Escape('$statusAfterStop.exit_code -ne -984076288'))
+        $source | Should -Match ([regex]::Escape('$mergeArguments.Add(''-merge'')'))
+        $source | Should -Match ([regex]::Escape('toolchain_binding=''xperf_sibling_wpr_v1'''))
+        $source | Should -Match ([regex]::Escape('wpr_stop_recovery_used=$wprStopRecoveryUsed'))
+        $source | Should -Not -Match '(?im)^\s*\$wpr\s*=\s*\(Get-Command\s+wpr\.exe\b'
+        $source | Should -Not -Match "(?im)@\('-start',\$profileReference,'-filemode'\)"
     }
 
     It 'requires independent validators to own all final claim and deep evidence gates' {
@@ -194,5 +204,6 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         }
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
         $ledger | Should -Match ([regex]::Escape('NXB-ERR-032'))
+        $ledger | Should -Match ([regex]::Escape('NXB-ERR-034'))
     }
 }
