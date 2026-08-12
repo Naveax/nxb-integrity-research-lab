@@ -176,11 +176,11 @@ Describe 'NXB v1 production CLI contract' {
         foreach ($token in @('$Json','$CliProcess','$NonInteractive','[Console]::Out.WriteLine','[Console]::Error.WriteLine','$Host.SetShouldExit','ConvertTo-Json -Depth 32 -Compress')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'carries four CLI successor rules without duplicating release ERR-036' {
+    It 'carries five CLI successor rules without duplicating release ERR-036' {
         $d=Get-Content -LiteralPath (Get-NxbV1CliTestContext).errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 4
+        @($d.rules).Count | Should -Be 5
         $ids=@($d.rules | ForEach-Object { [string]$_.id })
-        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037')) { $ids | Should -Contain $id }
+        foreach ($id in @('NXB-ERR-004','NXB-ERR-006','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037')) { $ids | Should -Contain $id }
         $ids | Should -Not -Contain 'NXB-ERR-036'
     }
 
