@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-installer-v1",
+  "predecessor_production_signing_head": "91be58af59d0703de0159fea9d11935805e16022",
+  "release_integration_head": "9371399bab4fbb921ad94198aa148c597c7b6261",
+  "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
+  "target_version": "1.0.0",
+  "package_manifest_contract": "nxb-v1-package-manifest-v1",
+  "install_state_contract": "nxb-v1-install-state-v1",
+  "receipt_contract": "nxb-v1-installer-operation-receipt-v1",
+  "supported_actions": ["Stage", "Install", "Repair", "Uninstall"],
+  "supported_modes": ["Portable", "PerUser", "PerMachine"],
+  "maximum_files": 2048,
+  "maximum_package_bytes": 1073741824,
+  "require_windows": true,
+  "require_powershell_core": true,
+  "minimum_powershell_major": 7,
+  "minimum_python_major": 3,
+  "minimum_python_minor": 9,
+  "install_root_policy": {
+    "reject_filesystem_root": true,
+    "reject_windows_directory": true,
+    "reject_system_directory": true,
+    "reject_repository_root": true,
+    "reject_reparse_points": true,
+    "require_parent_exists": true,
+    "allow_existing_root_for": ["Repair", "Uninstall"],
+    "require_absent_root_for": ["Stage", "Install"]
+  },
+  "data_policy": {
+    "data_root_is_separate": true,
+    "uninstall_removes_data_by_default": false,
+    "uninstall_removes_evidence_by_default": false
+  },
+  "operation_policy": {
+    "install_atomic_stage_then_move": true,
+    "repair_atomic_replace_with_rollback": true,
+    "post_copy_hash_verification": true,
+    "managed_state_required_for_repair": true,
+    "managed_state_required_for_uninstall": true,
+    "package_manifest_hash_bound": true,
+    "receipt_written_after_success": true
+  },
+  "certification": {
+    "temp_root_only": true,
+    "machine_install_performed": false,
+    "production_release_installed": false,
+    "required_lifecycle": ["Stage", "Install", "Corrupt", "Repair", "Uninstall"]
+  }
+}
