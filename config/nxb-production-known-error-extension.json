@@ -32,7 +32,7 @@
     },
     {
       "id": "NXB-ERR-014",
-      "regex": "(?im)^\\s*\\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\\s*="
+      "regex": "(?im)^\\s*\\$(?:expectedHead|expectedPolicy|expectedMachine)\\s*="
     },
     {
       "id": "NXB-ERR-015",
