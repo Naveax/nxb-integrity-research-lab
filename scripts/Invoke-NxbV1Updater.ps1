@@ -35,6 +35,7 @@ if ([string]::Equals($installFull,$updateFull,[StringComparison]::OrdinalIgnoreC
 $receiptParent = Split-Path -Parent $receiptFull
 if ([string]::IsNullOrWhiteSpace($receiptParent) -or -not (Test-Path -LiteralPath $receiptParent -PathType Container)) { throw 'Update receipt parent must exist.' }
 if ($receiptFull.StartsWith($installPrefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Update receipt must be outside InstallRoot.' }
+if (Test-Path -LiteralPath $receiptFull) { throw 'Update receipt output already exists.' }
 
 $currentInstallState = Get-NxbV1InstallerStateObject -InstallRoot $installFull
 $currentUpdateState = Get-NxbV1UpdateStateObject -UpdateRoot $updateFull
@@ -42,7 +43,7 @@ $currentSequence = 0
 $currentEnvelopeSha = 'none'
 $currentChannel = 'stable'
 if ($null -ne $currentUpdateState) {
-    $currentSequence = [int]$currentUpdateState.current_release_sequence
+    $currentSequence = [int]$currentUpdateState.highest_seen_release_sequence
     $currentEnvelopeSha = [string]$currentUpdateState.current_envelope_sha256
     $currentChannel = [string]$currentUpdateState.current_channel
 }
@@ -154,7 +155,8 @@ if ($Action -ceq 'Apply') {
     $candidateRoot = Join-Path -Path $installParent -ChildPath ('.nxb-update-candidate-' + [Guid]::NewGuid().ToString('N'))
     $rollbackRoot = Join-Path -Path $installParent -ChildPath ('.nxb-update-rollback-' + [Guid]::NewGuid().ToString('N'))
     $previousTreeSha = Get-NxbV1UpdateTreeDigest -Root $installFull
-    $previousSequence = $currentSequence
+    $previousSequence = [int]$currentInstallState.source_head.Length * 0
+    if ($null -ne $currentUpdateState) { $previousSequence = [int]$currentUpdateState.current_release_sequence }
     $previousHead = [string]$currentInstallState.source_head
     $previousManifestSha = [string]$currentInstallState.package_manifest_sha256
     $previousEnvelopeSha = $currentEnvelopeSha
@@ -168,7 +170,7 @@ if ($Action -ceq 'Apply') {
         try {
             $swapResult = Invoke-NxbV1UpdateAtomicSwap -CurrentRoot $installFull -CandidateRoot $candidateRoot -RollbackRoot $rollbackRoot -PostPublishValidation $validation
             $newState = [pscustomobject][ordered]@{
-                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$descriptor.channel; current_release_sequence=[int]$descriptor.release_sequence;
+                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$descriptor.channel; current_release_sequence=[int]$descriptor.release_sequence; highest_seen_release_sequence=[int]$descriptor.release_sequence;
                 current_release_head=[string]$descriptor.release_head; current_package_manifest_sha256=$manifestSha; current_envelope_sha256=$envelopeSha;
                 rollback_available=$true; rollback_channel=$previousChannel; rollback_release_sequence=$previousSequence; rollback_release_head=$previousHead;
                 rollback_package_manifest_sha256=$previousManifestSha; rollback_envelope_sha256=$previousEnvelopeSha; rollback_tree_sha256=$previousTreeSha;
@@ -207,7 +209,7 @@ if ($Action -ceq 'Rollback') {
             $restored = $true
             if ((Get-NxbV1UpdateTreeDigest -Root $installFull) -cne [string]$state.rollback_tree_sha256) { throw 'Restored rollback tree hash mismatch.' }
             $rolledState = [pscustomobject][ordered]@{
-                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$state.rollback_channel; current_release_sequence=[int]$state.rollback_release_sequence;
+                schema_version=1; contract_id='nxb-v1-update-state-v1'; current_channel=[string]$state.rollback_channel; current_release_sequence=[int]$state.rollback_release_sequence; highest_seen_release_sequence=[int]$state.highest_seen_release_sequence;
                 current_release_head=[string]$state.rollback_release_head; current_package_manifest_sha256=[string]$state.rollback_package_manifest_sha256;
                 current_envelope_sha256=[string]$state.rollback_envelope_sha256; rollback_available=$false; rollback_channel=[string]$state.rollback_channel;
                 rollback_release_sequence=[int]$state.rollback_release_sequence; rollback_release_head=[string]$state.rollback_release_head;
