@@ -168,3 +168,31 @@ No new error ID is allocated. Both are the same update-successor application of 
 - Keep the dual-runtime Pester contract at exactly `24` tests, independent Python at `16/16 + 12/12`, and the review ZIP at exactly `28` entries.
 
 The V3 run stopped before the repo-owned dual-runtime Pester contract, Stage, Apply, failure rollback, manual rollback, Python replay, or review packaging. None of those later update layers are certified by this run.
+
+## NXB-ERR-040 — valid empty scalar rejected by mandatory string binder
+
+**Class:** observed-native / PowerShell mandatory scalar binding at signing-fixture construction.
+
+**Native discovery:** Update Portable V4 at exact head `89ed9c1ee46d7f6e84154e917733f09a0c46ca74` on PowerShell 7.6.4.
+
+The run passed exact-head clone, all external parser/analyzer/policy/error-ledger/source-contract gates, the repo-owned parser/analyzer/schema/known-error gate, and the dual-runtime `24/24` update contract. It entered the real fixture stage, exported both two-file manifests, installed the bounded PerUser initial fixture, then failed while building the signing fixture with:
+
+```text
+Cannot bind argument to parameter 'Text' because it is an empty string.
+```
+
+The failing call intentionally attempted to hash empty release-notes content through `Get-NxbV1SigningSha256Text -Text ''`. The inherited production-signing helper declares `Text` as a mandatory string and therefore PowerShell rejects the empty scalar before the helper body executes.
+
+### Repair contract
+
+- Do not mutate the native-certified production-signing predecessor helper merely to satisfy the update fixture.
+- Materialize the intentional empty release notes as a real zero-byte `release-notes.md` fixture file.
+- Compute `release_notes_sha256` from those actual file bytes through the update file-hash authority.
+- Carry an update-successor machine signature that rejects the old empty-string call shape.
+- Keep the update Pester contract exactly `24` tests while binding the real zero-byte release-notes fixture/hash behavior into an existing signing-fixture test.
+- Advance update successor machine-rule count from `6` to `7` and bind the certification receipt schema to that exact count.
+- Preserve independent Python `16/16 + 12/12`, 28-entry review closure, and all Stage/Apply/Rollback safety boundaries.
+
+### Native scope of the failed run
+
+V4 stopped during fixture construction before signed trust-anchor validation, Stage, Apply, forced failure rollback, manual rollback, independent Python replay, or review packaging. None of those later update layers are certified by the V4 run.
