@@ -42,7 +42,7 @@ def main() -> int:
         failures.append("part7_active_validation_boundary")
     if part7.get("permit_required_for_noncertification") is not True or part7.get("kill_switch_required_for_noncertification") is not True:
         failures.append("part7_scope_boundary")
-    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True:
+    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True or part7.get("permit_canonical_hash_binding") is not True:
         failures.append("part7_permit_binding")
     if part7.get("browser_api_session_boundary") is not True or part7.get("credential_reference_only") is not True:
         failures.append("part7_browser_api_boundary")
@@ -64,8 +64,12 @@ def main() -> int:
 
     if part9.get("staged_update_only") is not True or part9.get("auto_apply") is not False:
         failures.append("part9_update_boundary")
+    if part9.get("staged_update_executed") is not True or int(part9.get("staged_file_count", -1)) != int(part9.get("package_file_count", -2)):
+        failures.append("part9_staging")
     if part9.get("tamper_rejection") is not True or part9.get("unified_cli") is not True or part9.get("deterministic_package_manifest") is not True:
         failures.append("part9_supply_chain")
+    if part9.get("autonomous_certification_workflow") is not True:
+        failures.append("part9_autonomous_workflow")
 
     result = {
         "schema_version": 1,
