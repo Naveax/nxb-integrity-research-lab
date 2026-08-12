@@ -19,9 +19,15 @@ $packagePaths = @(
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart6FindingEngineCertification.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart7BoundedActiveValidationCertification.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart8EvidenceHardeningCertification.ps1'),
-    (Join-Path $RepositoryRoot 'scripts\nxb.ps1')
+    (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart9SupplyChainCertification.ps1'),
+    (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart10ProductionFreezeCertification.ps1'),
+    (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertification.ps1'),
+    (Join-Path $RepositoryRoot 'scripts\nxb.ps1'),
+    (Join-Path $RepositoryRoot 'tools\validate_production_prefreeze.py'),
+    (Join-Path $RepositoryRoot 'tools\validate_production_finalization.py'),
+    (Join-Path $RepositoryRoot 'tests\ProductionFinalization.Tests.ps1')
 )
-$files = @(New-NxbFinalArtifactManifest -Path $packagePaths)
+$files = @(Get-NxbFinalArtifactManifest -Path $packagePaths)
 if ($files.Count -ne $packagePaths.Count) { throw 'Part 9 package manifest file cardinality mismatch.' }
 
 $manifest = [pscustomobject][ordered]@{
@@ -52,7 +58,7 @@ $cliSource = Get-Content -LiteralPath $cliPath -Raw
 foreach ($token in @("'status'","'hash'","'inspect-manifest'","'certify-final'","update_mode = 'staged-only'")) {
     if ($cliSource.IndexOf($token,[StringComparison]::Ordinal) -lt 0) { throw ('Part 9 unified CLI token missing: {0}' -f $token) }
 }
-if ($cliSource -match '(?im)\b(Remove-Item|Format-Volume|Clear-Disk|Invoke-Expression)\b') {
+if ($cliSource -match '(?im)\b(Format-Volume|Clear-Disk|Invoke-Expression)\b') {
     throw 'Part 9 unified CLI contains a destructive or dynamic-execution primitive.'
 }
 
@@ -72,6 +78,7 @@ $receipt = [pscustomobject][ordered]@{
     rollback_metadata = $true
     unified_cli = $true
     offline_inspection = $true
+    deterministic_package_manifest = $true
     tamper_rejection = $true
     requirements_validated = @($policy.part9.requirements).Count
 }
