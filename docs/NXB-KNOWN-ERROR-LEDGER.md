@@ -53,6 +53,7 @@ Statuses: `observed-native`, `caught-preflight`, and `workflow`.
 | NXB-ERR-031 | observed-native | Hyper-V VMFirmware Secure Boot readback property-name drift | Treat `Set-VMFirmware -EnableSecureBoot` as the write contract but never assume the returned `VMFirmware` object exposes `.EnableSecureBoot`. Read through a bounded adapter that accepts only a present `SecureBoot` or `EnableSecureBoot` property and normalizes only `On`/`Off` or boolean values. Scanner rejects direct `.EnableSecureBoot` readback from `Get-VMFirmware`. |
 | NXB-ERR-032 | observed-native | Nested ordered-dictionary evidence traversal falls through to sentinel defaults | Generic dotted-path readers must traverse `IDictionary` keys before falling back to `PSObject.Properties`. For trace counters, require `status=measured` before consuming numeric values; never reinterpret a missing nested key as `UInt64::MaxValue` loss evidence. Scanner rejects the old PSObject-only walker in the active root/trace authority. |
 | NXB-ERR-033 | observed-native | Valid empty transport transcript rejected by mandatory collection binding | A mutable transcript intentionally starts empty before the first authenticated request. Mark that collection with `AllowEmptyCollection()` while keeping non-empty spool-record contracts strict. Scanner rejects the old mandatory `Generic.List[object] Transcript` signature. |
+| NXB-ERR-034 | observed-native | WPR stop/merge RPC mode failure under split or unbound WPT lifecycle | Root/trace must bind WPR to the sibling of the selected Xperf executable, require explicit `-instancename` ownership for start/stop/cancel, and place file-mode temporary ETLs under an owned `-recordtempto` root. If WPR stop returns `RPC_E_CHANGED_MODE (0x80010106)`, recovery is allowed only after the owned instance is proven inactive and only by merging the owned raw ETLs with the matched Xperf toolchain; all native loss, continuity, and replay gates remain mandatory. Scanner rejects independent `Get-Command wpr.exe` selection and the old unbound start shape. |
 
 ## Current IRL-005 application
 
@@ -60,7 +61,7 @@ IRL-005 must run the exact-tree known-error scanner before its V4/V5 authority c
 
 ## IRL-006 inheritance
 
-NXB-IRL-006 inherits `NXB-ERR-001` through `NXB-ERR-033`. Active Part 1/2/3/4/5 authorities must carry the applicable machine signatures forward. `NXB-ERR-023` remains human-ledger-only because it occurs while generating an external portable. The ledger contract remains exactly 12 tests per PowerShell runtime.
+NXB-IRL-006 inherits `NXB-ERR-001` through `NXB-ERR-034`. Active Part 1/2/3/4/5/6/7/8/9/10 authorities must carry the applicable machine signatures forward. `NXB-ERR-023` remains human-ledger-only because it occurs while generating an external portable. The ledger contract remains exactly 12 tests per PowerShell runtime.
 
 Native history relevant to the current stack:
 
@@ -73,5 +74,6 @@ Native history relevant to the current stack:
 - Combined Part 2+3+4+5 Portable V2 proved ERR-030, the 19-rule fast gate, PnP/EventSource semantics and PCIe BDF semantics, then exposed ERR-031 when the host `VMFirmware` readback object did not expose the hard-coded `.EnableSecureBoot` property.
 - Combined Part 2+3+4+5 Portable V3 proved ERR-031, the 20-rule fast gate, PnP, PCIe and power/firmware semantics, then exposed ERR-032 when root/trace dotted-path traversal treated nested ordered dictionaries as PSObject-only objects and substituted sentinel fallback values for valid trace-statistic keys.
 - Combined Part 2+3+4+5 Portable V4 proved ERR-032, the 21-rule fast gate, complete Part 2 semantic hardening `8/8`, deep root/trace replay, then exposed ERR-033 when the deliberately empty initial Part 3 transport transcript was rejected by mandatory collection binding before the first loopback request could be recorded.
+- Part 6-10 Production Final Portable V1 proved the exact Part 6-10 candidate, base `22`-rule scanner, production extension `9+1`, Part 1 and inherited IRL-005 V5, then exposed ERR-034 on Windows 10.0.19045 when the root/trace `wpr -stop` returned `0x80010106 / RPC_E_CHANGED_MODE`; the subsequent owned cancellation returned `0xc5583000`, consistent with the WPR session already being stopped without a final ETL.
 
 When a genuinely new recurring class is discovered, append it here before issuing the next portable authority.
