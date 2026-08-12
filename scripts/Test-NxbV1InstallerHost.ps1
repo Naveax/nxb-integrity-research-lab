@@ -31,7 +31,7 @@ function Invoke-NxbV1InstallerNative {
     return [pscustomobject][ordered]@{ exit_code=$nativeExitCode; output=(@($nativeOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) }
 }
 
-$isWindows = ($env:OS -ceq 'Windows_NT')
+$windowsHost = ($env:OS -ceq 'Windows_NT')
 $isCore = ($PSVersionTable.PSEdition -ceq 'Core')
 $psMajor = [int]$PSVersionTable.PSVersion.Major
 $pythonAvailable = $false
@@ -67,7 +67,7 @@ if ($null -ne $xperfCommand) {
 if (-not $wptPairAvailable -and $null -ne $wprCommand) { $wprPath = [string]$wprCommand.Source }
 
 $isAdmin = $false
-if ($isWindows) {
+if ($windowsHost) {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     try {
         $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -76,12 +76,14 @@ if ($isWindows) {
     finally { $identity.Dispose() }
 }
 
-$statusPassed = ($isWindows -and $isCore -and $psMajor -ge [int]$policy.minimum_powershell_major -and $pythonAvailable)
+$statusPassed = ($windowsHost -and $isCore -and $psMajor -ge [int]$policy.minimum_powershell_major -and $pythonAvailable)
+$statusText = 'failed'
+if ($statusPassed) { $statusText = 'passed' }
 $receipt = [pscustomobject][ordered]@{
     schema_version=1
-    status=(if ($statusPassed) { 'passed' } else { 'failed' })
+    status=$statusText
     authority='nxb-v1-installer-host-preflight-v1'
-    windows=$isWindows
+    windows=$windowsHost
     powershell_core=$isCore
     powershell_version=[string]$PSVersionTable.PSVersion
     python_available=$pythonAvailable
