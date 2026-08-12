@@ -40,7 +40,7 @@ foreach ($requiredPath in @($childPath,$scannerPath,$signaturePath,$pnpPath,$pow
 }
 
 Write-Information -InformationAction Continue -MessageData '=== NXB IRL-006 PART 2 + PART 3 + PART 4 + PART 5 SIGNED CLOSURE CERTIFICATION V2 ==='
-Write-Information -InformationAction Continue -MessageData '[top 1/3] ERR-030/ERR-031/ERR-032/ERR-033 exact-tree gate + wrapper/semantic/transport analyzer'
+Write-Information -InformationAction Continue -MessageData '[top 1/3] ERR-030/ERR-031/ERR-032/ERR-033/ERR-034 exact-tree gate + wrapper/semantic/transport analyzer'
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 $analyzerFinding = @(
@@ -55,7 +55,7 @@ if ($analyzerFinding.Count -gt 0) {
 }
 
 $scan = & $scannerPath -RepositoryRoot $repositoryRoot -SignaturePath $signaturePath -NoThrow -PassThru
-if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 22) {
+if ([string]$scan.status -cne 'passed' -or [int]$scan.finding_count -ne 0 -or [int]$scan.rule_count -lt 23) {
     $detail = @($scan.findings | ForEach-Object { '{0} {1}:{2} {3}' -f $_.id,$_.path,$_.line,$_.preview }) -join [Environment]::NewLine
     throw ('Part 5 V2 known-error preflight failed: rules={0} findings={1}{2}{3}' -f [int]$scan.rule_count,[int]$scan.finding_count,[Environment]::NewLine,$detail)
 }
@@ -104,6 +104,25 @@ $unsafeDictionaryWalker = '(?ims)foreach\s*\(\$segment\s+in\s+\$Path\.Split\(''\
 if ([regex]::IsMatch($rootTraceSource,$unsafeDictionaryWalker)) {
     throw 'ERR-032 regression: root/trace property walker is PSObject-only.'
 }
+foreach ($token in @(
+    '$pairedWpr = Join-Path $xperfDirectory ''wpr.exe''',
+    '''-recordtempto'',$wprTempRoot,''-instancename'',$wprInstanceName',
+    '$stop.exit_code -eq -2147417850',
+    '$statusAfterStop.exit_code -ne -984076288',
+    '$mergeArguments.Add(''-merge'')',
+    'toolchain_binding=''xperf_sibling_wpr_v1''',
+    'wpr_stop_recovery_used=$wprStopRecoveryUsed',
+    '$eventsLost -ne 0 -or $buffersLost -ne 0 -or $buffersWritten -eq 0'
+)) {
+    if ($rootTraceSource.IndexOf($token,[StringComparison]::Ordinal) -lt 0) {
+        throw ('ERR-034 repair missing root/trace token: {0}' -f $token)
+    }
+}
+$legacyWprSelector = '(?im)^\s*\$wpr\s*=\s*\(Get-Command\s+wpr\.exe\b'
+$legacyAnonymousStart = '(?im)@\(''-start'',\$profileReference,''-filemode''\)'
+if ([regex]::IsMatch($rootTraceSource,$legacyWprSelector) -or [regex]::IsMatch($rootTraceSource,$legacyAnonymousStart)) {
+    throw 'ERR-034 regression: root/trace returned to split-toolchain or anonymous WPR lifecycle.'
+}
 
 $transportSource = Get-Content -LiteralPath $transportPath -Raw
 $goodTranscriptSignature = '[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'
@@ -122,7 +141,7 @@ if ($transportSource.IndexOf('[Parameter(Mandatory)][object[]]$Records',[StringC
     throw 'ERR-033 boundary drift: non-empty spool-record contract was unexpectedly loosened.'
 }
 
-Write-Information -InformationAction Continue -MessageData ('Part 5 V2 preflight passed: rules={0} findings=0 ERR-030=true ERR-031=true ERR-032=true ERR-033=true.' -f [int]$scan.rule_count)
+Write-Information -InformationAction Continue -MessageData ('Part 5 V2 preflight passed: rules={0} findings=0 ERR-030=true ERR-031=true ERR-032=true ERR-033=true ERR-034=true.' -f [int]$scan.rule_count)
 Write-Information -InformationAction Continue -MessageData '[top 2/3] Run complete Part 5 signed closure child authority'
 
 $pipeline = @(& $childPath -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory -PassThru)
@@ -134,11 +153,11 @@ foreach ($item in $pipeline) {
 }
 if ($null -eq $result) { throw 'Part 5 V2 child authority returned no passed result.' }
 if ([string]$result.head_sha -cne $currentHead) { throw 'Part 5 V2 child exact-head binding mismatch.' }
-if ([int]$result.known_error_rule_count -lt 22 -or [int]$result.known_error_finding_count -ne 0) {
+if ([int]$result.known_error_rule_count -lt 23 -or [int]$result.known_error_finding_count -ne 0) {
     throw ('Part 5 V2 child known-error closure failed: rules={0} findings={1}' -f [int]$result.known_error_rule_count,[int]$result.known_error_finding_count)
 }
 
-Write-Information -InformationAction Continue -MessageData '[top 3/3] Bind ERR-030/ERR-031/ERR-032/ERR-033 repairs into final Part 2+3+4+5 result'
-Write-Information -InformationAction Continue -MessageData ('NXB Part 5 V2 passed: head={0} known_errors=0 rules={1} ERR-030=true ERR-031=true ERR-032=true ERR-033=true.' -f $currentHead,[int]$result.known_error_rule_count)
+Write-Information -InformationAction Continue -MessageData '[top 3/3] Bind ERR-030/ERR-031/ERR-032/ERR-033/ERR-034 repairs into final Part 2+3+4+5 result'
+Write-Information -InformationAction Continue -MessageData ('NXB Part 5 V2 passed: head={0} known_errors=0 rules={1} ERR-030=true ERR-031=true ERR-032=true ERR-033=true ERR-034=true.' -f $currentHead,[int]$result.known_error_rule_count)
 if ($PassThru) { return $result }
 Write-Output ([string]$result.review_zip_path)

@@ -1,0 +1,439 @@
+#!/usr/bin/env python3
+import argparse
+import base64
+import copy
+import hashlib
+import hmac
+import json
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional, Tuple
+
+
+DIGEST_INFO_SHA256 = bytes.fromhex("3031300d060960864801650304020105000420")
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_text(text: str) -> str:
+    return sha256_bytes(text.encode("utf-8"))
+
+
+def file_sha256(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
+
+
+def load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def lower_hex(value: Any, length: int) -> bool:
+    text = str(value or "")
+    return len(text) == length and all(c in "0123456789abcdef" for c in text)
+
+
+def bool_text(value: Any) -> str:
+    return "true" if value is True else "false"
+
+
+def canonical_sha256(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return sha256_text(payload)
+
+
+def finding_id(item: Dict[str, Any]) -> str:
+    material = "\n".join(
+        [
+            str(item["target_id"]),
+            str(item["root_cause_key"]),
+            str(item["class"]),
+            str(item["evidence_sha256"]),
+        ]
+    )
+    return "finding-" + sha256_text(material)[:32]
+
+
+def validate_receipt_head(receipt: Dict[str, Any], head: str) -> bool:
+    return receipt.get("status") == "passed" and receipt.get("head_sha") == head
+
+
+def safe_package_path(text: str) -> Optional[PurePosixPath]:
+    if not text or "\\" in text:
+        return None
+    path = PurePosixPath(text)
+    if path.is_absolute() or ".." in path.parts or "." in path.parts:
+        return None
+    return path
+
+
+def validate_part8_faults(part8: Dict[str, Any], expected_head: str) -> bool:
+    base = part8.get("base_evidence", {})
+    if base.get("head_sha") != expected_head:
+        return False
+    if not lower_hex(base.get("evidence_sha256"), 64) or not lower_hex(base.get("payload_sha256"), 64):
+        return False
+    if canonical_sha256(base) != part8.get("base_evidence_canonical_sha256"):
+        return False
+    rows = part8.get("fault_matrix", [])
+    if len(rows) != 5:
+        return False
+    by_name = {str(row.get("name")): row for row in rows}
+    expected_names = {"stale_head", "cross_session", "missing_evidence", "tampered_payload", "evidence_hash_mismatch"}
+    if set(by_name) != expected_names or any(row.get("rejected") is not True for row in rows):
+        return False
+
+    stale = by_name["stale_head"].get("mutation", {})
+    if stale.get("head_sha") == expected_head or stale.get("session_id") != base.get("session_id") or stale.get("evidence_sha256") != base.get("evidence_sha256") or stale.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    cross = by_name["cross_session"].get("mutation", {})
+    if cross.get("head_sha") != expected_head or cross.get("session_id") == base.get("session_id") or cross.get("evidence_sha256") != base.get("evidence_sha256") or cross.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    missing = by_name["missing_evidence"].get("mutation", {})
+    if missing.get("head_sha") != expected_head or missing.get("session_id") != base.get("session_id") or missing.get("evidence_sha256") != "" or missing.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+    tampered = by_name["tampered_payload"].get("mutation", {})
+    if tampered.get("head_sha") != expected_head or tampered.get("session_id") != base.get("session_id") or tampered.get("evidence_sha256") != base.get("evidence_sha256") or tampered.get("payload_sha256") == base.get("payload_sha256") or canonical_sha256(tampered) == canonical_sha256(base):
+        return False
+    wrong_hash = by_name["evidence_hash_mismatch"].get("mutation", {})
+    if wrong_hash.get("head_sha") != expected_head or wrong_hash.get("session_id") != base.get("session_id") or wrong_hash.get("evidence_sha256") == base.get("evidence_sha256") or wrong_hash.get("payload_sha256") != base.get("payload_sha256") or canonical_sha256(wrong_hash) == canonical_sha256(base):
+        return False
+    return True
+
+
+def part10_canonical_material(part10: Dict[str, Any]) -> Optional[str]:
+    public_key = part10.get("public_key", {})
+    rows = part10.get("part6_to_9", [])
+    if len(rows) != 4:
+        return None
+    names = [str(row.get("name", "")) for row in rows]
+    if names != sorted(names) or len(set(names)) != 4:
+        return None
+    receipt_material = "\n".join(
+        "|".join(
+            [
+                str(row.get("name", "")),
+                str(row.get("sha256", "")),
+                str(row.get("contract_id", "")),
+                str(int(row.get("requirements_validated", -1))),
+            ]
+        )
+        for row in rows
+    )
+    fields = [
+        "nxb-irl006-part10-v1-freeze-signed-v1",
+        str(int(part10.get("schema_version", -1))),
+        str(part10.get("status", "")),
+        str(part10.get("contract_id", "")),
+        str(part10.get("release_version", "")),
+        str(part10.get("head_sha", "")),
+        str(part10.get("predecessor_part5_signed_receipt_sha256", "")),
+        str(part10.get("predecessor_part5_review_zip_sha256", "")),
+        str(part10.get("evidence_index_sha256", "")),
+        str(part10.get("report_sha256", "")),
+        str(int(part10.get("known_error_rules", -1))),
+        str(int(part10.get("known_error_findings", -1))),
+        str(int(part10.get("analyzer_findings", -1))),
+        bool_text(part10.get("independent_validation")),
+        bool_text(part10.get("production_safety_gate")),
+        bool_text(part10.get("production_merge_performed")),
+        bool_text(part10.get("v1_freeze_candidate")),
+        str(int(part10.get("requirements_validated", -1))),
+        bool_text(part10.get("private_key_persisted")),
+        bool_text(part10.get("production_signer_claimed")),
+        str(part10.get("signing_algorithm", "")),
+        str(public_key.get("modulus_b64", "")),
+        str(public_key.get("exponent_b64", "")),
+        str(public_key.get("fingerprint_sha256", "")),
+        str(part10.get("nonce_b64", "")),
+        str(part10.get("created_utc", "")),
+        receipt_material,
+    ]
+    return "\n".join(fields)
+
+
+def verify_part10_signature(part10: Dict[str, Any]) -> bool:
+    if part10.get("signing_algorithm") != "RSA-PKCS1-SHA256":
+        return False
+    if part10.get("private_key_persisted") is not False or part10.get("production_signer_claimed") is not False:
+        return False
+    material = part10_canonical_material(part10)
+    if material is None or sha256_text(material) != part10.get("canonical_sha256"):
+        return False
+
+    public_key = part10.get("public_key", {})
+    modulus_b64 = str(public_key.get("modulus_b64", ""))
+    exponent_b64 = str(public_key.get("exponent_b64", ""))
+    fingerprint = str(public_key.get("fingerprint_sha256", ""))
+    if sha256_text("\n".join(["RSA-PKCS1-SHA256", modulus_b64, exponent_b64])) != fingerprint:
+        return False
+    try:
+        modulus_bytes = base64.b64decode(modulus_b64, validate=True)
+        exponent_bytes = base64.b64decode(exponent_b64, validate=True)
+        signature = base64.b64decode(str(part10.get("signature_b64", "")), validate=True)
+        nonce = base64.b64decode(str(part10.get("nonce_b64", "")), validate=True)
+    except Exception:
+        return False
+    if len(nonce) != 32 or not modulus_bytes or not exponent_bytes:
+        return False
+
+    modulus = int.from_bytes(modulus_bytes, "big")
+    exponent = int.from_bytes(exponent_bytes, "big")
+    modulus_bits = modulus.bit_length()
+    if modulus_bits < 3072 or exponent <= 1:
+        return False
+    key_bytes = (modulus_bits + 7) // 8
+    if len(signature) != key_bytes:
+        return False
+    signature_int = int.from_bytes(signature, "big")
+    if signature_int <= 0 or signature_int >= modulus:
+        return False
+
+    digest = hashlib.sha256(material.encode("utf-8")).digest()
+    digest_info = DIGEST_INFO_SHA256 + digest
+    padding_length = key_bytes - len(digest_info) - 3
+    if padding_length < 8:
+        return False
+    expected = b"\x00\x01" + (b"\xff" * padding_length) + b"\x00" + digest_info
+    recovered = pow(signature_int, exponent, modulus).to_bytes(key_bytes, "big")
+    return hmac.compare_digest(recovered, expected)
+
+
+def validate_all(
+    head: str,
+    repository_root: Path,
+    part6: Dict[str, Any],
+    part7: Dict[str, Any],
+    part8: Dict[str, Any],
+    part9: Dict[str, Any],
+    part10: Dict[str, Any],
+    package: Dict[str, Any],
+    evidence_index: Dict[str, Any],
+    report: Dict[str, Any],
+) -> Tuple[bool, List[str]]:
+    failures: List[str] = []
+    for name, receipt in [("part6", part6), ("part7", part7), ("part8", part8), ("part9", part9), ("part10", part10)]:
+        if not validate_receipt_head(receipt, head):
+            failures.append(f"{name}_authority_binding")
+
+    if part6.get("findings_output") != 2 or part6.get("duplicate_suppressed") != 1:
+        failures.append("part6_correlation_counts")
+    if part6.get("severity_promoted") is not False:
+        failures.append("part6_severity_boundary")
+    if part6.get("target_session_binding") is not True or part6.get("orchestration_mode") != "bounded-authorized-session":
+        failures.append("part6_target_session_binding")
+    if part6.get("scope_authorized") is not True or part6.get("evidence_only") is not True or part6.get("destructive_validation_allowed") is not False:
+        failures.append("part6_orchestration_safety")
+    for item in part6.get("findings", []):
+        hashes = sorted(set(str(x) for x in item.get("evidence_hashes", [])))
+        aggregate = sha256_text("\n".join(hashes))
+        if aggregate != item.get("evidence_sha256"):
+            failures.append("part6_evidence_aggregate")
+            break
+        if finding_id(item) != item.get("finding_id"):
+            failures.append("part6_finding_id")
+            break
+        if item.get("target_id") != part6.get("target_id") or item.get("session_id") != part6.get("session_id"):
+            failures.append("part6_finding_session_escape")
+            break
+
+    if part7.get("loopback_native_probe") is not True:
+        failures.append("part7_loopback_probe")
+    if part7.get("production_secret_in_evidence") is not False:
+        failures.append("part7_secret_boundary")
+    if part7.get("permit_required_for_noncertification") is not True:
+        failures.append("part7_permit_boundary")
+    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True or part7.get("permit_canonical_hash_binding") is not True:
+        failures.append("part7_permit_binding")
+    if part7.get("kill_switch_required_for_noncertification") is not True:
+        failures.append("part7_kill_switch")
+    if part7.get("browser_api_session_boundary") is not True or part7.get("credential_reference_only") is not True:
+        failures.append("part7_browser_api_boundary")
+    session = part7.get("session_boundary", {})
+    if session.get("read_only_default") is not True or session.get("secret_material_embedded") is not False:
+        failures.append("part7_session_secret_boundary")
+    if sorted(session.get("adapter_modes", [])) != ["browser", "http-api"]:
+        failures.append("part7_adapter_modes")
+    if not lower_hex(session.get("credential_reference_sha256"), 64):
+        failures.append("part7_credential_reference")
+
+    if not validate_part8_faults(part8, head):
+        failures.append("part8_independent_fault_replay")
+    if part8.get("ps7_compatibility") is not True or part8.get("ps51_compatibility") is not True:
+        failures.append("part8_dual_runtime")
+    if int(part8.get("artifact_bytes", -1)) < 0:
+        failures.append("part8_artifact_budget")
+
+    if part9.get("staged_update_only") is not True or part9.get("auto_apply") is not False:
+        failures.append("part9_update_boundary")
+    if part9.get("staged_update_executed") is not True or int(part9.get("staged_file_count", -1)) != int(part9.get("package_file_count", -2)):
+        failures.append("part9_staging_replay")
+    if part9.get("unified_cli") is not True or part9.get("tamper_rejection") is not True or part9.get("deterministic_package_manifest") is not True:
+        failures.append("part9_cli_or_tamper")
+    if part9.get("autonomous_certification_workflow") is not True:
+        failures.append("part9_autonomous_workflow")
+    if package.get("staged_only") is not True or package.get("auto_apply") is not False:
+        failures.append("part9_package_boundary")
+    if package.get("exact_head") != head or package.get("version") != part10.get("release_version"):
+        failures.append("part9_package_authority_binding")
+    signer = str(package.get("signer_fingerprint_sha256", ""))
+    if not lower_hex(signer, 64):
+        failures.append("part9_signer_fingerprint")
+
+    seen_paths = set()
+    package_files = package.get("files", [])
+    if len(package_files) < 15:
+        failures.append("part9_package_cardinality")
+    for row in package_files:
+        relative = safe_package_path(str(row.get("path", "")))
+        digest = str(row.get("sha256", ""))
+        if relative is None or str(relative) in seen_paths:
+            failures.append("part9_file_path")
+            break
+        seen_paths.add(str(relative))
+        if not lower_hex(digest, 64):
+            failures.append("part9_file_hash")
+            break
+        if int(row.get("bytes", -1)) < 0:
+            failures.append("part9_file_size")
+            break
+        full = repository_root.joinpath(*relative.parts)
+        if not full.is_file() or full.is_symlink():
+            failures.append("part9_repository_file")
+            break
+        if file_sha256(full) != digest or full.stat().st_size != int(row.get("bytes", -1)):
+            failures.append("part9_repository_rehash")
+            break
+
+    if part10.get("production_safety_gate") is not True:
+        failures.append("part10_safety_gate")
+    if part10.get("production_merge_performed") is not False:
+        failures.append("part10_merge_boundary")
+    if part10.get("v1_freeze_candidate") is not True:
+        failures.append("part10_freeze")
+    if int(part10.get("known_error_findings", -1)) != 0 or int(part10.get("analyzer_findings", -1)) != 0:
+        failures.append("part10_zero_error_gate")
+    if part10.get("independent_validation") is not True:
+        failures.append("part10_independent_validation")
+    if not verify_part10_signature(part10):
+        failures.append("part10_rsa_signature")
+
+    if evidence_index.get("exact_head") != head:
+        failures.append("evidence_index_head")
+    if report.get("exact_head") != head or report.get("production_merge_performed") is not False:
+        failures.append("report_boundary")
+    if report.get("release_version") != part10.get("release_version"):
+        failures.append("release_version_binding")
+
+    return len(failures) == 0, failures
+
+
+def run_negative_controls(head: str, repository_root: Path, objects: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    cases = []
+
+    def case(name: str, key: str, mutate) -> None:
+        clone = {k: copy.deepcopy(v) for k, v in objects.items()}
+        mutate(clone[key])
+        ok, _ = validate_all(
+            head, repository_root,
+            clone["part6"], clone["part7"], clone["part8"], clone["part9"], clone["part10"],
+            clone["package"], clone["index"], clone["report"],
+        )
+        cases.append({"name": name, "rejected": not ok})
+
+    case("part6_stale_head", "part6", lambda x: x.__setitem__("head_sha", "0" * 40))
+    case("part6_severity_promoted", "part6", lambda x: x.__setitem__("severity_promoted", True))
+    case("part7_secret_leak", "part7", lambda x: x.__setitem__("production_secret_in_evidence", True))
+    case("part7_permit_disabled", "part7", lambda x: x.__setitem__("permit_required_for_noncertification", False))
+    case("part8_fault_accepted", "part8", lambda x: x["fault_matrix"][0].__setitem__("rejected", False))
+    case("part8_ps51_false", "part8", lambda x: x.__setitem__("ps51_compatibility", False))
+    case("part9_auto_apply", "part9", lambda x: x.__setitem__("auto_apply", True))
+    case("package_auto_apply", "package", lambda x: x.__setitem__("auto_apply", True))
+    case("part10_merge_claim", "part10", lambda x: x.__setitem__("production_merge_performed", True))
+    case("part10_known_error", "part10", lambda x: x.__setitem__("known_error_findings", 1))
+    case("index_stale_head", "index", lambda x: x.__setitem__("exact_head", "f" * 40))
+    case("report_merge_claim", "report", lambda x: x.__setitem__("production_merge_performed", True))
+    return cases
+
+
+def validate_artifact_hashes(objects: Dict[str, Dict[str, Any]], paths: Dict[str, Path]) -> List[str]:
+    failures: List[str] = []
+    part9 = objects["part9"]
+    part10 = objects["part10"]
+    index = objects["index"]
+    if part9.get("package_manifest_sha256") != file_sha256(paths["package"]):
+        failures.append("part9_manifest_file_hash")
+    report_sha = file_sha256(paths["report"])
+    index_sha = file_sha256(paths["index"])
+    if part10.get("report_sha256") != report_sha or index.get("report_sha256") != report_sha:
+        failures.append("part10_report_file_hash")
+    if part10.get("evidence_index_sha256") != index_sha:
+        failures.append("part10_index_file_hash")
+
+    receipt_paths = {paths[name].name: file_sha256(paths[name]) for name in ["part6", "part7", "part8", "part9"]}
+    index_rows = index.get("part6_to_9", [])
+    if len(index_rows) != 4:
+        failures.append("part10_index_cardinality")
+    else:
+        seen = set()
+        for row in index_rows:
+            name = str(row.get("name", ""))
+            if name in seen or name not in receipt_paths or row.get("sha256") != receipt_paths[name]:
+                failures.append("part10_index_receipt_hash")
+                break
+            seen.add(name)
+        if seen != set(receipt_paths):
+            failures.append("part10_index_receipt_set")
+    return failures
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--repository-root")
+    parser.add_argument("--part6", required=True)
+    parser.add_argument("--part7", required=True)
+    parser.add_argument("--part8", required=True)
+    parser.add_argument("--part9", required=True)
+    parser.add_argument("--part10", required=True)
+    parser.add_argument("--package", required=True)
+    parser.add_argument("--evidence-index", required=True)
+    parser.add_argument("--report", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    repository_root = Path(args.repository_root).resolve() if args.repository_root else Path(__file__).resolve().parents[1]
+    paths = {name: Path(getattr(args, name)) for name in ["part6", "part7", "part8", "part9", "part10", "package", "report"]}
+    paths["index"] = Path(args.evidence_index)
+    objects = {name: load_json(path) for name, path in paths.items()}
+
+    passed, failures = validate_all(
+        args.expected_head, repository_root,
+        objects["part6"], objects["part7"], objects["part8"], objects["part9"], objects["part10"],
+        objects["package"], objects["index"], objects["report"],
+    )
+    artifact_failures = validate_artifact_hashes(objects, paths)
+    failures.extend(artifact_failures)
+    passed = passed and not artifact_failures
+
+    negatives = run_negative_controls(args.expected_head, repository_root, objects)
+    negative_pass = all(row["rejected"] for row in negatives) and len(negatives) == 12
+
+    result = {
+        "schema_version": 1,
+        "status": "passed" if passed and negative_pass else "failed",
+        "expected_head": args.expected_head,
+        "requirements_validated": 48 if passed else 0,
+        "negative_controls_validated": sum(1 for row in negatives if row["rejected"]),
+        "negative_controls": negatives,
+        "failures": failures,
+        "part10_rsa_signature_valid": verify_part10_signature(objects["part10"]),
+        "receipt_hashes": {name: file_sha256(path) for name, path in paths.items()},
+        "canonical_report_sha256": canonical_sha256(objects["report"]),
+    }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return 0 if result["status"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
