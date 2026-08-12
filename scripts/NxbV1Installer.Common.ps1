@@ -92,7 +92,7 @@ function Get-NxbV1PackageManifest {
 
     $trimChars = [char[]]@([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
     $prefix = $root.TrimEnd($trimChars) + [IO.Path]::DirectorySeparatorChar
-    $rows = [Collections.Generic.List[object]]::new()
+    $rowMap = @{}
     $total = [int64]0
     foreach ($file in @(Get-ChildItem -LiteralPath $root -File -Recurse -Force)) {
         if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Package file is a reparse point: {0}' -f $file.FullName) }
@@ -100,13 +100,18 @@ function Get-NxbV1PackageManifest {
         if (-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw ('Package file escaped root: {0}' -f $full) }
         $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,'/')
         if (-not (Test-NxbV1InstallerRelativePath -Path $relative)) { throw ('Unsafe package relative path: {0}' -f $relative) }
+        if ($rowMap.ContainsKey($relative)) { throw ('Duplicate package relative path: {0}' -f $relative) }
         $total += [int64]$file.Length
         if ($total -gt $MaximumBytes) { throw 'Package exceeds maximum byte budget.' }
-        $rows.Add([pscustomobject][ordered]@{ path=$relative; bytes=[int64]$file.Length; sha256=(Get-NxbV1InstallerSha256 -Path $full) })
-        if ($rows.Count -gt $MaximumFiles) { throw 'Package exceeds maximum file count.' }
+        $rowMap[$relative] = [pscustomobject][ordered]@{ path=$relative; bytes=[int64]$file.Length; sha256=(Get-NxbV1InstallerSha256 -Path $full) }
+        if ($rowMap.Count -gt $MaximumFiles) { throw 'Package exceeds maximum file count.' }
     }
-    if ($rows.Count -lt 1) { throw 'Package contains no files.' }
-    $ordered = @($rows | Sort-Object -Property @{ Expression = { [string]$_.path }; Ascending = $true })
+    if ($rowMap.Count -lt 1) { throw 'Package contains no files.' }
+    $paths = [string[]]@($rowMap.Keys)
+    [Array]::Sort($paths,[StringComparer]::Ordinal)
+    $orderedRows = [Collections.Generic.List[object]]::new()
+    foreach ($path in $paths) { $orderedRows.Add($rowMap[$path]) }
+    $ordered = @($orderedRows)
     return [pscustomobject][ordered]@{
         schema_version=1
         contract_id='nxb-v1-package-manifest-v1'
