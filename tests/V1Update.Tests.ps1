@@ -119,9 +119,9 @@ Describe 'NXB v1 signed staged update contract' {
         $source | Should -Match ([regex]::Escape('$PSCmdlet.ShouldProcess'))
     }
 
-    It 'stages without auto applying and keeps metadata outside package bytes' {
+    It 'stages without auto applying and supports only monotonic staged supersession' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).operator -Raw
-        foreach ($token in @("-ChildPath 'staged-package'","-ChildPath 'staged-metadata'",'auto_apply=$false','An update is already staged.')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("-ChildPath 'staged-package'","-ChildPath 'staged-metadata'",'auto_apply=$false','Existing staged update sequence is newer or equal.','Supersede staged sequence')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'revalidates exact stage root trust and signed bundle before Apply' {
@@ -182,8 +182,14 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($path in @('scripts/NxbV1Update.Common.ps1','scripts/NxbV1Update.State.ps1','scripts/Invoke-NxbV1Updater.ps1','scripts/Invoke-NxbV1UpdateCertification.ps1','tests/V1Update.Tests.ps1')) { $includes | Should -Contain $path }
     }
 
-    It 'locks the update contract at exactly twenty-four tests' {
+    It 'locks test count and cleanup initialization order' {
+        $c=Get-NxbV1UpdateTestContext
         $testSource=Get-Content -LiteralPath $PSCommandPath -Raw
         [regex]::Matches($testSource,"(?m)^\s*It\s+'").Count | Should -Be 24
+        $authoritySource=Get-Content -LiteralPath $c.authority -Raw
+        $initIndex=$authoritySource.IndexOf('$signer=$null',[StringComparison]::Ordinal)
+        $createIndex=$authoritySource.IndexOf('$signer=Get-NxbV1CertificationSigner',[StringComparison]::Ordinal)
+        [bool]($initIndex -ge 0 -and $createIndex -gt $initIndex) | Should -BeTrue
+        $authoritySource | Should -Match ([regex]::Escape('finally { if ($null -ne $signer -and $null -ne $signer.rsa)'))
     }
 }
