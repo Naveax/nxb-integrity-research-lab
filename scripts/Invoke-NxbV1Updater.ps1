@@ -90,10 +90,22 @@ if ($Action -ceq 'Stage') {
     $trust = Get-Content -LiteralPath $trustFull -Raw | ConvertFrom-Json
     if (-not (Test-NxbV1UpdateBundle -PackageRoot $packageFull -Manifest $manifest -ManifestPath $manifestFull -Descriptor $descriptor -DescriptorPath $descriptorFull -Envelope $envelope -Trust $trust -CurrentReleaseSequence $currentSequence -CertificationMode:$CertificationMode)) { throw 'Signed update bundle failed trust/signature/package validation.' }
     $stageStatePath = Get-NxbV1UpdateStageStatePath -UpdateRoot $updateFull
-    if (Test-Path -LiteralPath $stageStatePath) { throw 'An update is already staged.' }
     $stagePackageRoot = Join-Path -Path $updateFull -ChildPath 'staged-package'
     $metadataRoot = Join-Path -Path $updateFull -ChildPath 'staged-metadata'
-    if ((Test-Path -LiteralPath $stagePackageRoot) -or (Test-Path -LiteralPath $metadataRoot)) { throw 'Stage package/metadata roots must be absent.' }
+    if (Test-Path -LiteralPath $stageStatePath -PathType Leaf) {
+        $existingStage = Get-NxbV1UpdateStageStateObject -UpdateRoot $updateFull
+        if ([int]$descriptor.release_sequence -le [int]$existingStage.release_sequence) { throw 'Existing staged update sequence is newer or equal.' }
+        $existingStageRoot = [IO.Path]::GetFullPath([string]$existingStage.stage_package_root)
+        $expectedStageRoot = [IO.Path]::GetFullPath($stagePackageRoot)
+        if (-not [string]::Equals($existingStageRoot,$expectedStageRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'Existing staged package root binding drift.' }
+        if ($PSCmdlet.ShouldProcess($updateFull,('Supersede staged sequence {0} with signed sequence {1}' -f [int]$existingStage.release_sequence,[int]$descriptor.release_sequence))) {
+            if (Test-Path -LiteralPath $stagePackageRoot) { Remove-Item -LiteralPath $stagePackageRoot -Recurse -Force }
+            if (Test-Path -LiteralPath $metadataRoot) { Remove-Item -LiteralPath $metadataRoot -Recurse -Force }
+            Remove-Item -LiteralPath $stageStatePath -Force
+        }
+        else { return }
+    }
+    if ((Test-Path -LiteralPath $stagePackageRoot) -or (Test-Path -LiteralPath $metadataRoot) -or (Test-Path -LiteralPath $stageStatePath)) { throw 'Stage package/metadata/state roots must be absent before publication.' }
     if ($PSCmdlet.ShouldProcess($updateFull,('Stage signed release {0} sequence {1}' -f [string]$descriptor.release_head,[int]$descriptor.release_sequence))) {
         Copy-NxbV1UpdatePackageVerified -PackageRoot $packageFull -Manifest $manifest -DestinationRoot $stagePackageRoot
         [IO.Directory]::CreateDirectory($metadataRoot) | Out-Null
