@@ -3,88 +3,10 @@
   "contract_id": "nxb-irl006-part6-10-production-finalization-v1",
   "certified_predecessor_head": "7dad7f15eccf074078573f8bbe2d89877218672d",
   "known_error_minimum_rules": 22,
-  "certification": {
-    "network_mode": "loopback-only",
-    "allowed_hosts": ["127.0.0.1", "localhost"],
-    "allowed_methods": ["GET", "HEAD", "OPTIONS"],
-    "maximum_requests": 8,
-    "maximum_response_bytes": 65536,
-    "maximum_seconds": 60
-  },
-  "part6": {
-    "contract_id": "nxb-part6-finding-correlation-v1",
-    "requirements": [
-      "stable_finding_id",
-      "exact_evidence_hash_binding",
-      "root_cause_correlation",
-      "duplicate_suppression",
-      "target_session_binding",
-      "severity_evidence_separation",
-      "deterministic_ordering",
-      "bounded_finding_count"
-    ],
-    "maximum_findings": 128
-  },
-  "part7": {
-    "contract_id": "nxb-part7-bounded-active-validation-v1",
-    "requirements": [
-      "permit_required_for_noncertification",
-      "target_allowlist",
-      "method_allowlist",
-      "request_budget",
-      "response_budget",
-      "secret_redaction",
-      "loopback_native_probe",
-      "kill_switch",
-      "browser_api_session_boundary",
-      "no_production_secret_in_evidence"
-    ]
-  },
-  "part8": {
-    "contract_id": "nxb-part8-evidence-fault-performance-compat-v1",
-    "requirements": [
-      "tamper_rejection",
-      "missing_evidence_rejection",
-      "stale_head_rejection",
-      "cross_session_rejection",
-      "fault_matrix",
-      "bounded_runtime",
-      "bounded_artifact_bytes",
-      "ps7_compatibility",
-      "ps51_compatibility",
-      "independent_replay"
-    ],
-    "maximum_artifact_bytes": 1048576
-  },
-  "part9": {
-    "contract_id": "nxb-part9-supply-chain-cli-update-v1",
-    "requirements": [
-      "manifest_hashes",
-      "exact_version_binding",
-      "staged_update_only",
-      "rollback_metadata",
-      "signer_fingerprint_required",
-      "unified_cli",
-      "non_destructive_default",
-      "offline_inspection",
-      "deterministic_package_manifest",
-      "update_tamper_rejection"
-    ]
-  },
-  "part10": {
-    "contract_id": "nxb-part10-report-production-gate-freeze-v1",
-    "requirements": [
-      "report_engine",
-      "evidence_index",
-      "production_safety_gate",
-      "all_prior_parts_bound",
-      "known_error_zero_findings",
-      "analyzer_zero_findings",
-      "independent_validation",
-      "bounded_review_zip",
-      "v1_freeze_receipt",
-      "no_merge_claim"
-    ],
-    "release_version": "1.0.0-candidate"
-  }
+  "certification": {"network_mode":"loopback-only","allowed_hosts":["127.0.0.1","localhost"],"allowed_methods":["GET","HEAD","OPTIONS"],"maximum_requests":8,"maximum_response_bytes":65536,"maximum_seconds":60},
+  "part6": {"contract_id":"nxb-part6-finding-correlation-v1","requirements":["stable_finding_id","exact_evidence_hash_binding","root_cause_correlation","duplicate_suppression","target_session_binding","severity_evidence_separation","deterministic_ordering","bounded_finding_count"],"maximum_findings":128},
+  "part7": {"contract_id":"nxb-part7-bounded-active-validation-v1","requirements":["permit_required_for_noncertification","target_allowlist","method_allowlist","request_budget","response_budget","secret_redaction","loopback_native_probe","kill_switch","browser_api_session_boundary","no_production_secret_in_evidence"]},
+  "part8": {"contract_id":"nxb-part8-evidence-fault-performance-compat-v1","requirements":["tamper_rejection","missing_evidence_rejection","stale_head_rejection","cross_session_rejection","fault_matrix","bounded_runtime","bounded_artifact_bytes","ps7_compatibility","ps51_compatibility","independent_replay"],"maximum_artifact_bytes":1048576},
+  "part9": {"contract_id":"nxb-part9-supply-chain-cli-update-v1","requirements":["manifest_hashes","exact_version_binding","staged_update_only","rollback_metadata","signer_fingerprint_required","unified_cli","non_destructive_default","offline_inspection","deterministic_package_manifest","update_tamper_rejection"]},
+  "part10": {"contract_id":"nxb-part10-report-production-gate-freeze-v1","requirements":["report_engine","evidence_index","production_safety_gate","all_prior_parts_bound","known_error_zero_findings","analyzer_zero_findings","independent_validation","bounded_review_zip","v1_freeze_receipt","no_merge_claim"],"release_version":"1.0.0-candidate"}
 }
