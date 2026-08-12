@@ -14,6 +14,7 @@ Describe 'NXB v1 production CLI contract' {
                 release_errors=Join-Path $full 'config\nxb-v1-release-known-error-signatures.json'
                 output_schema=Join-Path $full 'schemas\nxb-v1-cli-output.schema.json'
                 config_schema=Join-Path $full 'schemas\nxb-v1-cli-config.schema.json'
+                certification_schema=Join-Path $full 'schemas\nxb-v1-cli-certification-receipt.schema.json'
                 common=Join-Path $full 'scripts\NxbV1Cli.Common.ps1'
                 cli=Join-Path $full 'scripts\nxb.ps1'
                 scanner=Join-Path $full 'scripts\Invoke-NxbV1CliKnownErrorScan.ps1'
@@ -26,7 +27,7 @@ Describe 'NXB v1 production CLI contract' {
 
     It 'keeps every CLI authority component repo-owned' {
         $c=Get-NxbV1CliTestContext
-        foreach ($p in @($c.policy,$c.example,$c.errors,$c.release_errors,$c.output_schema,$c.config_schema,$c.common,$c.cli,$c.scanner,$c.authority,$c.validator)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
+        foreach ($p in @($c.policy,$c.example,$c.errors,$c.release_errors,$c.output_schema,$c.config_schema,$c.certification_schema,$c.common,$c.cli,$c.scanner,$c.authority,$c.validator)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
     }
 
     It 'binds CLI to the native-certified update predecessor and thirteen commands' {
@@ -157,7 +158,7 @@ Describe 'NXB v1 production CLI contract' {
         $p=Get-Content -LiteralPath $c.policy -Raw | ConvertFrom-Json
         [string]$p.delegation.signed_update | Should -BeExactly 'scripts/Invoke-NxbV1Updater.ps1'
         $source=Get-Content -LiteralPath $c.common -Raw
-        foreach ($token in @("ValidateSet('Check','Stage','Apply','Rollback')",'$parameters[''WhatIf''] = $true','$parameters[''Confirm'']')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("ValidateSet('Check','Stage','Apply','Rollback')",'$parameters[''WhatIf''] = $true','Confirm=$false')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'makes update-check non-mutating through updater WhatIf' {
@@ -172,7 +173,7 @@ Describe 'NXB v1 production CLI contract' {
 
     It 'separates JSON human output and process exit behavior' {
         $source=Get-Content -LiteralPath (Get-NxbV1CliTestContext).cli -Raw
-        foreach ($token in @('$Json','$CliProcess','[Console]::Out.WriteLine','[Console]::Error.WriteLine','$Host.SetShouldExit','ConvertTo-Json -Depth 32 -Compress')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$Json','$CliProcess','$NonInteractive','[Console]::Out.WriteLine','[Console]::Error.WriteLine','$Host.SetShouldExit','ConvertTo-Json -Depth 32 -Compress')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'carries four CLI successor rules without duplicating release ERR-036' {
