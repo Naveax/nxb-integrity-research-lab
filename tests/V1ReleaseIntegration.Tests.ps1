@@ -10,6 +10,8 @@ Describe 'NXB v1 release integration contract' {
                 root = $fullRoot
                 policy = Join-Path $fullRoot 'config\nxb-v1-release-integration-policy.json'
                 schema = Join-Path $fullRoot 'schemas\nxb-v1-release-integration-receipt.schema.json'
+                release_signatures = Join-Path $fullRoot 'config\nxb-v1-release-known-error-signatures.json'
+                release_known_errors = Join-Path $fullRoot 'docs\NXB-V1-RELEASE-KNOWN-ERRORS.md'
                 script = Join-Path $fullRoot 'scripts\Test-NxbV1ReleaseIntegration.ps1'
                 authority = Join-Path $fullRoot 'scripts\Invoke-NxbV1ReleaseIntegrationCertification.ps1'
                 python = Join-Path $fullRoot 'tools\validate_v1_release_integration.py'
@@ -21,7 +23,10 @@ Describe 'NXB v1 release integration contract' {
 
     It 'keeps every v1 release integration component repo-owned' {
         $context = Get-NxbV1ReleaseTestContext
-        foreach ($path in @($context.policy,$context.schema,$context.script,$context.authority,$context.python,$context.docs,$context.candidate_policy)) {
+        foreach ($path in @(
+            $context.policy,$context.schema,$context.release_signatures,$context.release_known_errors,
+            $context.script,$context.authority,$context.python,$context.docs,$context.candidate_policy
+        )) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -161,16 +166,27 @@ Describe 'NXB v1 release integration contract' {
         $source | Should -Match ([regex]::Escape('$candidateVersionPreserved = ([string]$candidatePolicy.part10.release_version -ceq ''1.0.0-candidate'')'))
     }
 
-    It 'gives the independent Python validator ten requirements and six adversarial controls without release-signing code' {
+    It 'gives the independent validator ten requirements six controls and release ERR-036 regression coverage' {
         $context = Get-NxbV1ReleaseTestContext
-        $source = Get-Content -LiteralPath $context.python -Raw
-        $source | Should -Match ([regex]::Escape('requirement_count == 10'))
-        $source | Should -Match ([regex]::Escape('negative_count == 6'))
+        $pythonSource = Get-Content -LiteralPath $context.python -Raw
+        $pythonSource | Should -Match ([regex]::Escape('requirement_count == 10'))
+        $pythonSource | Should -Match ([regex]::Escape('negative_count == 6'))
         foreach ($token in @('tampered_certified_head','certified_runtime_change','generated_zip_artifact','certification_signer_reuse','private_key_material','version_drift')) {
-            $source | Should -Match ([regex]::Escape($token))
+            $pythonSource | Should -Match ([regex]::Escape($token))
         }
-        $source | Should -Not -Match ([regex]::Escape('pow('))
-        $source | Should -Not -Match ([regex]::Escape('signature_b64'))
+        $pythonSource | Should -Not -Match ([regex]::Escape('pow('))
+        $pythonSource | Should -Not -Match ([regex]::Escape('signature_b64'))
+
+        $signatureDocument = Get-Content -LiteralPath $context.release_signatures -Raw | ConvertFrom-Json
+        @($signatureDocument.rules).Count | Should -Be 1
+        [string]$signatureDocument.rules[0].id | Should -BeExactly 'NXB-ERR-036'
+        $authoritySource = Get-Content -LiteralPath $context.authority -Raw
+        [regex]::IsMatch($authoritySource,[string]$signatureDocument.rules[0].regex) | Should -BeFalse
+        $authoritySource | Should -Match ([regex]::Escape('$entryName = [string]($entry.Key)'))
+        $authoritySource | Should -Match ([regex]::Escape('$sourcePath = [string]($entry.Value)'))
+        $authoritySource | Should -Match ([regex]::Escape('$destinationPath = Join-Path -Path $reviewRoot -ChildPath $entryName'))
+        $history = Get-Content -LiteralPath $context.release_known_errors -Raw
+        $history | Should -Match ([regex]::Escape('NXB-ERR-036'))
     }
 
     It 'documents that release preflight cannot merge tag push or create the production release' {
