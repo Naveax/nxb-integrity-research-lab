@@ -25,6 +25,12 @@
       "description": "Never assign readonly PowerShell platform automatic variables in update authority source.",
       "include": ["scripts/NxbV1Update.Common.ps1","scripts/NxbV1Update.State.ps1","scripts/Invoke-NxbV1Updater.ps1","scripts/Invoke-NxbV1UpdateCertification.ps1","tests/V1Update.Tests.ps1"],
       "regex": "(?im)^\\s*\\$(?:IsWindows|IsLinux|IsMacOS|IsCoreCLR)\\s*="
+    },
+    {
+      "id": "NXB-ERR-038",
+      "description": "Authoritative update JSON must not be directly overwritten without sibling-temp atomic publication.",
+      "include": ["scripts/NxbV1Update.State.ps1"],
+      "regex": "(?im)^\\s*\\[IO\\.File\\]::WriteAllText\\(\\$full\\b"
     }
   ]
 }
