@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-update-lifecycle.schema.json",
+  "title": "NXB v1 Update Certification Lifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","authority","source_head","channel","target_release_sequence","trust_anchor_passed","stage_passed","apply_passed","post_apply_verified","rollback_snapshot_created","failure_rollback_passed","manual_rollback_passed","downgrade_rejected","sequence_replay_rejected","revoked_head_rejected","wrong_signer_rejected","tampered_descriptor_rejected","tampered_package_rejected","auto_apply_performed","machine_install_performed","production_release_updated","data_preserved","evidence_preserved","data_sentinel_sha256","evidence_sentinel_sha256","initial_tree_sha256","applied_tree_sha256","rolled_back_tree_sha256","receipt_hashes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "authority": {"const": "nxb-v1-update-lifecycle-v1"},
+    "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "channel": {"const": "stable"},
+    "target_release_sequence": {"const": 1},
+    "trust_anchor_passed": {"const": true},
+    "stage_passed": {"const": true},
+    "apply_passed": {"const": true},
+    "post_apply_verified": {"const": true},
+    "rollback_snapshot_created": {"const": true},
+    "failure_rollback_passed": {"const": true},
+    "manual_rollback_passed": {"const": true},
+    "downgrade_rejected": {"const": true},
+    "sequence_replay_rejected": {"const": true},
+    "revoked_head_rejected": {"const": true},
+    "wrong_signer_rejected": {"const": true},
+    "tampered_descriptor_rejected": {"const": true},
+    "tampered_package_rejected": {"const": true},
+    "auto_apply_performed": {"const": false},
+    "machine_install_performed": {"const": false},
+    "production_release_updated": {"const": false},
+    "data_preserved": {"const": true},
+    "evidence_preserved": {"const": true},
+    "data_sentinel_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidence_sentinel_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "initial_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "applied_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rolled_back_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "receipt_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage","apply","rollback"],
+      "properties": {
+        "stage": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "apply": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "rollback": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

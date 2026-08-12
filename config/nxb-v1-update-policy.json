@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-update-v1",
+  "predecessor_installer_head": "efdeb275c25a7df1326d7effdddb4af8d83ef81d",
+  "production_signing_head": "91be58af59d0703de0159fea9d11935805e16022",
+  "release_integration_head": "9371399bab4fbb921ad94198aa148c597c7b6261",
+  "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
+  "target_version": "1.0.0",
+  "supported_channels": ["stable", "beta"],
+  "default_channel": "stable",
+  "minimum_rsa_bits": 3072,
+  "maximum_files": 2048,
+  "maximum_package_bytes": 1073741824,
+  "security": {
+    "require_signed_envelope": true,
+    "require_pinned_signer_fingerprint": true,
+    "require_signed_channel_descriptor": true,
+    "reject_revoked_release_head": true,
+    "allow_downgrade": false,
+    "allow_sequence_replay": false
+  },
+  "staging": {
+    "require_absent_stage_root": true,
+    "verify_before_publish": true,
+    "copy_metadata_outside_package_root": true,
+    "allow_higher_sequence_supersede": true,
+    "auto_apply": false
+  },
+  "apply": {
+    "require_explicit_operator_action": true,
+    "atomic_directory_swap": true,
+    "create_rollback_snapshot": true,
+    "post_apply_verify": true,
+    "rollback_on_failure": true
+  },
+  "rollback": {
+    "manual_rollback_supported": true,
+    "verify_snapshot_tree_hash": true,
+    "preserve_external_data": true,
+    "preserve_external_evidence": true
+  },
+  "certification": {
+    "temp_root_only": true,
+    "production_release_updated": false,
+    "machine_install_performed": false,
+    "required_lifecycle": ["Trust", "Stage", "Apply", "FailureRollback", "ManualRollback"]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-update-stage-state.schema.json",
+  "title": "NXB v1 Update Stage State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","status","channel","release_sequence","release_head","package_manifest_sha256","descriptor_sha256","envelope_sha256","trusted_signer_fingerprint","stage_package_root","created_utc"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-update-stage-state-v1"},
+    "status": {"const": "staged"},
+    "channel": {"enum": ["stable","beta"]},
+    "release_sequence": {"type": "integer", "minimum": 1},
+    "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "descriptor_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "envelope_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "trusted_signer_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stage_package_root": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "minLength": 1}
+  }
+}
