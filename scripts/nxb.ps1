@@ -45,7 +45,7 @@ switch ($Command) {
     'certify-final' {
         if ([string]::IsNullOrWhiteSpace($ExpectedHead)) { throw '-ExpectedHead is required for certify-final.' }
         if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { throw '-OutputDirectory is required for certify-final.' }
-        & (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertification.ps1') -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory
+        & (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertificationV2.ps1') -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory
         break
     }
 }
