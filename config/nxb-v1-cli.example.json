@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-cli-config-v1",
+  "output_mode": "human",
+  "non_interactive": false,
+  "update_channel": "stable",
+  "install_root": null,
+  "update_root": null,
+  "evidence_root": null
+}
