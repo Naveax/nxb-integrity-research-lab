@@ -77,3 +77,26 @@ The run passed exact-head clone and all external installer fast gates (`22` sour
 ### Native scope of the failed run
 
 Installer Portable V1 failed before dual-runtime installer Pester execution, host lifecycle execution, package manifest generation, Stage/Install/Corrupt/Repair/Uninstall, independent Python replay, or review ZIP packaging. None of those later installer layers are considered native-certified by this V1 run.
+
+## NXB-ERR-038 — late-bound cleanup variable can mask an earlier authority failure under StrictMode
+
+**Class:** caught-preflight / PowerShell cleanup and failure-preservation discipline.
+
+**Pre-native discovery:** signed staged update successor source review before publishing Update Portable V1. The update certification authority referenced `$signer` from its final cleanup block, but the first assignment to `$signer` occurred only after parser, analyzer, scanner, Pester, fixture-install, and manifest steps. With `Set-StrictMode -Version Latest`, any earlier exception could reach cleanup before that variable existed and replace the original failure with an uninitialized-variable error.
+
+### Repair contract
+
+- Initialize disposable cleanup-owned variables, including `$signer`, to `$null` before the main authority `try` begins.
+- Assign the live disposable only later when its creation step is reached.
+- Cleanup must remain null-safe and dispose only an actually-created signer.
+- Keep the update Pester contract exactly 24 tests and enforce initialization-before-main-try with a source-order regression assertion rather than a brittle prose assertion.
+- This class is context-sensitive and is therefore enforced by the update source contract rather than added as a line-regex successor signature. Update successor signature count remains four.
+
+### Same sweep
+
+The same pre-native update sweep also found two existing classes and repaired them without allocating new IDs:
+
+- **NXB-ERR-014:** an unused `$nativeRelative` assignment in the signing-artifact fixture loop is removed before PSScriptAnalyzer can reject the authority.
+- **NXB-ERR-029:** the update Pester contract expected stale prose (`An update is already staged.`) even though the implementation intentionally supports rejecting equal/older staged sequences and explicitly superseding an older stage with a newer signed sequence. The regression is rebound to those stable behaviors instead of restoring obsolete runtime behavior.
+
+No Update Portable V1 had been issued when these defects were found, so no native update claim is affected.
