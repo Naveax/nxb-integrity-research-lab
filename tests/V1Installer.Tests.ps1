@@ -69,6 +69,8 @@ Describe 'NXB v1 installer contract' {
         [bool]$s.properties.corruption_detected.const | Should -BeTrue
         [bool]$s.properties.repair_restored_bytes.const | Should -BeTrue
         [bool]$s.properties.machine_install_performed.const | Should -BeFalse
+        [string]$s.properties.data_sentinel_sha256.pattern | Should -BeExactly '^[0-9a-f]{64}$'
+        [string]$s.properties.evidence_sentinel_sha256.pattern | Should -BeExactly '^[0-9a-f]{64}$'
     }
 
     It 'defines a strict installer certification receipt' {
@@ -89,7 +91,7 @@ Describe 'NXB v1 installer contract' {
 
     It 'rejects filesystem Windows system repository and reparse install roots' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).common -Raw
-        foreach ($token in @('[IO.Path]::GetPathRoot($full)','$env:WINDIR','[Environment]::SystemDirectory','$full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)','Test-NxbV1InstallerPathChainNoReparse')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('[IO.Path]::GetPathRoot($full)','$env:WINDIR','[Environment]::SystemDirectory','[string]::Equals($full,$forbidden,[StringComparison]::OrdinalIgnoreCase)','$full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)','Test-NxbV1InstallerPathChainNoReparse')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'uses explicit ordinal package path ordering' {
@@ -110,6 +112,8 @@ Describe 'NXB v1 installer contract' {
 
     It 'exports a manifest only after independent package-byte verification' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).exporter -Raw
+        $source | Should -Match ([regex]::Escape('Package manifest output must be outside PackageRoot.'))
+        $source | Should -Match ([regex]::Escape('$outputFull.StartsWith($packagePrefix,[StringComparison]::OrdinalIgnoreCase)'))
         $source | Should -Match ([regex]::Escape('Test-NxbV1PackageManifestObject'))
         $source | Should -Match ([regex]::Escape('Test-NxbV1PackageAgainstManifest'))
         $source | Should -Match ([regex]::Escape('[Text.UTF8Encoding]::new($false)'))
@@ -128,9 +132,9 @@ Describe 'NXB v1 installer contract' {
 
     It 'separates Portable Stage from installed PerUser and PerMachine modes' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).operator -Raw
-        $source | Should -Match ([regex]::Escape("Stage action requires Portable mode."))
-        $source | Should -Match ([regex]::Escape("Portable mode must use Stage instead of Install."))
-        $source | Should -Match ([regex]::Escape("PerMachine installer mode requires Administrator."))
+        $source | Should -Match ([regex]::Escape('Stage action requires Portable mode.'))
+        $source | Should -Match ([regex]::Escape('Portable mode must use Stage instead of Install.'))
+        $source | Should -Match ([regex]::Escape('PerMachine installer mode requires Administrator.'))
     }
 
     It 'uses sibling staging before publishing an install root' {
@@ -152,7 +156,7 @@ Describe 'NXB v1 installer contract' {
 
     It 'gives the independent validator fourteen requirements and ten negative controls' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).validator -Raw
-        foreach ($token in @('"requirement_count": 14','"negative_count": 10','duplicate_manifest_path','traversal_manifest_path','unsorted_manifest','tampered_file_hash','wrong_total_bytes','stale_source_head','missing_corruption_detection','machine_install_claim','uninstall_data_removal','receipt_manifest_mismatch')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('"requirement_count": 14','"negative_count": 10','--data-sentinel','--evidence-sentinel','duplicate_manifest_path','traversal_manifest_path','unsorted_manifest','tampered_file_hash','wrong_total_bytes','stale_source_head','missing_corruption_detection','machine_install_claim','uninstall_data_removal','receipt_manifest_mismatch')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'carries four installer successor known-error rules without changing predecessors' {
