@@ -36,6 +36,10 @@ $commandData = $null
 $mutationPerformed = $false
 $successMessage = 'Command completed successfully.'
 $envelope = $null
+if ($NonInteractive -and -not $CliProcess) {
+    throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'usage' -Message '-NonInteractive requires -CliProcess so prompt-free process semantics and exit codes are explicit.')
+}
+if ($NonInteractive) { $successMessage = 'Command completed successfully in non-interactive mode.' }
 
 try {
     switch ($Command) {
