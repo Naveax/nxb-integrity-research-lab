@@ -48,7 +48,7 @@ function Test-NxbProductionRelativePath {
 
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
     if ([IO.Path]::IsPathRooted($Path)) { return $false }
-    $normalized = $Path.Replace('\\','/')
+    $normalized = $Path.Replace('\','/')
     if ($normalized.StartsWith('../',[StringComparison]::Ordinal) -or
         $normalized.EndsWith('/..',[StringComparison]::Ordinal) -or
         $normalized.Contains('/../')) {
