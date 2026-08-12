@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nxb-v1-cli-config.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","output_mode","non_interactive","update_channel"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-cli-config-v1"},
+    "output_mode": {"enum": ["human","json"]},
+    "non_interactive": {"type": "boolean"},
+    "update_channel": {"enum": ["stable","beta"]},
+    "install_root": {"type": ["string","null"]},
+    "update_root": {"type": ["string","null"]},
+    "evidence_root": {"type": ["string","null"]}
+  }
+}
