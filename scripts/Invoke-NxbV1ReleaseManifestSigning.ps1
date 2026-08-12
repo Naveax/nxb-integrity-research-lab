@@ -71,14 +71,14 @@ $signer = $null
 try {
     if ($SignerMode -ceq 'CertificationEphemeral') {
         if (-not [string]::IsNullOrWhiteSpace($Thumbprint)) { throw 'Thumbprint is forbidden in CertificationEphemeral mode.' }
-        $signer = New-NxbV1CertificationSigner -KeySizeBits ([int]$policy.certification.minimum_rsa_bits)
+        $signer = Get-NxbV1CertificationSigner -KeySizeBits ([int]$policy.certification.minimum_rsa_bits)
     }
     else {
         if ([string]::IsNullOrWhiteSpace($Thumbprint)) { throw 'Thumbprint is required in ProductionWindowsCertificateStore mode.' }
         $signer = Get-NxbV1ProductionCertificateSigner -StoreLocation $StoreLocation -StoreName $StoreName -Thumbprint $Thumbprint
     }
 
-    $envelope = New-NxbV1SignedReleaseEnvelope `
+    $envelope = ConvertTo-NxbV1SignedReleaseEnvelope `
         -Signer $signer `
         -ReleaseHead $ReleaseHead `
         -CertifiedImplementationHead $CertifiedImplementationHead `
