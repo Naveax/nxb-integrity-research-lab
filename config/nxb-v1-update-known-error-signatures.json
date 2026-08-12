@@ -28,9 +28,9 @@
     },
     {
       "id": "NXB-ERR-038",
-      "description": "Authoritative update JSON must not be directly overwritten without sibling-temp atomic publication.",
+      "description": "Authoritative update JSON must use sibling-temp atomic publication and must not invoke File.Replace with a PowerShell-null backup path.",
       "include": ["scripts/NxbV1Update.State.ps1"],
-      "regex": "(?im)^\\s*\\[IO\\.File\\]::WriteAllText\\(\\$full\\b"
+      "regex": "(?im)(?:^\\s*\\[IO\\.File\\]::WriteAllText\\(\\$full\\b|\\[IO\\.File\\]::Replace\\(\\s*\\$tempPath\\s*,\\s*\\$full\\s*,\\s*\\$null\\s*\\))"
     },
     {
       "id": "NXB-ERR-039",
