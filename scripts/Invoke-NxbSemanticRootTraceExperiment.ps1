@@ -85,7 +85,8 @@ $traceRoot = Join-Path $captureRoot 'traces'
 $analysisRoot = Join-Path $captureRoot 'analysis'
 $fixtureRoot = Join-Path $reviewRoot 'fixture-receipts'
 $buildRoot = Join-Path $rawRoot 'fixture-build'
-foreach ($directory in @($rawRoot,$reviewRoot,$captureRoot,$traceRoot,$analysisRoot,$fixtureRoot)) { [IO.Directory]::CreateDirectory($directory) | Out-Null }
+$wprTempRoot = Join-Path $rawRoot 'wpr-temp'
+foreach ($directory in @($rawRoot,$reviewRoot,$captureRoot,$traceRoot,$analysisRoot,$fixtureRoot,$wprTempRoot)) { [IO.Directory]::CreateDirectory($directory) | Out-Null }
 
 $profilePath = Join-Path $repositoryRoot 'profiles\Nxb.SemanticHardeningSequential.wprp'
 $buildScript = Join-Path $PSScriptRoot 'Invoke-NxbSuperblock1SemanticControlFixtureBuild.ps1'
@@ -96,8 +97,19 @@ foreach ($requiredPath in @($profilePath,$buildScript,$statisticsScript,$normali
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw ('Root/trace component missing: {0}' -f $requiredPath) }
 }
 
-$wpr = (Get-Command wpr.exe -ErrorAction Stop).Source
-$xperf = (Get-Command xperf.exe -ErrorAction Stop).Source
+$xperf = [IO.Path]::GetFullPath((Get-Command xperf.exe -ErrorAction Stop).Source)
+$xperfDirectory = Split-Path -Parent $xperf
+$pairedWpr = Join-Path $xperfDirectory 'wpr.exe'
+if (-not (Test-Path -LiteralPath $pairedWpr -PathType Leaf)) {
+    throw ('Matched WPT toolchain unavailable: xperf sibling wpr.exe missing beside {0}' -f $xperf)
+}
+$wpr = [IO.Path]::GetFullPath($pairedWpr)
+$wprVersion = [string](Get-Item -LiteralPath $wpr).VersionInfo.FileVersion
+$xperfVersion = [string](Get-Item -LiteralPath $xperf).VersionInfo.FileVersion
+$wprHelp = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-help','start')
+if ($wprHelp.exit_code -ne 0 -or (($wprHelp.output -join "`n") -notmatch '(?i)-instancename')) {
+    throw 'Matched WPT WPR does not expose the required -instancename lifecycle contract.'
+}
 $profileParse = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-profiles',$profilePath)
 if ($profileParse.exit_code -ne 0 -or (($profileParse.output -join "`n") -notmatch 'NxbSemanticHardeningSequential')) { throw 'Part 2 sequential WPR profile failed native parsing.' }
 
@@ -130,13 +142,16 @@ $summaryOnePath = Join-Path $reviewRoot 'semantic-control-summary.json'
 $summaryTwoPath = Join-Path $rawRoot 'semantic-control-summary-replay.json'
 $experimentPath = Join-Path $reviewRoot 'root-trace-experiment.json'
 $experimentId = 'semantic-hardening-' + $currentHead.Substring(0,12)
+$wprInstanceName = 'NXBIRL006_' + $currentHead.Substring(0,8) + '_' + [Guid]::NewGuid().ToString('N').Substring(0,8)
+$wprStopRecoveryUsed = $false
+$wprStopExitCode = 0
 
 $sessionOwned = $false
 $fixtureProcess = [System.Collections.Generic.List[Diagnostics.Process]]::new()
 $scenarioManifest = [System.Collections.Generic.List[object]]::new()
 $startedUtc = [DateTime]::UtcNow
 try {
-    $start = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-start',$profileReference,'-filemode')
+    $start = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-start',$profileReference,'-filemode','-recordtempto',$wprTempRoot,'-instancename',$wprInstanceName)
     if ($start.exit_code -ne 0) { throw ('WPR sequential start failed: exit={0}' -f $start.exit_code) }
     $sessionOwned = $true
     Start-Sleep -Milliseconds 250
@@ -156,16 +171,44 @@ try {
         $scenarioManifest.Add([pscustomobject][ordered]@{ id=[string]$scenario.id; mode=[string]$scenario.mode; repeat=[string]$scenario.repeat; fixture_receipt_path=[IO.Path]::GetFullPath($fixtureReceiptPath); pid=[int]$process.Id })
     }
 
-    $stop = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-stop',$stagingEtl)
-    if ($stop.exit_code -ne 0) { throw ('WPR sequential stop failed: exit={0}' -f $stop.exit_code) }
-    $sessionOwned = $false
-    if (-not (Test-Path -LiteralPath $stagingEtl -PathType Leaf)) { throw 'WPR stop produced no ETL.' }
+    $stop = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-stop',$stagingEtl,'-instancename',$wprInstanceName)
+    $wprStopExitCode = [int]$stop.exit_code
+    if ($stop.exit_code -eq 0) {
+        $sessionOwned = $false
+    }
+    elseif ($stop.exit_code -eq -2147417850) {
+        $statusAfterStop = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-status','-instancename',$wprInstanceName)
+        if ($statusAfterStop.exit_code -ne -984076288) {
+            $stopText = $stop.output -join ' | '
+            throw ('WPR stop RPC_E_CHANGED_MODE did not leave an inactive owned instance: stop={0} status={1} output={2}' -f $stop.exit_code,$statusAfterStop.exit_code,$stopText)
+        }
+        $sessionOwned = $false
+        $rawEtl = @(Get-ChildItem -LiteralPath $wprTempRoot -Filter '*.etl' -File -Recurse | Sort-Object FullName)
+        if ($rawEtl.Count -eq 0) {
+            throw 'WPR stop RPC_E_CHANGED_MODE left no recoverable raw ETL under the owned recordtempto root.'
+        }
+        $mergeArguments = [System.Collections.Generic.List[string]]::new()
+        $mergeArguments.Add('-merge')
+        foreach ($rawItem in $rawEtl) { $mergeArguments.Add([string]$rawItem.FullName) }
+        $mergeArguments.Add($stagingEtl)
+        $merge = Invoke-NxbSemanticRootTraceNative -Executable $xperf -ArgumentList @($mergeArguments)
+        if ($merge.exit_code -ne 0 -or -not (Test-Path -LiteralPath $stagingEtl -PathType Leaf)) {
+            throw ('Xperf recovery merge failed after WPR RPC_E_CHANGED_MODE: exit={0}' -f $merge.exit_code)
+        }
+        $wprStopRecoveryUsed = $true
+    }
+    else {
+        $stopText = $stop.output -join ' | '
+        throw ('WPR sequential stop failed: exit={0} output={1}' -f $stop.exit_code,$stopText)
+    }
+
+    if (-not (Test-Path -LiteralPath $stagingEtl -PathType Leaf)) { throw 'WPR/Xperf stop path produced no ETL.' }
     Move-Item -LiteralPath $stagingEtl -Destination $etlPath -Force
 }
 finally {
     if ($sessionOwned) {
-        $cancel = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-cancel')
-        if ($cancel.exit_code -ne 0) { Write-Warning ('Owned WPR cancellation failed: exit={0}' -f $cancel.exit_code) }
+        $cancel = Invoke-NxbSemanticRootTraceNative -Executable $wpr -ArgumentList @('-cancel','-instancename',$wprInstanceName)
+        if ($cancel.exit_code -ne 0 -and $cancel.exit_code -ne -984076288) { Write-Warning ('Owned WPR cancellation failed: exit={0}' -f $cancel.exit_code) }
     }
     if (Test-Path -LiteralPath $stagingEtl -PathType Leaf) { Remove-Item -LiteralPath $stagingEtl -Force }
     foreach ($process in $fixtureProcess) { try { $process.Dispose() } catch { Write-Verbose -Message 'Fixture process dispose failed.' } }
@@ -263,6 +306,12 @@ $result = [pscustomobject][ordered]@{
         scenario_continuity_count=if ($scenarioContinuity) { 10 } else { 0 }
         observation_gap_count=$observationGapCount
         normalized_replay_byte_identical=($eventsOneSha -ceq $eventsTwoSha -and $coverageOneSha -ceq $coverageTwoSha)
+        toolchain_binding='xperf_sibling_wpr_v1'
+        wpr_file_version=$wprVersion
+        xperf_file_version=$xperfVersion
+        wpr_instance_bound=$true
+        wpr_stop_exit_code=$wprStopExitCode
+        wpr_stop_recovery_used=$wprStopRecoveryUsed
     }
     evidence=[pscustomobject][ordered]@{
         etl_reviewable=$false
