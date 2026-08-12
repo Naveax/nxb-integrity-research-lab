@@ -11,6 +11,36 @@ function Get-NxbV1UpdateSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function ConvertFrom-NxbV1UpdateJsonPreservingStrings {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Json)
+
+    $convertCommand = Get-Command ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
+    if ($convertCommand.Parameters.ContainsKey('DateKind')) {
+        return (ConvertFrom-Json -InputObject $Json -DateKind String)
+    }
+
+    $value = ConvertFrom-Json -InputObject $Json
+    if ($null -ne $value) {
+        foreach ($propertyName in @('created_utc','updated_utc')) {
+            $property = $value.PSObject.Properties[$propertyName]
+            if ($null -ne $property -and $property.Value -is [DateTime]) {
+                $property.Value = ([DateTime]$property.Value).ToUniversalTime().ToString('o',[Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+    }
+    return $value
+}
+
+function Read-NxbV1UpdateJsonPreservingStrings {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $full = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw ('Update JSON file is missing: {0}' -f $full) }
+    $json = Get-Content -LiteralPath $full -Raw
+    return (ConvertFrom-NxbV1UpdateJsonPreservingStrings -Json $json)
+}
+
 function Get-NxbV1UpdateTreeDigest {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Root)
