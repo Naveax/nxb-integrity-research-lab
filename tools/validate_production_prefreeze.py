@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -12,6 +13,51 @@ def load(path: str) -> Dict[str, Any]:
 def lower_hex(value: Any, length: int) -> bool:
     text = str(value or "")
     return len(text) == length and all(c in "0123456789abcdef" for c in text)
+
+
+def canonical_sha256(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def validate_part8_faults(part8: Dict[str, Any], expected_head: str) -> bool:
+    base = part8.get("base_evidence", {})
+    if base.get("head_sha") != expected_head:
+        return False
+    if not lower_hex(base.get("evidence_sha256"), 64) or not lower_hex(base.get("payload_sha256"), 64):
+        return False
+    if canonical_sha256(base) != part8.get("base_evidence_canonical_sha256"):
+        return False
+    rows = part8.get("fault_matrix", [])
+    if len(rows) != 5:
+        return False
+    by_name = {str(row.get("name")): row for row in rows}
+    expected_names = {"stale_head", "cross_session", "missing_evidence", "tampered_payload", "evidence_hash_mismatch"}
+    if set(by_name) != expected_names:
+        return False
+    if any(row.get("rejected") is not True for row in rows):
+        return False
+
+    stale = by_name["stale_head"].get("mutation", {})
+    if stale.get("head_sha") == expected_head or stale.get("session_id") != base.get("session_id") or stale.get("evidence_sha256") != base.get("evidence_sha256") or stale.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+
+    cross = by_name["cross_session"].get("mutation", {})
+    if cross.get("head_sha") != expected_head or cross.get("session_id") == base.get("session_id") or cross.get("evidence_sha256") != base.get("evidence_sha256") or cross.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+
+    missing = by_name["missing_evidence"].get("mutation", {})
+    if missing.get("head_sha") != expected_head or missing.get("session_id") != base.get("session_id") or missing.get("evidence_sha256") != "" or missing.get("payload_sha256") != base.get("payload_sha256"):
+        return False
+
+    tampered = by_name["tampered_payload"].get("mutation", {})
+    if tampered.get("head_sha") != expected_head or tampered.get("session_id") != base.get("session_id") or tampered.get("evidence_sha256") != base.get("evidence_sha256") or tampered.get("payload_sha256") == base.get("payload_sha256") or canonical_sha256(tampered) == canonical_sha256(base):
+        return False
+
+    wrong_hash = by_name["evidence_hash_mismatch"].get("mutation", {})
+    if wrong_hash.get("head_sha") != expected_head or wrong_hash.get("session_id") != base.get("session_id") or wrong_hash.get("evidence_sha256") == base.get("evidence_sha256") or wrong_hash.get("payload_sha256") != base.get("payload_sha256") or canonical_sha256(wrong_hash) == canonical_sha256(base):
+        return False
+    return True
 
 
 def main() -> int:
@@ -56,9 +102,8 @@ def main() -> int:
 
     if part8.get("ps7_compatibility") is not True or part8.get("ps51_compatibility") is not True:
         failures.append("part8_compatibility")
-    faults = part8.get("fault_matrix", [])
-    if len(faults) < 5 or any(item.get("rejected") is not True for item in faults):
-        failures.append("part8_fault_matrix")
+    if not validate_part8_faults(part8, args.expected_head):
+        failures.append("part8_independent_fault_replay")
     if int(part8.get("artifact_bytes", -1)) < 0:
         failures.append("part8_artifact_budget")
 
