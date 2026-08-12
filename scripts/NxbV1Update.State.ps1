@@ -22,6 +22,7 @@ function Write-NxbV1UpdateJson {
     $payload = (($Value | ConvertTo-Json -Depth 12)+[Environment]::NewLine)
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes($payload)
     $tempPath = Join-Path -Path $parent -ChildPath ('.nxb-json-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $backupPath = Join-Path -Path $parent -ChildPath ('.nxb-json-backup-' + [Guid]::NewGuid().ToString('N') + '.bak')
     $stream = $null
     try {
         $stream = [IO.FileStream]::new($tempPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None,4096,[IO.FileOptions]::WriteThrough)
@@ -30,7 +31,7 @@ function Write-NxbV1UpdateJson {
         $stream.Dispose()
         $stream = $null
         if (Test-Path -LiteralPath $full -PathType Leaf) {
-            [IO.File]::Replace($tempPath,$full,$null)
+            [IO.File]::Replace($tempPath,$full,$backupPath)
         }
         else {
             [IO.File]::Move($tempPath,$full)
@@ -38,7 +39,8 @@ function Write-NxbV1UpdateJson {
     }
     finally {
         if ($null -ne $stream) { $stream.Dispose() }
-        if (Test-Path -LiteralPath $tempPath) { Remove-Item -LiteralPath $tempPath -Force }
+        if (Test-Path -LiteralPath $tempPath) { Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $backupPath) { Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue }
     }
 }
 
