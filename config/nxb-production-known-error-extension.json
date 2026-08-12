@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "base_rule_floor": 23,
   "authority_paths": [
     "scripts/NxbProductionFinalization.Common.ps1",
     "scripts/Invoke-NxbPart6FindingEngineCertification.ps1",
@@ -50,9 +51,17 @@
       "regex": "(?im)Should\\s+-Not\\s+-Match\\s+['\"]\\[\\^\\\\u0000-\\\\u007F\\]['\"]"
     }
   ],
+  "schema_contracts": [
+    {
+      "id": "NXB-ERR-035",
+      "collection": "guard_contracts",
+      "required_fields": ["id", "path", "required_tokens"]
+    }
+  ],
   "guard_contracts": [
     {
       "id": "NXB-ERR-022",
+      "path": "scripts/Invoke-NxbProductionFinalCertification.ps1",
       "required_tokens": [
         "$previousErrorActionPreference = $ErrorActionPreference",
         "$ErrorActionPreference = 'Continue'",
