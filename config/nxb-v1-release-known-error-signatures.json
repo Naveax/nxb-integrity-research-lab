@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-release-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-036",
+      "description": "Bare typed member expression passed in PowerShell command argument mode can be parsed as literal argument fragments instead of the intended cast/member expression.",
+      "include": [
+        "scripts/Invoke-NxbV1ReleaseIntegrationCertification.ps1",
+        "scripts/Test-NxbV1ReleaseIntegration.ps1",
+        "tests/V1ReleaseIntegration.Tests.ps1"
+      ],
+      "regex": "(?im)\\bJoin-Path\\s+\\$[A-Za-z_][A-Za-z0-9_]*\\s+\\[(?:string|int|long|int64|bool)\\]\\$[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*"
+    }
+  ]
+}
