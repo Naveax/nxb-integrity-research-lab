@@ -49,8 +49,11 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $context = Get-NxbFinalTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         $extension = Get-Content -LiteralPath $context.extensionConfig -Raw | ConvertFrom-Json
+        $signatures = Get-Content -LiteralPath $context.signatures -Raw | ConvertFrom-Json
         [string]$policy.certified_predecessor_head | Should -BeExactly '7dad7f15eccf074078573f8bbe2d89877218672d'
         [int]$policy.known_error_minimum_rules | Should -Be 22
+        @($signatures.rules).Count | Should -BeGreaterOrEqual 23
+        @($signatures.rules | Where-Object { [string]$_.id -ceq 'NXB-ERR-034' }).Count | Should -Be 1
         @($extension.rules).Count | Should -Be 9
         @($extension.guard_contracts).Count | Should -Be 1
         @($extension.authority_paths) | Should -Contain 'scripts/Invoke-NxbProductionFinalCertificationV2.ps1'
