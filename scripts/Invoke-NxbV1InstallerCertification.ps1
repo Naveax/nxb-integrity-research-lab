@@ -270,14 +270,15 @@ $lifecycle=[pscustomobject][ordered]@{
     schema_version=1; authority='nxb-v1-installer-lifecycle-v1'; source_head=$currentHead; package_manifest_sha256=$manifestSha;
     host_preflight_passed=$true; portable_stage_passed=$portableStagePassed; per_user_install_passed=$perUserInstallPassed; corruption_detected=$corruptionDetected;
     repair_passed=$repairPassed; repair_restored_bytes=$repairRestoredBytes; uninstall_passed=$uninstallPassed; install_root_absent_after_uninstall=$uninstallPassed;
-    data_preserved=$dataPreserved; evidence_preserved=$evidencePreserved; machine_install_performed=$false; production_release_installed=$false;
+    data_preserved=$dataPreserved; evidence_preserved=$evidencePreserved; data_sentinel_sha256=$dataHashBefore; evidence_sentinel_sha256=$evidenceHashBefore;
+    machine_install_performed=$false; production_release_installed=$false;
     receipt_hashes=[pscustomobject][ordered]@{ stage=(Get-NxbV1InstallerCertSha256 -Path $stageReceiptPath); install=(Get-NxbV1InstallerCertSha256 -Path $installReceiptPath); repair=(Get-NxbV1InstallerCertSha256 -Path $repairReceiptPath); uninstall=(Get-NxbV1InstallerCertSha256 -Path $uninstallReceiptPath) }
 }
 [IO.File]::WriteAllText($lifecyclePath,(($lifecycle | ConvertTo-Json -Depth 8)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 
 Write-Information '[6/8] Independent Python 14/14 + 10/10 adversarial replay'
 $independentPath=Join-Path -Path $outputFull -ChildPath 'installer-independent-validation.json'
-$independentRun=Invoke-NxbV1InstallerNative -Executable $pythonPath -ArgumentList @($validatorPath,'--policy',$policyPath,'--manifest',$manifestPath,'--package-root',$packageRoot,'--host',$hostReceiptPath,'--lifecycle',$lifecyclePath,'--stage-receipt',$stageReceiptPath,'--install-receipt',$installReceiptPath,'--repair-receipt',$repairReceiptPath,'--uninstall-receipt',$uninstallReceiptPath,'--expected-head',$currentHead,'--output',$independentPath)
+$independentRun=Invoke-NxbV1InstallerNative -Executable $pythonPath -ArgumentList @($validatorPath,'--policy',$policyPath,'--manifest',$manifestPath,'--package-root',$packageRoot,'--host',$hostReceiptPath,'--lifecycle',$lifecyclePath,'--stage-receipt',$stageReceiptPath,'--install-receipt',$installReceiptPath,'--repair-receipt',$repairReceiptPath,'--uninstall-receipt',$uninstallReceiptPath,'--data-sentinel',$dataSentinel,'--evidence-sentinel',$evidenceSentinel,'--expected-head',$currentHead,'--output',$independentPath)
 if ($independentRun.exit_code -ne 0) { throw ('Installer independent replay failed:{0}{1}' -f [Environment]::NewLine,$independentRun.output) }
 $independent=Get-Content -LiteralPath $independentPath -Raw | ConvertFrom-Json
 if ([string]$independent.status -cne 'passed' -or [int]$independent.requirements_validated -ne 14 -or [int]$independent.negative_controls_validated -ne 10 -or @($independent.failures).Count -ne 0) { throw 'Installer independent replay is not 14/14 + 10/10.' }
@@ -300,7 +301,7 @@ $reviewFiles=[ordered]@{
     'base-known-error-scan.json'=$baseScanPath; 'production-known-error-scan.json'=$productionScanPath; 'release-known-error-scan.json'=$releaseScanPath; 'signing-known-error-scan.json'=$signingScanPath; 'installer-known-error-scan.json'=$installerScanPath;
     'installer-host-preflight.json'=$hostReceiptPath; 'package-manifest.json'=$manifestPath; 'installer-lifecycle.json'=$lifecyclePath; 'installer-independent-validation.json'=$independentPath; 'installer-certification-receipt.json'=$certificationReceiptPath;
     'stage-receipt.json'=$stageReceiptPath; 'install-receipt.json'=$installReceiptPath; 'repair-receipt.json'=$repairReceiptPath; 'uninstall-receipt.json'=$uninstallReceiptPath;
-    'fixture/bin/nxb.ps1'=$fixtureScript; 'fixture/config/default.json'=$fixtureConfig
+    'fixture/bin/nxb.ps1'=$fixtureScript; 'fixture/config/default.json'=$fixtureConfig; 'fixture/external-data/keep.bin'=$dataSentinel; 'fixture/external-evidence/keep.bin'=$evidenceSentinel
 }
 foreach ($entry in $reviewFiles.GetEnumerator()) {
     $sourcePath=[string]($entry.Value); $entryName=[string]($entry.Key); $nativeEntryName=$entryName.Replace('/',[IO.Path]::DirectorySeparatorChar)
@@ -314,10 +315,12 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 Write-Information '[8/8] Final review membership and closure summary'
 $zip=[IO.Compression.ZipFile]::OpenRead($reviewZip)
-try { $entries=@($zip.Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object) }
+try { $entryNames=[string[]]@($zip.Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object { $_.FullName.Replace('\','/') }) }
 finally { $zip.Dispose() }
-$expectedEntries=@($reviewFiles.Keys | Sort-Object)
-if ($entries.Count -ne 16 -or ($entries -join "`n") -cne ($expectedEntries -join "`n")) { throw ('Installer review ZIP content mismatch: {0}' -f ($entries -join ', ')) }
+[Array]::Sort($entryNames,[StringComparer]::Ordinal)
+$expectedEntries=[string[]]@($reviewFiles.Keys)
+[Array]::Sort($expectedEntries,[StringComparer]::Ordinal)
+if ($entryNames.Count -ne 18 -or ($entryNames -join "`n") -cne ($expectedEntries -join "`n")) { throw ('Installer review ZIP content mismatch: {0}' -f ($entryNames -join ', ')) }
 $result=[pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-installer-certification-v1'; installer_head=$currentHead; predecessor_production_signing_head=$predecessor;
     release_integration_head=$releaseIntegration; certified_implementation_head=$certifiedImplementation; ps7=$ps7Summary; ps51=$ps51Summary;
@@ -325,9 +328,9 @@ $result=[pscustomobject][ordered]@{
     production_schema_contracts=[int]$productionScan.schema_contract_count; production_guard_contracts=[int]$productionScan.guard_contract_count; release_known_error_rules=[int]$releaseScan.rule_count;
     signing_known_error_rules=[int]$signingScan.rule_count; installer_known_error_rules=[int]$installerScan.rule_count; known_error_findings=0; analyzer_findings=0;
     host_preflight_passed=$true; portable_stage_passed=$portableStagePassed; per_user_install_passed=$perUserInstallPassed; corruption_detected=$corruptionDetected; repair_passed=$repairPassed; uninstall_passed=$uninstallPassed;
-    machine_install_performed=$false; production_release_installed=$false; package_manifest_path=$manifestPath; package_manifest_sha256=$manifestSha;
+    data_preserved=$dataPreserved; evidence_preserved=$evidencePreserved; machine_install_performed=$false; production_release_installed=$false; package_manifest_path=$manifestPath; package_manifest_sha256=$manifestSha;
     lifecycle_path=$lifecyclePath; lifecycle_sha256=(Get-NxbV1InstallerCertSha256 -Path $lifecyclePath); receipt_path=$certificationReceiptPath; receipt_sha256=(Get-NxbV1InstallerCertSha256 -Path $certificationReceiptPath);
     review_zip_path=$reviewZip; review_zip_sha256=(Get-NxbV1InstallerCertSha256 -Path $reviewZip)
 }
-Write-Information ('NXB v1 installer certification passed: head={0} PS7={1} PS5.1={2} independent=14/14 negatives=10/10 lifecycle=stage+install+corrupt+repair+uninstall rules={3}/{4}/{5} findings=0 machine_install=false production_install=false.' -f $currentHead,$ps7Summary,$ps51Summary,[int]$releaseScan.rule_count,[int]$signingScan.rule_count,[int]$installerScan.rule_count)
+Write-Information ('NXB v1 installer certification passed: head={0} PS7={1} PS5.1={2} independent=14/14 negatives=10/10 lifecycle=stage+install+corrupt+repair+uninstall rules={3}/{4}/{5} findings=0 data_preserved=true evidence_preserved=true machine_install=false production_install=false.' -f $currentHead,$ps7Summary,$ps51Summary,[int]$releaseScan.rule_count,[int]$signingScan.rule_count,[int]$installerScan.rule_count)
 if ($PassThru) { $result }
