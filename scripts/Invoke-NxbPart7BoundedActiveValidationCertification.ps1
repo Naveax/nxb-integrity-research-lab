@@ -107,18 +107,26 @@ if (@($sessionBoundary.adapter_modes).Count -ne 2 -or @($sessionBoundary.adapter
     throw 'Part 7 browser/API adapter boundary is incomplete.'
 }
 
-$listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback,0)
+$socketTimeoutMs = 5000
+$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
 $listener.Start()
 $client = $null
 $server = $null
 try {
     $port = [int]$listener.LocalEndpoint.Port
     $accept = $listener.BeginAcceptTcpClient($null,$null)
-    $client = New-Object Net.Sockets.TcpClient
+    $client = [Net.Sockets.TcpClient]::new()
+    $client.SendTimeout = $socketTimeoutMs
+    $client.ReceiveTimeout = $socketTimeoutMs
     $client.Connect('127.0.0.1',$port)
+    if (-not $accept.AsyncWaitHandle.WaitOne($socketTimeoutMs)) {
+        throw 'Part 7 loopback accept exceeded the bounded wait.'
+    }
     $server = $listener.EndAcceptTcpClient($accept)
+    $server.SendTimeout = $socketTimeoutMs
+    $server.ReceiveTimeout = $socketTimeoutMs
 
-    $encoding = New-Object Text.UTF8Encoding($false)
+    $encoding = [Text.UTF8Encoding]::new($false)
     $clientStream = $client.GetStream()
     $requestBytes = $encoding.GetBytes("GET /certification HTTP/1.1`r`nHost: 127.0.0.1`r`nConnection: close`r`n`r`n")
     $clientStream.Write($requestBytes,0,$requestBytes.Length)
@@ -163,6 +171,7 @@ $receipt = [pscustomobject][ordered]@{
     certification_network_mode = [string]$policy.certification.network_mode
     loopback_native_probe = $true
     native_probe_requests = 1
+    socket_timeout_ms = $socketTimeoutMs
     rejected_request_plans = $negativePlan.Count + 3
     request_budget_enforced = $true
     response_budget_enforced = $true
