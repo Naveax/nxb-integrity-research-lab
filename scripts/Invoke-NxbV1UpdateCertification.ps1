@@ -149,7 +149,7 @@ $installerScanPath=Join-Path $workRoot 'installer-known-error-scan.json'; $insta
 $updateScanPath=Join-Path $workRoot 'update-known-error-scan.json'; $updateScan=Invoke-NxbV1UpdateSuccessorScan -RepositoryRoot $repositoryRoot -ConfigurationPath $updateErrorPath -ExpectedContractId 'nxb-v1-update-known-error-signatures-v1' -OutputPath $updateScanPath
 if ([string]$baseScan.status -cne 'passed' -or [int]$baseScan.rule_count -lt 23 -or [int]$baseScan.finding_count -ne 0) { throw 'Update inherited base known-error gate failed.' }
 if ([string]$productionScan.status -cne 'passed' -or [int]$productionScan.extension_rule_count -ne 9 -or [int]$productionScan.schema_contract_count -ne 1 -or [int]$productionScan.guard_contract_count -ne 1 -or [int]$productionScan.finding_count -ne 0) { throw 'Update inherited production known-error gate failed.' }
-if ([int]$releaseScan.rule_count -ne 1 -or [int]$signingScan.rule_count -ne 2 -or [int]$installerScan.rule_count -ne 4 -or [int]$updateScan.rule_count -ne 4 -or [int]$releaseScan.finding_count+[int]$signingScan.finding_count+[int]$installerScan.finding_count+[int]$updateScan.finding_count -ne 0) { throw 'Update successor known-error gate failed.' }
+if ([int]$releaseScan.rule_count -ne 1 -or [int]$signingScan.rule_count -ne 2 -or [int]$installerScan.rule_count -ne 4 -or [int]$updateScan.rule_count -ne 5 -or [int]$releaseScan.finding_count+[int]$signingScan.finding_count+[int]$installerScan.finding_count+[int]$updateScan.finding_count -ne 0) { throw 'Update successor known-error gate failed.' }
 
 Write-Information '[2/9] Dual-runtime 24-test update contract'
 $testSource=Get-Content -LiteralPath $testPath -Raw; if ([regex]::Matches($testSource,"(?m)^\s*It\s+'").Count -ne 24) { throw 'Update source test-count drift.' }
@@ -177,7 +177,12 @@ $descriptorPath=Join-Path $fixtureRoot 'update-descriptor.json'; $descriptor=[ps
 $signer=Get-NxbV1CertificationSigner -KeySizeBits 3072
 try {
     $artifactRows=[Collections.Generic.List[object]]::new(); $artifactRows.Add([pscustomobject][ordered]@{ path='update/update-descriptor.json'; bytes=[int64](Get-Item $descriptorPath).Length; sha256=(Get-NxbV1UpdateCertSha256 $descriptorPath) })
-    foreach ($file in @($targetManifest.files)) { $nativeRelative=([string]$file.path).Replace('/',[IO.Path]::DirectorySeparatorChar); $artifactRows.Add([pscustomobject][ordered]@{ path=('package/'+[string]$file.path); bytes=[int64]$file.bytes; sha256=[string]$file.sha256 }) }
+    foreach ($file in @($targetManifest.files)) {
+        $nativeRelative=([string]$file.path).Replace('/',[IO.Path]::DirectorySeparatorChar)
+        $artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative
+        $artifactItem=Get-Item -LiteralPath $artifactPath
+        $artifactRows.Add([pscustomobject][ordered]@{ path=('package/'+[string]$file.path); bytes=[int64]$artifactItem.Length; sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath) })
+    }
     $emptyNotesSha=Get-NxbV1SigningSha256Text -Text ''
     $envelope=ConvertTo-NxbV1SignedReleaseEnvelope -Signer $signer -ReleaseHead $currentHead -CertifiedImplementationHead 'a10535b294c4d7ba8a4c3683154609087bf50c4b' -PackageManifestSha256 $targetManifestSha -ReleaseNotesSha256 $emptyNotesSha -Artifacts @($artifactRows)
     $envelopePath=Join-Path $fixtureRoot 'signature-envelope.json'; [IO.File]::WriteAllText($envelopePath,(($envelope|ConvertTo-Json -Depth 12)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
