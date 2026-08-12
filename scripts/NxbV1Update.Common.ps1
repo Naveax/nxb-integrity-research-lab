@@ -11,34 +11,15 @@ function Get-NxbV1UpdateSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function ConvertFrom-NxbV1UpdateJsonPreservingStrings {
+function ConvertTo-NxbV1UpdateVerificationEnvelope {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Json)
+    param([Parameter(Mandatory)][object]$Envelope)
 
-    $convertCommand = Get-Command ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
-    if ($convertCommand.Parameters.ContainsKey('DateKind')) {
-        return (ConvertFrom-Json -InputObject $Json -DateKind String)
+    $createdUtcProperty = $Envelope.PSObject.Properties['created_utc']
+    if ($null -ne $createdUtcProperty -and $createdUtcProperty.Value -is [DateTime]) {
+        $createdUtcProperty.Value = ([DateTime]$createdUtcProperty.Value).ToUniversalTime().ToString('o',[Globalization.CultureInfo]::InvariantCulture)
     }
-
-    $value = ConvertFrom-Json -InputObject $Json
-    if ($null -ne $value) {
-        foreach ($propertyName in @('created_utc','updated_utc')) {
-            $property = $value.PSObject.Properties[$propertyName]
-            if ($null -ne $property -and $property.Value -is [DateTime]) {
-                $property.Value = ([DateTime]$property.Value).ToUniversalTime().ToString('o',[Globalization.CultureInfo]::InvariantCulture)
-            }
-        }
-    }
-    return $value
-}
-
-function Read-NxbV1UpdateJsonPreservingStrings {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Path)
-    $full = [IO.Path]::GetFullPath($Path)
-    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw ('Update JSON file is missing: {0}' -f $full) }
-    $json = Get-Content -LiteralPath $full -Raw
-    return (ConvertFrom-NxbV1UpdateJsonPreservingStrings -Json $json)
+    return $Envelope
 }
 
 function Get-NxbV1UpdateTreeDigest {
@@ -133,27 +114,28 @@ function Test-NxbV1UpdateBundle {
     )
     try {
         if (-not (Test-NxbV1UpdateTrustObject -Trust $Trust) -or -not (Test-NxbV1UpdateDescriptorObject -Descriptor $Descriptor)) { return $false }
-        if (-not (Test-NxbV1SignedReleaseEnvelope -Envelope $Envelope)) { return $false }
-        if ([string]$Envelope.public_key.fingerprint -cne [string]$Trust.trusted_signer_fingerprint) { return $false }
-        if ([int]$Envelope.key_size_bits -lt 3072) { return $false }
+        $verificationEnvelope = ConvertTo-NxbV1UpdateVerificationEnvelope -Envelope $Envelope
+        if (-not (Test-NxbV1SignedReleaseEnvelope -Envelope $verificationEnvelope)) { return $false }
+        if ([string]$verificationEnvelope.public_key.fingerprint -cne [string]$Trust.trusted_signer_fingerprint) { return $false }
+        if ([int]$verificationEnvelope.key_size_bits -lt 3072) { return $false }
         if ($CertificationMode) {
-            if ([string]$Envelope.signer_mode -cne 'certification-ephemeral' -or [bool]$Envelope.production_signer_claimed) { return $false }
+            if ([string]$verificationEnvelope.signer_mode -cne 'certification-ephemeral' -or [bool]$verificationEnvelope.production_signer_claimed) { return $false }
         }
         else {
-            if ([string]$Envelope.signer_mode -cne 'production-windows-certificate-store' -or -not [bool]$Envelope.production_signer_claimed) { return $false }
+            if ([string]$verificationEnvelope.signer_mode -cne 'production-windows-certificate-store' -or -not [bool]$verificationEnvelope.production_signer_claimed) { return $false }
         }
         if ([string]$Descriptor.channel -cne [string]$Trust.channel) { return $false }
         if ([int]$Descriptor.release_sequence -lt [int]$Trust.minimum_release_sequence) { return $false }
         if ([int]$Descriptor.release_sequence -le $CurrentReleaseSequence) { return $false }
         foreach ($revokedObject in @($Trust.revoked_release_heads)) { if ([string]$revokedObject -ceq [string]$Descriptor.release_head) { return $false } }
-        if ([string]$Descriptor.release_head -cne [string]$Envelope.release_head -or [string]$Manifest.source_head -cne [string]$Envelope.release_head) { return $false }
-        if ([string]$Descriptor.certified_implementation_head -cne [string]$Envelope.certified_implementation_head) { return $false }
+        if ([string]$Descriptor.release_head -cne [string]$verificationEnvelope.release_head -or [string]$Manifest.source_head -cne [string]$verificationEnvelope.release_head) { return $false }
+        if ([string]$Descriptor.certified_implementation_head -cne [string]$verificationEnvelope.certified_implementation_head) { return $false }
         $manifestSha = Get-NxbV1UpdateSha256 -Path $ManifestPath
         $descriptorSha = Get-NxbV1UpdateSha256 -Path $DescriptorPath
-        if ([string]$Descriptor.package_manifest_sha256 -cne $manifestSha -or [string]$Envelope.package_manifest_sha256 -cne $manifestSha) { return $false }
+        if ([string]$Descriptor.package_manifest_sha256 -cne $manifestSha -or [string]$verificationEnvelope.package_manifest_sha256 -cne $manifestSha) { return $false }
         if (-not (Test-NxbV1PackageManifestObject -Manifest $Manifest -MaximumFiles 2048 -MaximumBytes 1073741824)) { return $false }
         if (-not (Test-NxbV1PackageAgainstManifest -PackageRoot $PackageRoot -Manifest $Manifest)) { return $false }
-        $artifactMap = Get-NxbV1UpdateEnvelopeArtifactMap -Envelope $Envelope
+        $artifactMap = Get-NxbV1UpdateEnvelopeArtifactMap -Envelope $verificationEnvelope
         if (-not $artifactMap.ContainsKey('update/update-descriptor.json')) { return $false }
         $descriptorArtifact = $artifactMap['update/update-descriptor.json']
         if ([int64]$descriptorArtifact.bytes -ne [int64](Get-Item -LiteralPath $DescriptorPath).Length -or [string]$descriptorArtifact.sha256 -cne $descriptorSha) { return $false }
