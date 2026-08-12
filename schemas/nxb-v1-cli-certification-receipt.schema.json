@@ -22,7 +22,7 @@
     "signing_known_error_rules": {"const": 2},
     "installer_known_error_rules": {"const": 4},
     "update_known_error_rules": {"const": 7},
-    "cli_known_error_rules": {"const": 4},
+    "cli_known_error_rules": {"const": 5},
     "known_error_findings": {"const": 0},
     "analyzer_findings": {"const": 0},
     "legacy_commands_preserved": {"const": true},
