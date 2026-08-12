@@ -86,3 +86,22 @@ Before publishing Update Portable V1, the successor source sweep found two exist
 - **NXB-ERR-029:** the 24-test source contract still expected stale prose (`An update is already staged.`), while the implementation intentionally rejects equal/older staged sequences and permits explicit supersession by a newer signed sequence. The test is rebound to those stable behaviors instead of weakening the implementation.
 
 The cleanup `finally` around the certification signer was also reviewed. It is entered only after the signer assignment succeeds, so no new cleanup/StrictMode error class is allocated. No Update Portable V1 had been issued at the time of this sweep.
+
+## NXB-ERR-038 — non-atomic authoritative update JSON publication
+
+**Class:** caught-preflight / persistent update-state durability.
+
+**Pre-native discovery:** signed staged update successor review before Update Portable V1.
+
+`Write-NxbV1UpdateJson` originally wrote stage state, update state, and operation receipts directly to the authoritative destination with `File.WriteAllText`. During an Apply state-publication failure, the install tree could be restored while an existing `update-state.json` had already been truncated or partially replaced, weakening the rollback authority for later runs.
+
+### Repair contract
+
+- Serialize authoritative JSON to a unique sibling temporary file in the same directory.
+- Open the temporary file exclusively, write all bytes, and flush them before publication.
+- If the destination already exists, replace it atomically with `File.Replace`; otherwise publish with same-directory `File.Move`.
+- Always remove an orphaned temporary file in cleanup.
+- Carry an update-successor machine signature that rejects the old direct `File.WriteAllText($full, ...)` publication shape.
+- Keep the existing 24-test update contract count unchanged while binding the atomic publication tokens into the persistent-state contract.
+
+This class was caught before any native Update Portable V1 was issued. Update successor known-error rule count advances from four to five.
