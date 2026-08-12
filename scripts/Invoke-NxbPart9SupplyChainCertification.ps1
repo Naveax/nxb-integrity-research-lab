@@ -15,6 +15,7 @@ $policy = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config\nxb-produc
 
 $packagePaths = @(
     (Join-Path $RepositoryRoot 'config\nxb-production-finalization-policy.json'),
+    (Join-Path $RepositoryRoot 'config\nxb-production-known-error-extension.json'),
     (Join-Path $RepositoryRoot 'scripts\NxbProductionFinalization.Common.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart6FindingEngineCertification.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart7BoundedActiveValidationCertification.ps1'),
@@ -22,6 +23,8 @@ $packagePaths = @(
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart9SupplyChainCertification.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbPart10ProductionFreezeCertification.ps1'),
     (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertification.ps1'),
+    (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertificationV2.ps1'),
+    (Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionKnownErrorScan.ps1'),
     (Join-Path $RepositoryRoot 'scripts\nxb.ps1'),
     (Join-Path $RepositoryRoot 'tools\validate_production_prefreeze.py'),
     (Join-Path $RepositoryRoot 'tools\validate_production_finalization.py'),
