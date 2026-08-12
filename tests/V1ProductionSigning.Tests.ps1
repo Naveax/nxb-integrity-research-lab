@@ -121,8 +121,10 @@ Describe 'NXB v1 production signing contract' {
     It 'creates certification RSA without persistence or production signer claims' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).common -Raw
         foreach ($token in @('function Get-NxbV1CertificationSigner','function ConvertTo-NxbV1SignedReleaseEnvelope',"mode='certification-ephemeral'",'private_key_persisted=$false','production_signer_claimed=$false','key_id=(''cert-ephemeral:{0}'' -f $publicKey.fingerprint)')) { $source | Should -Match ([regex]::Escape($token)) }
-        $source | Should -Not -Match ([regex]::Escape('function New-NxbV1CertificationSigner'))
-        $source | Should -Not -Match ([regex]::Escape('function New-NxbV1SignedReleaseEnvelope'))
+        $oldSignerFunction = 'function New-NxbV1' + 'CertificationSigner'
+        $oldEnvelopeFunction = 'function New-NxbV1' + 'SignedReleaseEnvelope'
+        $source | Should -Not -Match ([regex]::Escape($oldSignerFunction))
+        $source | Should -Not -Match ([regex]::Escape($oldEnvelopeFunction))
     }
 
     It 'signs and verifies canonical bytes with RSA PKCS1 SHA256' {
