@@ -59,11 +59,16 @@ function Get-NxbV1SigningFileSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Invoke-NxbV1ReleaseKnownErrorScan {
+function Invoke-NxbV1SuccessorKnownErrorScan {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$RepositoryRoot,[Parameter(Mandatory)][string]$ConfigurationPath,[Parameter(Mandatory)][string]$OutputPath)
+    param(
+        [Parameter(Mandatory)][string]$RepositoryRoot,
+        [Parameter(Mandatory)][string]$ConfigurationPath,
+        [Parameter(Mandatory)][string]$ExpectedContractId,
+        [Parameter(Mandatory)][string]$OutputPath
+    )
     $document = Get-Content -LiteralPath $ConfigurationPath -Raw | ConvertFrom-Json
-    if ([int]$document.schema_version -ne 1 -or [string]$document.contract_id -cne 'nxb-v1-release-known-error-signatures-v1') { throw 'Release known-error signature identity drift.' }
+    if ([int]$document.schema_version -ne 1 -or [string]$document.contract_id -cne $ExpectedContractId) { throw ('Successor known-error signature identity drift: expected={0}' -f $ExpectedContractId) }
     $findings = [Collections.Generic.List[object]]::new()
     foreach ($rule in @($document.rules)) {
         $regex = [regex]::new([string]$rule.regex,[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::IgnoreCase)
@@ -81,7 +86,8 @@ function Invoke-NxbV1ReleaseKnownErrorScan {
             }
         }
     }
-    $receipt = [pscustomobject][ordered]@{ schema_version=1; status=(if ($findings.Count -eq 0) { 'passed' } else { 'failed' }); rule_count=@($document.rules).Count; finding_count=$findings.Count; findings=@($findings) }
+    $scanStatus = if ($findings.Count -eq 0) { 'passed' } else { 'failed' }
+    $receipt = [pscustomobject][ordered]@{ schema_version=1; status=$scanStatus; contract_id=$ExpectedContractId; rule_count=@($document.rules).Count; finding_count=$findings.Count; findings=@($findings) }
     [IO.File]::WriteAllText([IO.Path]::GetFullPath($OutputPath),(($receipt | ConvertTo-Json -Depth 8)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
     return $receipt
 }
@@ -116,12 +122,13 @@ $operatorPath = Join-Path $PSScriptRoot 'Invoke-NxbV1ReleaseManifestSigning.ps1'
 $testPath = Join-Path $repositoryRoot 'tests\V1ProductionSigning.Tests.ps1'
 $validatorPath = Join-Path $repositoryRoot 'tools\validate_v1_production_signing.py'
 $releaseErrorPath = Join-Path $repositoryRoot 'config\nxb-v1-release-known-error-signatures.json'
+$signingErrorPath = Join-Path $repositoryRoot 'config\nxb-v1-signing-known-error-signatures.json'
 $baseScannerPath = Join-Path $PSScriptRoot 'Invoke-NxbKnownErrorScan.ps1'
 $baseSignaturePath = Join-Path $repositoryRoot 'config\nxb-known-error-signatures.json'
 $productionScannerPath = Join-Path $PSScriptRoot 'Invoke-NxbProductionKnownErrorScan.ps1'
 $productionScannerConfigPath = Join-Path $repositoryRoot 'config\nxb-production-known-error-extension.json'
 $authorityPaths = @($PSCommandPath,$commonPath,$operatorPath,$testPath)
-foreach ($requiredPath in @($policyPath,$envelopeSchemaPath,$receiptSchemaPath,$commonPath,$operatorPath,$testPath,$validatorPath,$releaseErrorPath,$baseScannerPath,$baseSignaturePath,$productionScannerPath,$productionScannerConfigPath)) {
+foreach ($requiredPath in @($policyPath,$envelopeSchemaPath,$receiptSchemaPath,$commonPath,$operatorPath,$testPath,$validatorPath,$releaseErrorPath,$signingErrorPath,$baseScannerPath,$baseSignaturePath,$productionScannerPath,$productionScannerConfigPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw ('Production signing component missing: {0}' -f $requiredPath) }
 }
 
@@ -158,8 +165,11 @@ $productionScanPath = Join-Path $workRoot 'production-known-error-scan.json'
 $productionScan = & $productionScannerPath -RepositoryRoot $repositoryRoot -ConfigurationPath $productionScannerConfigPath -OutputPath $productionScanPath -NoThrow -PassThru
 if ([string]$productionScan.status -cne 'passed' -or [int]$productionScan.extension_rule_count -ne 9 -or [int]$productionScan.schema_contract_count -ne 1 -or [int]$productionScan.guard_contract_count -ne 1 -or [int]$productionScan.finding_count -ne 0) { throw 'Production signing inherited production known-error gate failed.' }
 $releaseScanPath = Join-Path $workRoot 'release-known-error-scan.json'
-$releaseScan = Invoke-NxbV1ReleaseKnownErrorScan -RepositoryRoot $repositoryRoot -ConfigurationPath $releaseErrorPath -OutputPath $releaseScanPath
+$releaseScan = Invoke-NxbV1SuccessorKnownErrorScan -RepositoryRoot $repositoryRoot -ConfigurationPath $releaseErrorPath -ExpectedContractId 'nxb-v1-release-known-error-signatures-v1' -OutputPath $releaseScanPath
 if ([string]$releaseScan.status -cne 'passed' -or [int]$releaseScan.rule_count -ne 1 -or [int]$releaseScan.finding_count -ne 0) { throw 'Production signing release known-error gate failed.' }
+$signingScanPath = Join-Path $workRoot 'signing-known-error-scan.json'
+$signingScan = Invoke-NxbV1SuccessorKnownErrorScan -RepositoryRoot $repositoryRoot -ConfigurationPath $signingErrorPath -ExpectedContractId 'nxb-v1-signing-known-error-signatures-v1' -OutputPath $signingScanPath
+if ([string]$signingScan.status -cne 'passed' -or [int]$signingScan.rule_count -ne 2 -or [int]$signingScan.finding_count -ne 0) { throw 'Production signing successor known-error gate failed.' }
 
 Write-Information '[2/7] Dual-runtime 18-test production signing contract'
 $testSource = Get-Content -LiteralPath $testPath -Raw
@@ -174,6 +184,9 @@ try {
     $ps51Contract = Invoke-NxbV1SigningPester -Executable $ps51Path -TestPath $testPath -ExpectedCount 18 -Label 'NXB v1 signing PS5.1'
 }
 finally { if ($null -eq $previousRoot) { Remove-Item Env:NXB_V1_SIGNING_REPOSITORY_ROOT -ErrorAction SilentlyContinue } else { $env:NXB_V1_SIGNING_REPOSITORY_ROOT=$previousRoot } }
+$ps7Summary = ('{0}/{1}' -f [int]$ps7Contract.passed,[int]$ps7Contract.total)
+$ps51Summary = ('{0}/{1}' -f [int]$ps51Contract.passed,[int]$ps51Contract.total)
+if ($ps7Summary -cne '18/18' -or $ps51Summary -cne '18/18') { throw ('Dual-runtime signing summary drift: PS7={0} PS5.1={1}' -f $ps7Summary,$ps51Summary) }
 
 Write-Information '[3/7] Build real-file certification fixture and sign through operator command'
 $fixtureRoot = Join-Path $workRoot 'fixture'
@@ -210,9 +223,9 @@ $certificationReceiptPath = Join-Path $outputFull 'v1-production-signing-certifi
 $certificationReceipt = [pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-production-signing-certification-v1'; release_head=$currentHead;
     certified_implementation_head=$certifiedImplementation; release_integration_predecessor_head=$predecessor;
-    ps7=('18/18'); ps51=('18/18'); independent_requirements=12; independent_negative_controls=8;
-    base_known_error_rules=[int]$baseScan.rule_count; production_extension_rules=[int]$productionScan.extension_rule_count; release_known_error_rules=[int]$releaseScan.rule_count;
-    known_error_findings=([int]$baseScan.finding_count+[int]$productionScan.finding_count+[int]$releaseScan.finding_count); analyzer_findings=$analyzerFindings.Count;
+    ps7=$ps7Summary; ps51=$ps51Summary; independent_requirements=12; independent_negative_controls=8;
+    base_known_error_rules=[int]$baseScan.rule_count; production_extension_rules=[int]$productionScan.extension_rule_count; release_known_error_rules=[int]$releaseScan.rule_count; signing_known_error_rules=[int]$signingScan.rule_count;
+    known_error_findings=([int]$baseScan.finding_count+[int]$productionScan.finding_count+[int]$releaseScan.finding_count+[int]$signingScan.finding_count); analyzer_findings=$analyzerFindings.Count;
     signing_algorithm=[string]$envelope.signing_algorithm; key_size_bits=[int]$envelope.key_size_bits; public_fingerprint=[string]$envelope.public_key.fingerprint;
     envelope_sha256=(Get-NxbV1SigningFileSha256 -Path $envelopePath); independent_validation_sha256=(Get-NxbV1SigningFileSha256 -Path $independentPath);
     certification_private_key_persisted=$false; production_signer_claimed=$false; actual_production_release_signed=$false; production_signing_pipeline_certified=$true;
@@ -223,7 +236,7 @@ $certificationReceipt = [pscustomobject][ordered]@{
 Write-Information '[6/7] Build bounded review ZIP with signed fixture bytes'
 [IO.Directory]::CreateDirectory($reviewRoot) | Out-Null
 $reviewFiles = [ordered]@{
-    'base-known-error-scan.json'=$baseScanPath; 'production-known-error-scan.json'=$productionScanPath; 'release-known-error-scan.json'=$releaseScanPath;
+    'base-known-error-scan.json'=$baseScanPath; 'production-known-error-scan.json'=$productionScanPath; 'release-known-error-scan.json'=$releaseScanPath; 'signing-known-error-scan.json'=$signingScanPath;
     'v1-production-signing-envelope.json'=$envelopePath; 'v1-production-signing-independent-validation.json'=$independentPath; 'v1-production-signing-certification-receipt.json'=$certificationReceiptPath;
     'fixture/package-manifest.json'=$packageManifestPath; 'fixture/release-notes.txt'=$releaseNotesPath; 'fixture/packages/a-first.bin'=$aArtifact; 'fixture/packages/z-last.bin'=$zArtifact
 }
@@ -240,16 +253,17 @@ $zip=[IO.Compression.ZipFile]::OpenRead($reviewZip)
 try { $entries=@($zip.Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object) }
 finally { $zip.Dispose() }
 $expectedEntries=@($reviewFiles.Keys | Sort-Object)
-if ($entries.Count -ne 10 -or ($entries -join "`n") -cne ($expectedEntries -join "`n")) { throw ('Production signing review ZIP content mismatch: {0}' -f ($entries -join ', ')) }
+if ($entries.Count -ne 11 -or ($entries -join "`n") -cne ($expectedEntries -join "`n")) { throw ('Production signing review ZIP content mismatch: {0}' -f ($entries -join ', ')) }
 $result=[pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-production-signing-certification-v1'; release_head=$currentHead; certified_implementation_head=$certifiedImplementation;
-    release_integration_predecessor_head=$predecessor; ps7='18/18'; ps51='18/18'; independent_requirements=12; independent_negative_controls=8;
+    release_integration_predecessor_head=$predecessor; ps7=$ps7Summary; ps51=$ps51Summary; independent_requirements=12; independent_negative_controls=8;
     base_known_error_rules=[int]$baseScan.rule_count; production_extension_rules=[int]$productionScan.extension_rule_count; production_schema_contracts=[int]$productionScan.schema_contract_count;
-    production_guard_contracts=[int]$productionScan.guard_contract_count; release_known_error_rules=[int]$releaseScan.rule_count; known_error_findings=0; analyzer_findings=0;
+    production_guard_contracts=[int]$productionScan.guard_contract_count; release_known_error_rules=[int]$releaseScan.rule_count; signing_known_error_rules=[int]$signingScan.rule_count;
+    known_error_findings=([int]$baseScan.finding_count+[int]$productionScan.finding_count+[int]$releaseScan.finding_count+[int]$signingScan.finding_count); analyzer_findings=$analyzerFindings.Count;
     signing_algorithm='RSA-PKCS1-SHA256'; key_size_bits=[int]$envelope.key_size_bits; public_fingerprint=[string]$envelope.public_key.fingerprint;
     production_signer_claimed=$false; actual_production_release_signed=$false; production_signing_pipeline_certified=$true;
     receipt_path=$certificationReceiptPath; receipt_sha256=(Get-NxbV1SigningFileSha256 -Path $certificationReceiptPath); envelope_path=$envelopePath; envelope_sha256=(Get-NxbV1SigningFileSha256 -Path $envelopePath);
     review_zip_path=$reviewZip; review_zip_sha256=(Get-NxbV1SigningFileSha256 -Path $reviewZip)
 }
-Write-Information ('NXB v1 production signing certification passed: head={0} PS7=18/18 PS5.1=18/18 independent=12/12 negatives=8/8 RSA={1} release_rules=1 findings=0 production_signer=false actual_release_signed=false.' -f $currentHead,[int]$envelope.key_size_bits)
+Write-Information ('NXB v1 production signing certification passed: head={0} PS7={1} PS5.1={2} independent=12/12 negatives=8/8 RSA={3} release_rules=1 signing_rules=2 findings=0 production_signer=false actual_release_signed=false.' -f $currentHead,$ps7Summary,$ps51Summary,[int]$envelope.key_size_bits)
 if ($PassThru) { $result }
