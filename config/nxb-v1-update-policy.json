@@ -23,6 +23,7 @@
     "require_absent_stage_root": true,
     "verify_before_publish": true,
     "copy_metadata_outside_package_root": true,
+    "allow_higher_sequence_supersede": true,
     "auto_apply": false
   },
   "apply": {
