@@ -16,6 +16,7 @@ Describe 'NXB v1 production signing contract' {
                 authority = Join-Path $fullRoot 'scripts\Invoke-NxbV1ProductionSigningCertification.ps1'
                 validator = Join-Path $fullRoot 'tools\validate_v1_production_signing.py'
                 release_errors = Join-Path $fullRoot 'config\nxb-v1-release-known-error-signatures.json'
+                signing_errors = Join-Path $fullRoot 'config\nxb-v1-signing-known-error-signatures.json'
                 docs = Join-Path $fullRoot 'docs\NXB-V1-PRODUCTION-SIGNING.md'
             }
         }
@@ -23,7 +24,7 @@ Describe 'NXB v1 production signing contract' {
 
     It 'keeps every production signing authority component repo-owned' {
         $c = Get-NxbV1SigningTestContext
-        foreach ($p in @($c.policy,$c.integration_policy,$c.signature_schema,$c.receipt_schema,$c.common,$c.operator,$c.authority,$c.validator,$c.release_errors,$c.docs)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
+        foreach ($p in @($c.policy,$c.integration_policy,$c.signature_schema,$c.receipt_schema,$c.common,$c.operator,$c.authority,$c.validator,$c.release_errors,$c.signing_errors,$c.docs)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
     }
 
     It 'binds production signing to the native-certified release integration predecessor' {
@@ -78,6 +79,8 @@ Describe 'NXB v1 production signing contract' {
         [bool]$s.additionalProperties | Should -BeFalse
         [string]$s.properties.authority.const | Should -BeExactly 'nxb-v1-production-signing-certification-v1'
         [string]$s.properties.release_integration_predecessor_head.const | Should -BeExactly '9371399bab4fbb921ad94198aa148c597c7b6261'
+        [int]$s.properties.release_known_error_rules.const | Should -Be 1
+        [int]$s.properties.signing_known_error_rules.const | Should -Be 2
         [bool]$s.properties.production_signer_claimed.const | Should -BeFalse
         [bool]$s.properties.actual_production_release_signed.const | Should -BeFalse
         [bool]$s.properties.production_signing_pipeline_certified.const | Should -BeTrue
@@ -117,7 +120,9 @@ Describe 'NXB v1 production signing contract' {
 
     It 'creates certification RSA without persistence or production signer claims' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).common -Raw
-        foreach ($token in @("mode='certification-ephemeral'",'private_key_persisted=$false','production_signer_claimed=$false','key_id=(''cert-ephemeral:{0}'' -f $publicKey.fingerprint)')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('function Get-NxbV1CertificationSigner','function ConvertTo-NxbV1SignedReleaseEnvelope',"mode='certification-ephemeral'",'private_key_persisted=$false','production_signer_claimed=$false','key_id=(''cert-ephemeral:{0}'' -f $publicKey.fingerprint)')) { $source | Should -Match ([regex]::Escape($token)) }
+        $source | Should -Not -Match ([regex]::Escape('function New-NxbV1CertificationSigner'))
+        $source | Should -Not -Match ([regex]::Escape('function New-NxbV1SignedReleaseEnvelope'))
     }
 
     It 'signs and verifies canonical bytes with RSA PKCS1 SHA256' {
@@ -132,12 +137,23 @@ Describe 'NXB v1 production signing contract' {
         foreach ($token in @('tampered_release_head','tampered_package_manifest_sha256','tampered_artifact_sha256','tampered_signer_fingerprint','malformed_signature','weak_key_metadata','wrong_signer_key_id','duplicate_artifact_path','pow(signature_int, exponent, modulus)','hmac.compare_digest')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'extends the release known-error rule over the signing PowerShell authority surface' {
-        $d = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).release_errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 1
-        [string]$d.rules[0].id | Should -BeExactly 'NXB-ERR-036'
-        $include = @($d.rules[0].include | ForEach-Object { [string]$_ })
+    It 'extends successor known-error regression coverage over the signing authority surface' {
+        $c = Get-NxbV1SigningTestContext
+        $release = Get-Content -LiteralPath $c.release_errors -Raw | ConvertFrom-Json
+        @($release.rules).Count | Should -Be 1
+        [string]$release.rules[0].id | Should -BeExactly 'NXB-ERR-036'
+        $include = @($release.rules[0].include | ForEach-Object { [string]$_ })
         foreach ($required in @('scripts/NxbV1ProductionSigning.Common.ps1','scripts/Invoke-NxbV1ReleaseManifestSigning.ps1','scripts/Invoke-NxbV1ProductionSigningCertification.ps1','tests/V1ProductionSigning.Tests.ps1')) { $include | Should -Contain $required }
+
+        $signing = Get-Content -LiteralPath $c.signing_errors -Raw | ConvertFrom-Json
+        @($signing.rules).Count | Should -Be 2
+        @($signing.rules | ForEach-Object { [string]$_.id }) | Should -Contain 'NXB-ERR-007'
+        @($signing.rules | ForEach-Object { [string]$_.id }) | Should -Contain 'NXB-ERR-014'
+
+        $authoritySource = Get-Content -LiteralPath $c.authority -Raw
+        $authoritySource | Should -Match ([regex]::Escape('$ps7Summary = (''{0}/{1}'' -f [int]$ps7Contract.passed,[int]$ps7Contract.total)'))
+        $authoritySource | Should -Match ([regex]::Escape('$ps51Summary = (''{0}/{1}'' -f [int]$ps51Contract.passed,[int]$ps51Contract.total)'))
+        $authoritySource | Should -Not -Match "(?im)\\bps(?:7|51)\\s*=\\s*(?:\\(\\s*'18/18'\\s*\\)|'18/18')"
     }
 
     It 'keeps signing authority incapable of merge tag push or release creation' {
