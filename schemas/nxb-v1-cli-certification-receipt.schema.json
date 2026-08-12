@@ -3,7 +3,7 @@
   "$id": "nxb-v1-cli-certification-receipt.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version","status","contract_id","head_sha","predecessor_update_head","ps7","ps51","independent_requirements","independent_negative_controls","cli_known_error_rules","release_known_error_rules","known_error_findings","analyzer_findings","legacy_commands_preserved","signed_update_delegation","stable_json_output","stable_exit_codes","explicit_mutation_confirmation","dry_run_supported","auto_apply","production_release_updated","review_entries"],
+  "required": ["schema_version","status","contract_id","head_sha","predecessor_update_head","ps7","ps51","independent_requirements","independent_negative_controls","base_known_error_rules","production_known_error_rules","production_schema_contracts","production_guard_contracts","release_known_error_rules","signing_known_error_rules","installer_known_error_rules","update_known_error_rules","cli_known_error_rules","known_error_findings","analyzer_findings","legacy_commands_preserved","signed_update_delegation","stable_json_output","stable_exit_codes","explicit_mutation_confirmation","dry_run_supported","auto_apply","production_release_updated","review_entries"],
   "properties": {
     "schema_version": {"const": 1},
     "status": {"const": "passed"},
@@ -14,8 +14,15 @@
     "ps51": {"const": "24/24"},
     "independent_requirements": {"const": 14},
     "independent_negative_controls": {"const": 10},
-    "cli_known_error_rules": {"const": 4},
+    "base_known_error_rules": {"type": "integer", "minimum": 23},
+    "production_known_error_rules": {"const": 9},
+    "production_schema_contracts": {"const": 1},
+    "production_guard_contracts": {"const": 1},
     "release_known_error_rules": {"const": 1},
+    "signing_known_error_rules": {"const": 2},
+    "installer_known_error_rules": {"const": 4},
+    "update_known_error_rules": {"const": 7},
+    "cli_known_error_rules": {"const": 4},
     "known_error_findings": {"const": 0},
     "analyzer_findings": {"const": 0},
     "legacy_commands_preserved": {"const": true},
@@ -26,6 +33,6 @@
     "dry_run_supported": {"const": true},
     "auto_apply": {"const": false},
     "production_release_updated": {"const": false},
-    "review_entries": {"const": 15}
+    "review_entries": {"const": 20}
   }
 }
