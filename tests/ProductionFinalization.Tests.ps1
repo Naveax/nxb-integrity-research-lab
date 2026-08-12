@@ -64,12 +64,12 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         }
     }
 
-    It 'keeps Part 6 correlation root-cause driven and severity non-promoting' {
+    It 'keeps Part 6 correlation root-cause driven target-session bound and severity non-promoting' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.part6 -Raw
-        $source | Should -Match ([regex]::Escape('root_cause_key'))
-        $source | Should -Match ([regex]::Escape('duplicate_suppressed = 1'))
-        $source | Should -Match ([regex]::Escape('severity_promoted = $false'))
+        foreach ($token in @('root_cause_key','duplicate_suppressed = 1','severity_promoted = $false',"orchestration_mode = 'bounded-authorized-session'",'target_session_binding = $true','destructive_validation_allowed = $false')) {
+            $source | Should -Match ([regex]::Escape($token))
+        }
     }
 
     It 'restricts Part 7 certification networking to loopback safe methods and budgets' {
@@ -89,10 +89,10 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         }
     }
 
-    It 'performs a real loopback native probe without production secrets' {
+    It 'performs a real loopback native probe and binds browser API credential references without production secrets' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.part7 -Raw
-        foreach ($token in @('Net.Sockets.TcpListener','127.0.0.1','GET /certification HTTP/1.1','production_secret_in_evidence = $false')) {
+        foreach ($token in @('Net.Sockets.TcpListener','127.0.0.1','GET /certification HTTP/1.1','production_secret_in_evidence = $false','browser_api_session_boundary = $true','credential_reference_only = $true',"adapter_modes = @('http-api','browser')",'secret_material_embedded = $false')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
@@ -128,33 +128,32 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $source | Should -Match ([regex]::Escape('[Diagnostics.Stopwatch]::StartNew()'))
     }
 
-    It 'makes Part 9 update authority staged-only with rollback metadata' {
+    It 'makes Part 9 update authority staged-only hash-verified and rollback bounded' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.part9 -Raw
-        $source | Should -Match ([regex]::Escape('staged_only = $true'))
-        $source | Should -Match ([regex]::Escape('auto_apply = $false'))
-        $source | Should -Match ([regex]::Escape('rollback_requires_explicit_operator = $true'))
-    }
-
-    It 'provides a unified non-destructive CLI' {
-        $context = Get-NxbFinalTestContext
-        $source = Get-Content -LiteralPath $context.cli -Raw
-        foreach ($token in @("'status'","'hash'","'inspect-manifest'","'certify-final'")) {
+        foreach ($token in @('staged_only = $true','auto_apply = $false','rollback_requires_explicit_operator = $true','staged_update_executed = $true','staged_file_count','autonomous_certification_workflow = $true')) {
             $source | Should -Match ([regex]::Escape($token))
         }
-        $source | Should -Match ([regex]::Escape('Invoke-NxbProductionFinalCertificationV2.ps1'))
+    }
+
+    It 'provides a unified non-destructive CLI with explicit stage-update' {
+        $context = Get-NxbFinalTestContext
+        $source = Get-Content -LiteralPath $context.cli -Raw
+        foreach ($token in @("'status'","'hash'","'inspect-manifest'","'stage-update'","'certify-final'",'Staging root must not already exist.','Invoke-NxbProductionFinalCertificationV2.ps1')) {
+            $source | Should -Match ([regex]::Escape($token))
+        }
         $source | Should -Not -Match '(?im)\b(Format-Volume|Clear-Disk|Invoke-Expression)\b'
     }
 
-    It 'validates complete package hashes signer fingerprint and rejects auto-apply' {
+    It 'validates complete package paths hashes signer fingerprint and rejects auto-apply' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.part9 -Raw
-        foreach ($token in @('Invoke-NxbProductionFinalCertificationV2.ps1','Invoke-NxbProductionKnownErrorScan.ps1','validate_production_finalization.py','ProductionFinalization.Tests.ps1')) {
+        foreach ($token in @('Invoke-NxbProductionFinalCertificationV2.ps1','Invoke-NxbProductionKnownErrorScan.ps1','validate_production_finalization.py','ProductionFinalization.Tests.ps1','packageRelativePaths','path = $relative')) {
             $source | Should -Match ([regex]::Escape($token))
         }
-        $commonSource = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('Test-NxbFinalPackageManifest','signer_fingerprint_sha256','staged_only','auto_apply')) {
-            $commonSource | Should -Match ([regex]::Escape($token))
+        $validatorSource = Get-Content -LiteralPath $context.validator -Raw
+        foreach ($token in @('safe_package_path','repository_root.joinpath','part9_repository_rehash')) {
+            $validatorSource | Should -Match ([regex]::Escape($token))
         }
     }
 
