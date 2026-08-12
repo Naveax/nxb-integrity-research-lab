@@ -31,6 +31,12 @@
       "description": "Authoritative update JSON must not be directly overwritten without sibling-temp atomic publication.",
       "include": ["scripts/NxbV1Update.State.ps1"],
       "regex": "(?im)^\\s*\\[IO\\.File\\]::WriteAllText\\(\\$full\\b"
+    },
+    {
+      "id": "NXB-ERR-039",
+      "description": "Rollback must not lower the anti-replay floor to the current rolled-back release sequence.",
+      "include": ["scripts/NxbV1Update.State.ps1"],
+      "regex": "(?im)^\\s*return\\s+\\[int\\]\\$state\\.current_release_sequence\\s*$"
     }
   ]
 }
