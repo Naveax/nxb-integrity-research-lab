@@ -198,10 +198,10 @@ def tree_digest(package_root, install_state_path):
 
 def main():
     ap=argparse.ArgumentParser()
-    for name in ('policy','manifest','package_root','descriptor','envelope','trust','lifecycle','stage_receipt','apply_receipt','rollback_receipt','initial_package_root','initial_install_state','target_install_state','data_sentinel','evidence_sentinel','expected_head','output'):
+    for name in ('policy','manifest','package_root','descriptor','envelope','trust','lifecycle','update_state','stage_receipt','apply_receipt','rollback_receipt','initial_package_root','initial_install_state','target_install_state','data_sentinel','evidence_sentinel','expected_head','output'):
         ap.add_argument('--'+name.replace('_','-'), required=True)
     a=ap.parse_args()
-    policy=load_json(a.policy); manifest=load_json(a.manifest); desc=load_json(a.descriptor); env=load_json(a.envelope); trust=load_json(a.trust); lifecycle=load_json(a.lifecycle)
+    policy=load_json(a.policy); manifest=load_json(a.manifest); desc=load_json(a.descriptor); env=load_json(a.envelope); trust=load_json(a.trust); lifecycle=load_json(a.lifecycle); update_state=load_json(a.update_state)
     stage=load_json(a.stage_receipt); applyr=load_json(a.apply_receipt); rollback=load_json(a.rollback_receipt); initial_state=load_json(a.initial_install_state)
     req={}
     req['policy_identity']=policy.get('contract_id')=='nxb-v1-update-v1' and policy.get('predecessor_installer_head')==INSTALLER and policy.get('production_signing_head')==SIGNING and policy.get('release_integration_head')==RELEASE_INTEGRATION and policy.get('certified_implementation_head')==CERTIFIED
@@ -220,7 +220,10 @@ def main():
     initial_tree=tree_digest(a.initial_package_root,a.initial_install_state); target_tree=tree_digest(a.package_root,a.target_install_state)
     req['tree_digests']=lifecycle.get('initial_tree_sha256')==initial_tree and lifecycle.get('applied_tree_sha256')==target_tree and lifecycle.get('rolled_back_tree_sha256')==initial_tree
     req['sentinel_hashes']=sha256_file(a.data_sentinel)==lifecycle.get('data_sentinel_sha256') and sha256_file(a.evidence_sentinel)==lifecycle.get('evidence_sentinel_sha256')
-    req['sequence_channel']=desc.get('release_sequence')==1 and desc.get('channel')=='stable' and lifecycle.get('target_release_sequence')==1 and lifecycle.get('channel')=='stable'
+    req['sequence_channel']=(
+        desc.get('release_sequence')==1 and desc.get('channel')=='stable' and lifecycle.get('target_release_sequence')==1 and lifecycle.get('channel')=='stable' and
+        update_state.get('contract_id')=='nxb-v1-update-state-v1' and update_state.get('current_release_sequence')==0 and update_state.get('highest_seen_release_sequence')==1 and update_state.get('rollback_available') is False
+    )
     req['production_boundaries']=env.get('production_signer_claimed') is False and lifecycle.get('machine_install_performed') is False and lifecycle.get('production_release_updated') is False
     req['receipt_release_binding']=(
         stage.get('release_head')==a.expected_head and stage.get('release_sequence')==1 and stage.get('channel')=='stable' and
@@ -234,7 +237,7 @@ def main():
     bad=copy.deepcopy(env); bad['public_key']['fingerprint']='0'*64; neg['wrong_signer']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,bad,trust,0)
     bad=copy.deepcopy(env); bad['signature_b64']=base64.b64encode(b'bad').decode(); neg['tampered_signature']=not verify_envelope(bad)
     badt=copy.deepcopy(trust); badt['revoked_release_heads']=[desc['release_head']]; neg['revoked_head']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,badt,0)
-    neg['sequence_replay']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,trust,1)
+    neg['sequence_replay']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,trust,update_state.get('highest_seen_release_sequence',0))
     badt=copy.deepcopy(trust); badt['minimum_release_sequence']=2; neg['minimum_sequence']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,badt,0)
     badt=copy.deepcopy(trust); badt['channel']='beta'; neg['channel_mismatch']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,badt,0)
     bad=copy.deepcopy(env); bad['key_size_bits']=2048; neg['weak_key_metadata']=not verify_envelope(bad)
