@@ -143,13 +143,13 @@ function Write-NxbV1CliReviewZip {
                 $sourcePath = Join-Path -Path $ReviewRoot -ChildPath $name
                 $entry = $archive.CreateEntry($name,[IO.Compression.CompressionLevel]::Optimal)
                 $entry.LastWriteTime = [DateTimeOffset]::new(1980,1,1,0,0,0,[TimeSpan]::Zero)
-                $input = [IO.File]::OpenRead($sourcePath)
+                $inputStream = [IO.File]::OpenRead($sourcePath)
                 try {
-                    $output = $entry.Open()
-                    try { $input.CopyTo($output) }
-                    finally { $output.Dispose() }
+                    $outputStream = $entry.Open()
+                    try { $inputStream.CopyTo($outputStream) }
+                    finally { $outputStream.Dispose() }
                 }
-                finally { $input.Dispose() }
+                finally { $inputStream.Dispose() }
             }
         }
         finally { $archive.Dispose() }
@@ -246,7 +246,7 @@ if ([string]$releaseScan.status -cne 'passed' -or [int]$releaseScan.rule_count -
 if ([string]$signingScan.status -cne 'passed' -or [int]$signingScan.rule_count -ne 2 -or [int]$signingScan.finding_count -ne 0) { throw 'CLI signing known-error gate failed.' }
 if ([string]$installerScan.status -cne 'passed' -or [int]$installerScan.rule_count -ne 4 -or [int]$installerScan.finding_count -ne 0) { throw 'CLI installer known-error gate failed.' }
 if ([string]$updateScan.status -cne 'passed' -or [int]$updateScan.rule_count -ne 7 -or [int]$updateScan.finding_count -ne 0) { throw 'CLI update known-error gate failed.' }
-if ([string]$cliScan.status -cne 'passed' -or [int]$cliScan.rule_count -ne 4 -or [int]$cliScan.finding_count -ne 0) { throw 'CLI successor known-error gate failed.' }
+if ([string]$cliScan.status -cne 'passed' -or [int]$cliScan.rule_count -ne 5 -or [int]$cliScan.finding_count -ne 0) { throw 'CLI successor known-error gate failed.' }
 
 Write-Information '[2/7] Dual-runtime exact 24-test CLI contract'
 $pwshCommand = Get-Command pwsh.exe -ErrorAction SilentlyContinue
@@ -343,10 +343,10 @@ $actualNames = [string[]]@($zipEntries)
 if (($expectedNames -join "`n") -cne ($actualNames -join "`n")) { throw 'CLI review ZIP membership drift.' }
 $receiptSha = Get-NxbV1CliCertSha256 -Path $receiptPath
 $reviewSha = Get-NxbV1CliCertSha256 -Path $reviewZip
-Write-Information ('NXB v1 CLI certification passed: head={0} PS7=24/24 PS5.1=24/24 independent=14/14 negatives=10/10 rules=23+/9+1+1/1/2/4/7/4 findings=0 analyzer=0 review=20.' -f $ExpectedHead.ToLowerInvariant())
+Write-Information ('NXB v1 CLI certification passed: head={0} PS7=24/24 PS5.1=24/24 independent=14/14 negatives=10/10 rules=23+/9+1+1/1/2/4/7/5 findings=0 analyzer=0 review=20.' -f $ExpectedHead.ToLowerInvariant())
 if ($PassThru) {
     return [pscustomobject][ordered]@{
         status='passed'; head_sha=$ExpectedHead.ToLowerInvariant(); predecessor_update_head='27507531154099ab28a05cfe8e4e900d72f22e7b'; ps7='24/24'; ps51='24/24'; independent='14/14'; negatives='10/10';
-        cli_known_error_rules=4; known_error_findings=0; analyzer_findings=0; review_entries=20; receipt_path=$receiptPath; receipt_sha256=$receiptSha; review_zip=$reviewZip; review_zip_sha256=$reviewSha
+        cli_known_error_rules=5; known_error_findings=0; analyzer_findings=0; review_entries=20; receipt_path=$receiptPath; receipt_sha256=$receiptSha; review_zip=$reviewZip; review_zip_sha256=$reviewSha
     }
 }
