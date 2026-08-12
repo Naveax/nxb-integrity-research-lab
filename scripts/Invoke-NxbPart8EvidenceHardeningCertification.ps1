@@ -35,24 +35,28 @@ $baseHash = Get-NxbFinalCanonicalJsonSha256 -InputObject $baseEvidence
 $faults = [Collections.Generic.List[object]]::new()
 function Add-NxbPart8FaultResult {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Name,[Parameter(Mandatory)][bool]$Rejected)
-    $faults.Add([pscustomobject][ordered]@{ name=$Name; rejected=$Rejected })
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][bool]$Rejected,
+        [Parameter(Mandatory)][object]$Mutation
+    )
+    $faults.Add([pscustomobject][ordered]@{ name=$Name; rejected=$Rejected; mutation=$Mutation })
 }
 
 $stale = [pscustomobject][ordered]@{ head_sha=('0' * 40); session_id=$baseEvidence.session_id; evidence_sha256=$baseEvidence.evidence_sha256; payload_sha256=$baseEvidence.payload_sha256 }
-Add-NxbPart8FaultResult -Name 'stale_head' -Rejected (([string]$stale.head_sha -cne $ExpectedHead))
+Add-NxbPart8FaultResult -Name 'stale_head' -Rejected (([string]$stale.head_sha -cne $ExpectedHead)) -Mutation $stale
 
 $crossSession = [pscustomobject][ordered]@{ head_sha=$ExpectedHead; session_id='part8-session-b'; evidence_sha256=$baseEvidence.evidence_sha256; payload_sha256=$baseEvidence.payload_sha256 }
-Add-NxbPart8FaultResult -Name 'cross_session' -Rejected (([string]$crossSession.session_id -cne [string]$baseEvidence.session_id))
+Add-NxbPart8FaultResult -Name 'cross_session' -Rejected (([string]$crossSession.session_id -cne [string]$baseEvidence.session_id)) -Mutation $crossSession
 
 $missingEvidence = [pscustomobject][ordered]@{ head_sha=$ExpectedHead; session_id=$baseEvidence.session_id; evidence_sha256=''; payload_sha256=$baseEvidence.payload_sha256 }
-Add-NxbPart8FaultResult -Name 'missing_evidence' -Rejected (([string]$missingEvidence.evidence_sha256).Length -ne 64)
+Add-NxbPart8FaultResult -Name 'missing_evidence' -Rejected (([string]$missingEvidence.evidence_sha256).Length -ne 64) -Mutation $missingEvidence
 
 $tampered = [pscustomobject][ordered]@{ head_sha=$ExpectedHead; session_id=$baseEvidence.session_id; evidence_sha256=$baseEvidence.evidence_sha256; payload_sha256=(Get-NxbFinalSha256Text -Text 'tampered') }
-Add-NxbPart8FaultResult -Name 'tampered_payload' -Rejected ((Get-NxbFinalCanonicalJsonSha256 -InputObject $tampered) -cne $baseHash)
+Add-NxbPart8FaultResult -Name 'tampered_payload' -Rejected ((Get-NxbFinalCanonicalJsonSha256 -InputObject $tampered) -cne $baseHash) -Mutation $tampered
 
 $wrongHash = [pscustomobject][ordered]@{ head_sha=$ExpectedHead; session_id=$baseEvidence.session_id; evidence_sha256=('a' * 64); payload_sha256=$baseEvidence.payload_sha256 }
-Add-NxbPart8FaultResult -Name 'evidence_hash_mismatch' -Rejected ((Get-NxbFinalCanonicalJsonSha256 -InputObject $wrongHash) -cne $baseHash)
+Add-NxbPart8FaultResult -Name 'evidence_hash_mismatch' -Rejected ((Get-NxbFinalCanonicalJsonSha256 -InputObject $wrongHash) -cne $baseHash) -Mutation $wrongHash
 
 if (@($faults | Where-Object { -not $_.rejected }).Count -ne 0) { throw 'Part 8 fault matrix did not reject every mutation.' }
 $watch.Stop()
@@ -63,6 +67,8 @@ $receipt = [pscustomobject][ordered]@{
     status = 'passed'
     contract_id = [string]$policy.part8.contract_id
     head_sha = $ExpectedHead
+    base_evidence = $baseEvidence
+    base_evidence_canonical_sha256 = $baseHash
     fault_count = $faults.Count
     fault_matrix = @($faults)
     artifact_count = $manifest.Count
