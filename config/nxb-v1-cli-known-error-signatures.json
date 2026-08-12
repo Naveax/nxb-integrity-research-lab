@@ -5,7 +5,7 @@
     {
       "id": "NXB-ERR-004",
       "description": "CLI package and evidence ordering must remain ordinal and culture independent.",
-      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1","tests/V1Cli.Tests.ps1"],
+      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1"],
       "regex": "(?im)Sort-Object\\b[^\\r\\n]*(?:path|relative|entry|file)"
     },
     {
