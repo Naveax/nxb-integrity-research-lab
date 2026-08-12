@@ -4,7 +4,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -49,7 +49,7 @@ def validate_receipt_head(receipt: Dict[str, Any], head: str) -> bool:
     return receipt.get("status") == "passed" and receipt.get("head_sha") == head
 
 
-def safe_package_path(text: str) -> PurePosixPath | None:
+def safe_package_path(text: str) -> Optional[PurePosixPath]:
     if not text or "\\" in text:
         return None
     path = PurePosixPath(text)
@@ -217,7 +217,7 @@ def run_negative_controls(head: str, repository_root: Path, objects: Dict[str, D
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-head", required=True)
-    parser.add_argument("--repository-root", required=True)
+    parser.add_argument("--repository-root")
     parser.add_argument("--part6", required=True)
     parser.add_argument("--part7", required=True)
     parser.add_argument("--part8", required=True)
@@ -229,7 +229,7 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    repository_root = Path(args.repository_root).resolve()
+    repository_root = Path(args.repository_root).resolve() if args.repository_root else Path(__file__).resolve().parents[1]
     paths = {name: Path(getattr(args, name)) for name in ["part6", "part7", "part8", "part9", "part10", "package", "report"]}
     paths["index"] = Path(args.evidence_index)
     objects = {name: load_json(path) for name, path in paths.items()}
