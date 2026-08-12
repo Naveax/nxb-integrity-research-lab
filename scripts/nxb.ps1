@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('status','hash','inspect-manifest','certify-final')][string]$Command,
+    [Parameter(Mandatory)][ValidateSet('status','hash','inspect-manifest','stage-update','certify-final')][string]$Command,
     [Parameter()][string]$Path,
     [Parameter()][string]$ExpectedVersion,
     [Parameter()][string]$ExpectedHead,
-    [Parameter()][string]$OutputDirectory
+    [Parameter()][string]$OutputDirectory,
+    [Parameter()][string]$StagingRoot
 )
 
 Set-StrictMode -Version Latest
@@ -39,6 +40,44 @@ switch ($Command) {
         [pscustomobject][ordered]@{
             valid = Test-NxbFinalPackageManifest -Manifest $manifest -ExpectedVersion $ExpectedVersion
             path = [IO.Path]::GetFullPath($Path)
+        }
+        break
+    }
+    'stage-update' {
+        if ([string]::IsNullOrWhiteSpace($Path)) { throw '-Path is required for stage-update.' }
+        if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) { throw '-ExpectedVersion is required for stage-update.' }
+        if ([string]::IsNullOrWhiteSpace($StagingRoot)) { throw '-StagingRoot is required for stage-update.' }
+        $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        if (-not (Test-NxbFinalPackageManifest -Manifest $manifest -ExpectedVersion $ExpectedVersion)) {
+            throw 'Package manifest failed validation before staging.'
+        }
+        $stageFull = [IO.Path]::GetFullPath($StagingRoot)
+        if (Test-Path -LiteralPath $stageFull) { throw 'Staging root must not already exist.' }
+        [IO.Directory]::CreateDirectory($stageFull) | Out-Null
+        $staged = [Collections.Generic.List[object]]::new()
+        foreach ($file in @($manifest.files | Sort-Object path)) {
+            $relative = [string]$file.path
+            if ([string]::IsNullOrWhiteSpace($relative) -or $relative -match '(^/|^[A-Za-z]:|(^|/)\.\.(/|$)|\\)') {
+                throw ('Unsafe package relative path: {0}' -f $relative)
+            }
+            $source = Join-Path $RepositoryRoot $relative.Replace('/',[IO.Path]::DirectorySeparatorChar)
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw ('Package source missing: {0}' -f $relative) }
+            $sourceSha = Get-NxbFinalFileSha256 -Path $source
+            if ($sourceSha -cne [string]$file.sha256) { throw ('Package source SHA-256 mismatch: {0}' -f $relative) }
+            $destination = Join-Path $stageFull $relative.Replace('/',[IO.Path]::DirectorySeparatorChar)
+            $parent = Split-Path -Parent $destination
+            [IO.Directory]::CreateDirectory($parent) | Out-Null
+            [IO.File]::Copy($source,$destination,$false)
+            $destinationSha = Get-NxbFinalFileSha256 -Path $destination
+            if ($destinationSha -cne [string]$file.sha256) { throw ('Staged file SHA-256 mismatch: {0}' -f $relative) }
+            $staged.Add([pscustomobject][ordered]@{ path=$relative; sha256=$destinationSha; bytes=[int64](Get-Item -LiteralPath $destination).Length })
+        }
+        [pscustomobject][ordered]@{
+            status = 'staged'
+            staging_root = $stageFull
+            file_count = $staged.Count
+            files = @($staged)
+            auto_apply = $false
         }
         break
     }
