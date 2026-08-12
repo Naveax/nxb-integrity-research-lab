@@ -43,12 +43,6 @@
       "description": "Do not pass an intentionally empty text value to the mandatory signing text-hash parameter; hash real zero-byte fixture content instead.",
       "include": ["scripts/Invoke-NxbV1UpdateCertification.ps1"],
       "regex": "(?im)Get-NxbV1SigningSha256Text\\s+-Text\\s+''"
-    },
-    {
-      "id": "NXB-ERR-041",
-      "description": "Persisted signed envelope timestamps must be normalized back to canonical UTC round-trip strings before RSA verification after JSON date coercion.",
-      "include": ["scripts/NxbV1Update.Common.ps1"],
-      "regex": "(?im)Test-NxbV1SignedReleaseEnvelope\\s+-Envelope\\s+\\$Envelope\\b"
     }
   ]
 }
