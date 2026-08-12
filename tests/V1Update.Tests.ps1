@@ -104,9 +104,10 @@ Describe 'NXB v1 signed staged update contract' {
         [int]$s.properties.update_known_error_rules.const | Should -Be 7
     }
 
-    It 'requires RSA verification and an exact pinned signer fingerprint' {
+    It 'requires RSA verification, pinned signer identity and persisted timestamp normalization' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
-        foreach ($token in @('Test-NxbV1SignedReleaseEnvelope','trusted_signer_fingerprint','Envelope.public_key.fingerprint','production-windows-certificate-store','certification-ephemeral')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('ConvertTo-NxbV1UpdateVerificationEnvelope','created_utc','ToUniversalTime().ToString(''o'',[Globalization.CultureInfo]::InvariantCulture)','$verificationEnvelope = ConvertTo-NxbV1UpdateVerificationEnvelope -Envelope $Envelope','Test-NxbV1SignedReleaseEnvelope -Envelope $verificationEnvelope','trusted_signer_fingerprint','production-windows-certificate-store','certification-ephemeral')) { $source | Should -Match ([regex]::Escape($token)) }
+        $source | Should -Not -Match '(?im)Test-NxbV1SignedReleaseEnvelope\s+-Envelope\s+\$Envelope\b'
     }
 
     It 'binds signed descriptor manifest package and empty release notes to real fixture bytes' {
