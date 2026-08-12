@@ -127,3 +127,23 @@ The initial update-state design used only `current_release_sequence` as the repl
 - Keep the update Pester contract exactly 24 tests; update successor machine-rule count advances from five to six.
 
 This class was caught before any native Update Portable V1 was issued.
+
+## Signed staged update Portable V2 — existing ERR-029 reused for test-cardinality drift
+
+**Native/preflight discovery:** Update Portable V2 at exact head `58cc857e2a4ee99a09610ccd646f992c767352dd`.
+
+The run passed exact-head clone and the repaired shape-safe update-policy boundary, then stopped in the external source-contract gate with `expected=24 actual=25`. The repo-owned authority had not yet started.
+
+The 25th `It` block did not represent a missing security behavior. The Apply contract already asserted `Invoke-NxbV1UpdateAtomicSwap`, while a separate standalone `uses a rollback-on-failed-validation atomic swap helper` test repeated the same helper surface. This drift contradicted the certification schema and authority, both of which intentionally bind the dual-runtime contract to `24/24`.
+
+No new error ID is allocated. This is another **NXB-ERR-029** source/contract drift instance.
+
+### Repair contract
+
+- Preserve every atomic-swap/failure-rollback source assertion.
+- Merge the standalone helper assertions into the existing Apply/candidate/rollback test.
+- Remove only the redundant `It` wrapper, not its assertions.
+- Restore the Pester contract to exactly 24 tests.
+- Keep certification schema `ps7=24/24`, PS5.1 target `24/24`, update successor rule count `6`, independent Python `16/16 + 12/12`, and 28-entry review closure unchanged.
+
+The failed V2 run did not execute the repo-owned update certification authority, Stage, Apply, rollback, Python replay, or review packaging, so none of those layers are certified by that run.
