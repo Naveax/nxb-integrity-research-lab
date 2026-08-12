@@ -68,6 +68,33 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $scannerSource | Should -Match ([regex]::Escape('function Test-NxbProductionConfigField'))
         $scannerSource | Should -Match ([regex]::Escape("id = 'NXB-ERR-035'"))
         $scannerSource | Should -Not -Match '(?im)\$guard\.path\b'
+
+        $badConfigPath = Join-Path ([IO.Path]::GetTempPath()) ('nxb-production-err035-{0}.json' -f [Guid]::NewGuid().ToString('N'))
+        $badGuard = [pscustomobject][ordered]@{
+            id = 'NXB-ERR-022'
+            required_tokens = @(
+                '$previousErrorActionPreference = $ErrorActionPreference',
+                '$ErrorActionPreference = ''Continue''',
+                '$nativeExitCode = if ($null -eq $LASTEXITCODE)'
+            )
+        }
+        $badConfig = [pscustomobject][ordered]@{
+            schema_version = 1
+            base_rule_floor = 23
+            authority_paths = @($extension.authority_paths)
+            rules = @($extension.rules)
+            schema_contracts = @($extension.schema_contracts)
+            guard_contracts = @($badGuard)
+        }
+        try {
+            [IO.File]::WriteAllText($badConfigPath,(($badConfig | ConvertTo-Json -Depth 16) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+            $negativeScan = & $context.extensionScanner -RepositoryRoot $context.root -ConfigurationPath $badConfigPath -NoThrow -PassThru
+            [string]$negativeScan.status | Should -BeExactly 'failed'
+            @($negativeScan.findings | Where-Object { [string]$_.id -ceq 'NXB-ERR-035' }).Count | Should -BeGreaterThan 0
+        }
+        finally {
+            if (Test-Path -LiteralPath $badConfigPath -PathType Leaf) { Remove-Item -LiteralPath $badConfigPath -Force }
+        }
     }
 
     It 'makes Part 6 finding IDs deterministic and evidence-hash bound' {
