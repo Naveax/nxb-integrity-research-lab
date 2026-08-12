@@ -11,6 +11,7 @@ Describe 'NXB v1 release integration contract' {
                 policy = Join-Path $fullRoot 'config\nxb-v1-release-integration-policy.json'
                 schema = Join-Path $fullRoot 'schemas\nxb-v1-release-integration-receipt.schema.json'
                 script = Join-Path $fullRoot 'scripts\Test-NxbV1ReleaseIntegration.ps1'
+                authority = Join-Path $fullRoot 'scripts\Invoke-NxbV1ReleaseIntegrationCertification.ps1'
                 python = Join-Path $fullRoot 'tools\validate_v1_release_integration.py'
                 docs = Join-Path $fullRoot 'docs\NXB-V1-RELEASE-INTEGRATION.md'
                 candidate_policy = Join-Path $fullRoot 'config\nxb-production-finalization-policy.json'
@@ -20,7 +21,7 @@ Describe 'NXB v1 release integration contract' {
 
     It 'keeps every v1 release integration component repo-owned' {
         $context = Get-NxbV1ReleaseTestContext
-        foreach ($path in @($context.policy,$context.schema,$context.script,$context.python,$context.docs,$context.candidate_policy)) {
+        foreach ($path in @($context.policy,$context.schema,$context.script,$context.authority,$context.python,$context.docs,$context.candidate_policy)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -110,11 +111,13 @@ Describe 'NXB v1 release integration contract' {
 
     It 'uses the inherited safe native-process preference guard around git calls' {
         $context = Get-NxbV1ReleaseTestContext
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
-        $source | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
-        $source | Should -Match ([regex]::Escape('$nativeExitCode = if ($null -eq $LASTEXITCODE)'))
-        $source | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
+        foreach ($sourcePath in @($context.script,$context.authority)) {
+            $source = Get-Content -LiteralPath $sourcePath -Raw
+            $source | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
+            $source | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
+            $source | Should -Match ([regex]::Escape('$nativeExitCode = if ($null -eq $LASTEXITCODE)'))
+            $source | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
+        }
     }
 
     It 'requires both certified-head and live-main ancestry before release integration' {
@@ -175,10 +178,12 @@ Describe 'NXB v1 release integration contract' {
         $docs = Get-Content -LiteralPath $context.docs -Raw
         $docs | Should -Match ([regex]::Escape('This preflight does not merge, tag, push, create a GitHub Release, or mutate `main`.'))
         $docs | Should -Match ([regex]::Escape('The certification-only ephemeral RSA authorities are not production release signers.'))
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Not -Match ([regex]::Escape('@(''push'''))
-        $source | Should -Not -Match ([regex]::Escape('@(''tag'''))
-        $source | Should -Not -Match ([regex]::Escape('@(''update-ref'''))
+        foreach ($sourcePath in @($context.script,$context.authority)) {
+            $source = Get-Content -LiteralPath $sourcePath -Raw
+            $source | Should -Not -Match ([regex]::Escape('@(''push'''))
+            $source | Should -Not -Match ([regex]::Escape('@(''tag'''))
+            $source | Should -Not -Match ([regex]::Escape('@(''update-ref'''))
+        }
     }
 
     It 'locks the v1 release integration contract at exactly sixteen tests' {
