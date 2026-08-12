@@ -37,6 +37,12 @@
       "description": "Rollback must not lower the anti-replay floor to the current rolled-back release sequence.",
       "include": ["scripts/NxbV1Update.State.ps1"],
       "regex": "(?im)^\\s*return\\s+\\[int\\]\\$state\\.current_release_sequence\\s*$"
+    },
+    {
+      "id": "NXB-ERR-040",
+      "description": "Do not pass an intentionally empty text value to the mandatory signing text-hash parameter; hash real zero-byte fixture content instead.",
+      "include": ["scripts/Invoke-NxbV1UpdateCertification.ps1"],
+      "regex": "(?im)Get-NxbV1SigningSha256Text\\s+-Text\\s+''"
     }
   ]
 }
