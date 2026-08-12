@@ -16,6 +16,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
                 part10 = Join-Path $root 'scripts\Invoke-NxbPart10ProductionFreezeCertification.ps1'
                 final = Join-Path $root 'scripts\Invoke-NxbProductionFinalCertification.ps1'
                 cli = Join-Path $root 'scripts\nxb.ps1'
+                prefreeze = Join-Path $root 'tools\validate_production_prefreeze.py'
                 validator = Join-Path $root 'tools\validate_production_finalization.py'
                 scanner = Join-Path $root 'scripts\Invoke-NxbKnownErrorScan.ps1'
                 signatures = Join-Path $root 'config\nxb-known-error-signatures.json'
@@ -25,7 +26,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
 
     It 'keeps every Part 6-10 authority component repo-owned' {
         $context = Get-NxbFinalTestContext
-        foreach ($path in @($context.policy,$context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.cli,$context.validator,$context.scanner,$context.signatures)) {
+        foreach ($path in @($context.policy,$context.common,$context.part6,$context.part7,$context.part8,$context.part9,$context.part10,$context.final,$context.cli,$context.prefreeze,$context.validator,$context.scanner,$context.signatures)) {
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
     }
@@ -51,7 +52,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
     It 'makes Part 6 finding IDs deterministic and evidence-hash bound' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('New-NxbFinalFindingId','Invoke-NxbFinalFindingCorrelation','Evidence SHA-256 must be 64 lowercase hex characters.','finding-')) {
+        foreach ($token in @('Get-NxbFinalFindingId','Invoke-NxbFinalFindingCorrelation','Evidence SHA-256 must be 64 lowercase hex characters.','finding-')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
@@ -73,12 +74,12 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         [int]$policy.certification.maximum_requests | Should -BeLessOrEqual 8
     }
 
-    It 'requires permit authorization and kill switch for non-certification validation' {
+    It 'requires permit scope host method and kill switch for non-certification validation' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        $source | Should -Match ([regex]::Escape('$Plan.permit_sha256'))
-        $source | Should -Match ([regex]::Escape('$Plan.scope_authorized'))
-        $source | Should -Match ([regex]::Escape('$Plan.kill_switch_armed'))
+        foreach ($token in @('$Plan.permit_sha256','$Plan.scope_authorized','$Plan.kill_switch_armed','$Plan.permit_host_authorized','$Plan.permit_method_authorized')) {
+            $source | Should -Match ([regex]::Escape($token))
+        }
     }
 
     It 'performs a real loopback native probe without production secrets' {
@@ -175,6 +176,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
         $source | Should -Match ([regex]::Escape('Invoke-NxbPart5SignedClosureCertificationV2.ps1'))
         $source | Should -Match ([regex]::Escape('Invoke-NxbPart6FindingEngineCertification.ps1'))
         $source | Should -Match ([regex]::Escape('Invoke-NxbPart10ProductionFreezeCertification.ps1'))
+        $source | Should -Match ([regex]::Escape('validate_production_prefreeze.py'))
     }
 
     It 'keeps active production-finalization PowerShell authority ASCII clean' {
