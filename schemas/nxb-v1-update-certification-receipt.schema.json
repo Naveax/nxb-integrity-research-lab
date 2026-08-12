@@ -23,7 +23,7 @@
     "release_known_error_rules": {"const": 1},
     "signing_known_error_rules": {"const": 2},
     "installer_known_error_rules": {"const": 4},
-    "update_known_error_rules": {"const": 5},
+    "update_known_error_rules": {"const": 4},
     "known_error_findings": {"const": 0},
     "analyzer_findings": {"const": 0},
     "trust_anchor_passed": {"const": true},
