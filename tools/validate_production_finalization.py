@@ -3,7 +3,7 @@ import argparse
 import copy
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Tuple
 
 
@@ -49,8 +49,18 @@ def validate_receipt_head(receipt: Dict[str, Any], head: str) -> bool:
     return receipt.get("status") == "passed" and receipt.get("head_sha") == head
 
 
+def safe_package_path(text: str) -> PurePosixPath | None:
+    if not text or "\\" in text:
+        return None
+    path = PurePosixPath(text)
+    if path.is_absolute() or ".." in path.parts or "." in path.parts:
+        return None
+    return path
+
+
 def validate_all(
     head: str,
+    repository_root: Path,
     part6: Dict[str, Any],
     part7: Dict[str, Any],
     part8: Dict[str, Any],
@@ -116,20 +126,43 @@ def validate_all(
 
     if part9.get("staged_update_only") is not True or part9.get("auto_apply") is not False:
         failures.append("part9_update_boundary")
+    if part9.get("staged_update_executed") is not True or int(part9.get("staged_file_count", -1)) != int(part9.get("package_file_count", -2)):
+        failures.append("part9_staging_replay")
     if part9.get("unified_cli") is not True or part9.get("tamper_rejection") is not True or part9.get("deterministic_package_manifest") is not True:
         failures.append("part9_cli_or_tamper")
+    if part9.get("autonomous_certification_workflow") is not True:
+        failures.append("part9_autonomous_workflow")
     if package.get("staged_only") is not True or package.get("auto_apply") is not False:
         failures.append("part9_package_boundary")
+    if package.get("exact_head") != head or package.get("version") != part10.get("release_version"):
+        failures.append("part9_package_authority_binding")
     signer = str(package.get("signer_fingerprint_sha256", ""))
     if not lower_hex(signer, 64):
         failures.append("part9_signer_fingerprint")
-    for row in package.get("files", []):
+
+    seen_paths = set()
+    package_files = package.get("files", [])
+    if len(package_files) < 15:
+        failures.append("part9_package_cardinality")
+    for row in package_files:
+        relative = safe_package_path(str(row.get("path", "")))
         digest = str(row.get("sha256", ""))
+        if relative is None or str(relative) in seen_paths:
+            failures.append("part9_file_path")
+            break
+        seen_paths.add(str(relative))
         if not lower_hex(digest, 64):
             failures.append("part9_file_hash")
             break
         if int(row.get("bytes", -1)) < 0:
             failures.append("part9_file_size")
+            break
+        full = repository_root.joinpath(*relative.parts)
+        if not full.is_file() or full.is_symlink():
+            failures.append("part9_repository_file")
+            break
+        if file_sha256(full) != digest or full.stat().st_size != int(row.get("bytes", -1)):
+            failures.append("part9_repository_rehash")
             break
 
     if part10.get("production_safety_gate") is not True:
@@ -153,14 +186,14 @@ def validate_all(
     return len(failures) == 0, failures
 
 
-def run_negative_controls(head: str, objects: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def run_negative_controls(head: str, repository_root: Path, objects: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     cases = []
 
     def case(name: str, key: str, mutate) -> None:
         clone = {k: copy.deepcopy(v) for k, v in objects.items()}
         mutate(clone[key])
         ok, _ = validate_all(
-            head,
+            head, repository_root,
             clone["part6"], clone["part7"], clone["part8"], clone["part9"], clone["part10"],
             clone["package"], clone["index"], clone["report"],
         )
@@ -184,6 +217,7 @@ def run_negative_controls(head: str, objects: Dict[str, Dict[str, Any]]) -> List
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--repository-root", required=True)
     parser.add_argument("--part6", required=True)
     parser.add_argument("--part7", required=True)
     parser.add_argument("--part8", required=True)
@@ -195,16 +229,17 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    repository_root = Path(args.repository_root).resolve()
     paths = {name: Path(getattr(args, name)) for name in ["part6", "part7", "part8", "part9", "part10", "package", "report"]}
     paths["index"] = Path(args.evidence_index)
     objects = {name: load_json(path) for name, path in paths.items()}
 
     passed, failures = validate_all(
-        args.expected_head,
+        args.expected_head, repository_root,
         objects["part6"], objects["part7"], objects["part8"], objects["part9"], objects["part10"],
         objects["package"], objects["index"], objects["report"],
     )
-    negatives = run_negative_controls(args.expected_head, objects)
+    negatives = run_negative_controls(args.expected_head, repository_root, objects)
     negative_pass = all(row["rejected"] for row in negatives) and len(negatives) == 12
 
     result = {
