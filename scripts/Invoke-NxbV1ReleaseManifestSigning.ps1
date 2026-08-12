@@ -28,7 +28,6 @@ function Get-NxbV1ReleaseSigningFileSha256 {
 function Test-NxbV1ReleaseSigningRegularFile {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
-
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
     $item = Get-Item -LiteralPath $Path -Force
     return (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0)
@@ -37,9 +36,7 @@ function Test-NxbV1ReleaseSigningRegularFile {
 $policyPath = Join-Path $repositoryRoot 'config\nxb-v1-production-signing-policy.json'
 if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) { throw 'NXB v1 production signing policy is missing.' }
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
-if ([string]$policy.contract_id -cne 'nxb-v1-production-signing-v1' -or [int]$policy.schema_version -ne 1) {
-    throw 'NXB v1 production signing policy identity drift.'
-}
+if ([string]$policy.contract_id -cne 'nxb-v1-production-signing-v1' -or [int]$policy.schema_version -ne 1) { throw 'NXB v1 production signing policy identity drift.' }
 
 $packageFull = [IO.Path]::GetFullPath($PackageManifestPath)
 $notesFull = [IO.Path]::GetFullPath($ReleaseNotesPath)
@@ -53,12 +50,13 @@ if ($ArtifactPath.Count -lt 1 -or $ArtifactPath.Count -gt [int]$policy.release_m
 
 $artifactRows = [Collections.Generic.List[object]]::new()
 $artifactSourceByPath = @{}
+$trimChars = [char[]]@([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+$rootPrefix = $artifactRootFull.TrimEnd($trimChars) + [IO.Path]::DirectorySeparatorChar
 foreach ($relativeObject in $ArtifactPath) {
     $relative = [string]$relativeObject
     if (-not (Test-NxbV1SigningArtifactPath -Path $relative)) { throw ('Unsafe artifact relative path: {0}' -f $relative) }
     if ($artifactSourceByPath.ContainsKey($relative)) { throw ('Duplicate artifact relative path: {0}' -f $relative) }
     $sourceFull = [IO.Path]::GetFullPath((Join-Path -Path $artifactRootFull -ChildPath $relative.Replace('/',[IO.Path]::DirectorySeparatorChar)))
-    $rootPrefix = $artifactRootFull.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     if (-not $sourceFull.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase)) { throw ('Artifact escaped ArtifactRoot: {0}' -f $relative) }
     if (-not (Test-NxbV1ReleaseSigningRegularFile -Path $sourceFull)) { throw ('Artifact must be a regular non-reparse file: {0}' -f $relative) }
     $item = Get-Item -LiteralPath $sourceFull -Force
@@ -69,7 +67,6 @@ foreach ($relativeObject in $ArtifactPath) {
 
 $packageSha = Get-NxbV1ReleaseSigningFileSha256 -Path $packageFull
 $notesSha = Get-NxbV1ReleaseSigningFileSha256 -Path $notesFull
-
 $signer = $null
 try {
     if ($SignerMode -ceq 'CertificationEphemeral') {
@@ -88,7 +85,6 @@ try {
         -PackageManifestSha256 $packageSha `
         -ReleaseNotesSha256 $notesSha `
         -Artifacts @($artifactRows)
-
     if (-not (Test-NxbV1SignedReleaseEnvelope -Envelope $envelope)) { throw 'Release signature self-verification failed.' }
 
     if ((Get-NxbV1ReleaseSigningFileSha256 -Path $packageFull) -cne $packageSha) { throw 'Package manifest changed during signing.' }
@@ -97,18 +93,14 @@ try {
         $relative = [string]$artifact.path
         $sourceFull = [string]$artifactSourceByPath[$relative]
         $item = Get-Item -LiteralPath $sourceFull -Force
-        if ([int64]$item.Length -ne [int64]$artifact.bytes -or (Get-NxbV1ReleaseSigningFileSha256 -Path $sourceFull) -cne [string]$artifact.sha256) {
-            throw ('Artifact changed during signing: {0}' -f $relative)
-        }
+        if ([int64]$item.Length -ne [int64]$artifact.bytes -or (Get-NxbV1ReleaseSigningFileSha256 -Path $sourceFull) -cne [string]$artifact.sha256) { throw ('Artifact changed during signing: {0}' -f $relative) }
     }
 
     if ($SignerMode -ceq 'CertificationEphemeral') {
         if ([bool]$envelope.private_key_persisted -or [bool]$envelope.production_signer_claimed) { throw 'Certification mode crossed the production signer boundary.' }
     }
     else {
-        if (-not [bool]$envelope.production_signer_claimed -or [string]$envelope.signer_mode -cne 'production-windows-certificate-store') {
-            throw 'Production mode did not produce a production signer claim.'
-        }
+        if (-not [bool]$envelope.production_signer_claimed -or [string]$envelope.signer_mode -cne 'production-windows-certificate-store') { throw 'Production mode did not produce a production signer claim.' }
     }
 
     $outputParent = Split-Path -Parent $outputFull
@@ -116,12 +108,7 @@ try {
     if (Test-Path -LiteralPath $outputFull) { throw 'Release signature output path already exists.' }
     $json = ($envelope | ConvertTo-Json -Depth 12) + [Environment]::NewLine
     [IO.File]::WriteAllText($outputFull,$json,[Text.UTF8Encoding]::new($false))
-
     if ($PassThru) { $envelope }
-    if (-not $PassThru) {
-        Write-Information ('NXB v1 release manifest signed: mode={0} key={1} artifacts={2} output={3}' -f [string]$envelope.signer_mode,[string]$envelope.signer_key_id,@($envelope.artifacts).Count,$outputFull)
-    }
+    if (-not $PassThru) { Write-Information ('NXB v1 release manifest signed: mode={0} key={1} artifacts={2} output={3}' -f [string]$envelope.signer_mode,[string]$envelope.signer_key_id,@($envelope.artifacts).Count,$outputFull) }
 }
-finally {
-    if ($null -ne $signer -and $null -ne $signer.rsa) { $signer.rsa.Dispose() }
-}
+finally { if ($null -ne $signer -and $null -ne $signer.rsa) { $signer.rsa.Dispose() } }
