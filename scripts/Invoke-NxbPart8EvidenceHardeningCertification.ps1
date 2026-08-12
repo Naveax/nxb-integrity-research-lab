@@ -19,7 +19,7 @@ $policy = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config\nxb-produc
 if (-not $Ps7ContractPassed -or -not $Ps51ContractPassed) { throw 'Part 8 requires PS7 and PS5.1 contract passes.' }
 
 $watch = [Diagnostics.Stopwatch]::StartNew()
-$manifest = @(New-NxbFinalArtifactManifest -Path $PriorReceiptPath)
+$manifest = @(Get-NxbFinalArtifactManifest -Path $PriorReceiptPath)
 $totalBytes = [int64]0
 foreach ($entry in $manifest) { $totalBytes += [int64]$entry.bytes }
 if ($totalBytes -gt [int64]$policy.part8.maximum_artifact_bytes) { throw 'Part 8 prior evidence exceeded the artifact byte budget.' }
