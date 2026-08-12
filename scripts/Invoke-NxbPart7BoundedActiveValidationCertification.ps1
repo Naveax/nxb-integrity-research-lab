@@ -22,16 +22,18 @@ $allowedPlan = [pscustomobject][ordered]@{
     permit_sha256 = $null
     scope_authorized = $true
     kill_switch_armed = $true
+    permit_host_authorized = $true
+    permit_method_authorized = $true
 }
 if (-not (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $allowedPlan -CertificationMode $true)) {
     throw 'Part 7 certification loopback request plan was rejected.'
 }
 
 $negativePlan = @(
-    [pscustomobject][ordered]@{ host='example.com'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='POST'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=99; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true },
-    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$true; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true }
+    [pscustomobject][ordered]@{ host='example.com'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='POST'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=99; maximum_response_bytes=4096; production_secret_attached=$false; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true },
+    [pscustomobject][ordered]@{ host='127.0.0.1'; method='GET'; request_count=1; maximum_response_bytes=4096; production_secret_attached=$true; permit_sha256=$null; scope_authorized=$true; kill_switch_armed=$true; permit_host_authorized=$true; permit_method_authorized=$true }
 )
 foreach ($plan in $negativePlan) {
     if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $plan -CertificationMode $true) {
@@ -48,9 +50,32 @@ $productionWithoutPermit = [pscustomobject][ordered]@{
     permit_sha256 = ''
     scope_authorized = $true
     kill_switch_armed = $true
+    permit_host_authorized = $true
+    permit_method_authorized = $true
 }
 if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWithoutPermit -CertificationMode $false) {
     throw 'Part 7 production plan without permit unexpectedly passed.'
+}
+
+$productionAuthorized = [pscustomobject][ordered]@{
+    host = 'authorized.example'
+    method = 'GET'
+    request_count = 1
+    maximum_response_bytes = 4096
+    production_secret_attached = $false
+    permit_sha256 = Get-NxbFinalSha256Text -Text 'part7-certification-permit'
+    scope_authorized = $true
+    kill_switch_armed = $true
+    permit_host_authorized = $true
+    permit_method_authorized = $true
+}
+if (-not (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionAuthorized -CertificationMode $false)) {
+    throw 'Part 7 fully authorized production request plan was rejected.'
+}
+$productionWrongHost = $productionAuthorized | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$productionWrongHost.permit_host_authorized = $false
+if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWrongHost -CertificationMode $false) {
+    throw 'Part 7 production plan outside the permit host boundary unexpectedly passed.'
 }
 
 $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback,0)
@@ -109,12 +134,14 @@ $receipt = [pscustomobject][ordered]@{
     certification_network_mode = [string]$policy.certification.network_mode
     loopback_native_probe = $true
     native_probe_requests = 1
-    rejected_request_plans = $negativePlan.Count + 1
+    rejected_request_plans = $negativePlan.Count + 2
     request_budget_enforced = $true
     response_budget_enforced = $true
     secret_redaction = $true
     production_secret_in_evidence = $false
     permit_required_for_noncertification = $true
+    permit_target_binding = $true
+    permit_method_binding = $true
     kill_switch_required_for_noncertification = $true
     requirements_validated = @($policy.part7.requirements).Count
 }
