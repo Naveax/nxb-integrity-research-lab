@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-update-trust.schema.json",
+  "title": "NXB v1 Update Trust Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","channel","trusted_signer_fingerprint","minimum_release_sequence","allow_downgrade","revoked_release_heads"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-update-trust-v1"},
+    "channel": {"enum": ["stable","beta"]},
+    "trusted_signer_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "minimum_release_sequence": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "allow_downgrade": {"const": false},
+    "revoked_release_heads": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+    }
+  }
+}
