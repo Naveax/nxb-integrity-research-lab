@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "base_rule_floor": 22,
+  "authority_paths": [
+    "scripts/NxbProductionFinalization.Common.ps1",
+    "scripts/Invoke-NxbPart6FindingEngineCertification.ps1",
+    "scripts/Invoke-NxbPart7BoundedActiveValidationCertification.ps1",
+    "scripts/Invoke-NxbPart8EvidenceHardeningCertification.ps1",
+    "scripts/Invoke-NxbPart9SupplyChainCertification.ps1",
+    "scripts/Invoke-NxbPart10ProductionFreezeCertification.ps1",
+    "scripts/Invoke-NxbProductionFinalCertification.ps1",
+    "scripts/nxb.ps1",
+    "tests/ProductionFinalization.Tests.ps1"
+  ],
+  "rules": [
+    {
+      "id": "NXB-ERR-001",
+      "regex": "(?m)\"[^\"\\r\\n]*\\$(?!(?:env|global|script|local|private|using):)[A-Za-z_][A-Za-z0-9_]*:[^\"\\r\\n]*\""
+    },
+    {
+      "id": "NXB-ERR-005",
+      "regex": "(?ims)catch\\s*\\{\\s*\\}"
+    },
+    {
+      "id": "NXB-ERR-006",
+      "regex": "(?im)^\\s*\\$matches\\s*="
+    },
+    {
+      "id": "NXB-ERR-007",
+      "regex": "(?im)^\\s*function\\s+New-Nxb[^\\r\\n]*(?:Test|Fixture|Plan)[A-Za-z0-9_-]*\\b"
+    },
+    {
+      "id": "NXB-ERR-014",
+      "regex": "(?im)^\\s*\\$(?:validatorPath|pythonValidatorPath|fixturePath|expectedHead|expectedPolicy|expectedMachine)\\s*="
+    },
+    {
+      "id": "NXB-ERR-015",
+      "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
+    },
+    {
+      "id": "NXB-ERR-021",
+      "regex": "(?im)^\\s*\\$profile\\s*="
+    },
+    {
+      "id": "NXB-ERR-026",
+      "regex": "[^\\u0000-\\u007F]"
+    },
+    {
+      "id": "NXB-ERR-028",
+      "regex": "(?im)Should\\s+-Not\\s+-Match\\s+['\"]\\[\\^\\\\u0000-\\\\u007F\\]['\"]"
+    }
+  ],
+  "guard_contracts": [
+    {
+      "id": "NXB-ERR-022",
+      "path": "scripts/Invoke-NxbProductionFinalCertification.ps1",
+      "required_tokens": [
+        "$previousErrorActionPreference = $ErrorActionPreference",
+        "$ErrorActionPreference = 'Continue'",
+        "PSNativeCommandUseErrorActionPreference",
+        "2>&1",
+        "$ErrorActionPreference = $previousErrorActionPreference"
+      ]
+    }
+  ]
+}
