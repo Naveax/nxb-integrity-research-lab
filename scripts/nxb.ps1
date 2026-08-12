@@ -37,8 +37,18 @@ switch ($Command) {
         if ([string]::IsNullOrWhiteSpace($Path)) { throw '-Path is required for inspect-manifest.' }
         if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) { throw '-ExpectedVersion is required for inspect-manifest.' }
         $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $valid = Test-NxbFinalPackageManifest -Manifest $manifest -ExpectedVersion $ExpectedVersion
+        $seenPath = @{}
+        foreach ($file in @($manifest.files)) {
+            $relative = [string]$file.path
+            if ([string]::IsNullOrWhiteSpace($relative) -or $relative -match '(^/|^[A-Za-z]:|(^|/)\.\.(/|$)|\\)' -or $seenPath.ContainsKey($relative)) {
+                $valid = $false
+                break
+            }
+            $seenPath[$relative] = $true
+        }
         [pscustomobject][ordered]@{
-            valid = Test-NxbFinalPackageManifest -Manifest $manifest -ExpectedVersion $ExpectedVersion
+            valid = [bool]$valid
             path = [IO.Path]::GetFullPath($Path)
         }
         break
@@ -55,11 +65,13 @@ switch ($Command) {
         if (Test-Path -LiteralPath $stageFull) { throw 'Staging root must not already exist.' }
         [IO.Directory]::CreateDirectory($stageFull) | Out-Null
         $staged = [Collections.Generic.List[object]]::new()
+        $seenPath = @{}
         foreach ($file in @($manifest.files | Sort-Object path)) {
             $relative = [string]$file.path
-            if ([string]::IsNullOrWhiteSpace($relative) -or $relative -match '(^/|^[A-Za-z]:|(^|/)\.\.(/|$)|\\)') {
-                throw ('Unsafe package relative path: {0}' -f $relative)
+            if ([string]::IsNullOrWhiteSpace($relative) -or $relative -match '(^/|^[A-Za-z]:|(^|/)\.\.(/|$)|\\)' -or $seenPath.ContainsKey($relative)) {
+                throw ('Unsafe or duplicate package relative path: {0}' -f $relative)
             }
+            $seenPath[$relative] = $true
             $source = Join-Path $RepositoryRoot $relative.Replace('/',[IO.Path]::DirectorySeparatorChar)
             if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw ('Package source missing: {0}' -f $relative) }
             $sourceSha = Get-NxbFinalFileSha256 -Path $source
