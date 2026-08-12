@@ -164,10 +164,10 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $source | Should -Not -Match '(?i)private[-_ ]key\.(?:pem|der|json)|pkcs8'
     }
 
-    It 'inherits ERR-030 through ERR-033 keeps Part 5 PowerShell ASCII-clean and requires V2 zero-error binding' {
+    It 'inherits ERR-030 through ERR-034 keeps Part 5 PowerShell ASCII-clean and binds V2 rule floors to machine signatures' {
         $context = Get-NxbPart5TestContext
         $ledger = Get-Content -LiteralPath $context.ledger -Raw
-        foreach ($id in @('NXB-ERR-030','NXB-ERR-031','NXB-ERR-032','NXB-ERR-033')) {
+        foreach ($id in @('NXB-ERR-030','NXB-ERR-031','NXB-ERR-032','NXB-ERR-033','NXB-ERR-034')) {
             $ledger | Should -Match ([regex]::Escape($id))
         }
         foreach ($path in @($context.common,$context.certification,$context.certification_v2,$context.pnp,$context.power,$context.root_trace,$context.transport)) {
@@ -191,15 +191,25 @@ Describe 'NXB IRL-006 Part 5 cryptographic authority signed closure contract' {
         $rootTraceSource | Should -Match ([regex]::Escape('$current = $current[$segment]'))
         $rootTraceSource | Should -Match ([regex]::Escape('$eventsLostStatus -cne ''measured'''))
         $rootTraceSource | Should -Match ([regex]::Escape('$buffersWrittenStatus -cne ''measured'''))
+        $rootTraceSource | Should -Match ([regex]::Escape('$pairedWpr = Join-Path $xperfDirectory ''wpr.exe'''))
+        $rootTraceSource | Should -Match ([regex]::Escape('wpr_stop_recovery_used=$wprStopRecoveryUsed'))
         $transportSource = Get-Content -LiteralPath $context.transport -Raw
         $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Transcript'))
         $transportSource | Should -Not -Match ([regex]::Escape('[Parameter(Mandatory)][Collections.Generic.List[object]]$Transcript'))
         $transportSource | Should -Match ([regex]::Escape('if ($transcript.Count -ne 0) { throw ''Transport transcript must start empty before the first authenticated request.'' }'))
         $transportSource | Should -Match ([regex]::Escape('[Parameter(Mandatory)][object[]]$Records'))
+
+        $signatureDocument = Get-Content -LiteralPath $context.signatures -Raw | ConvertFrom-Json
+        $machineRuleCount = @($signatureDocument.rules).Count
+        $machineRuleCount | Should -BeGreaterOrEqual 23
         $v2Source = Get-Content -LiteralPath $context.certification_v2 -Raw
-        $v2Source | Should -Match ([regex]::Escape('$scan.rule_count -lt 22'))
-        $v2Source | Should -Match ([regex]::Escape('$result.known_error_rule_count -lt 22'))
+        $scanFloor = [regex]::Match($v2Source,'\$scan\.rule_count\s+-lt\s+(?<floor>\d+)')
+        $childFloor = [regex]::Match($v2Source,'\$result\.known_error_rule_count\s+-lt\s+(?<floor>\d+)')
+        $scanFloor.Success | Should -BeTrue
+        $childFloor.Success | Should -BeTrue
+        [int]$scanFloor.Groups['floor'].Value | Should -Be $machineRuleCount
+        [int]$childFloor.Groups['floor'].Value | Should -Be $machineRuleCount
         $v2Source | Should -Match ([regex]::Escape('$initialTranscriptInvariant'))
-        $v2Source | Should -Match ([regex]::Escape('ERR-033=true'))
+        $v2Source | Should -Match ([regex]::Escape('ERR-034=true'))
     }
 }
