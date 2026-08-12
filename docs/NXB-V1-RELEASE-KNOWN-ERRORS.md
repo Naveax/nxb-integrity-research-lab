@@ -147,3 +147,24 @@ No new error ID is allocated. This is another **NXB-ERR-029** source/contract dr
 - Keep certification schema `ps7=24/24`, PS5.1 target `24/24`, update successor rule count `6`, independent Python `16/16 + 12/12`, and 28-entry review closure unchanged.
 
 The failed V2 run did not execute the repo-owned update certification authority, Stage, Apply, rollback, Python replay, or review packaging, so none of those layers are certified by that run.
+
+## Signed staged update Portable V3 — existing ERR-014 reused for analyzer-unused declarations
+
+**Native discovery:** Update Portable V3 at exact head `08e4aa48bb4c6f3645373a357b5c99c32130cff3` on PowerShell 7.6.4.
+
+The run passed exact-head clone and the complete external source/policy/error-ledger contract gate up to PSScriptAnalyzer, then stopped with exactly two findings:
+
+- `PSUseDeclaredVarsMoreThanAssignments` for `$updateRepositoryRoot` in `NxbV1Update.Common.ps1`.
+- `PSReviewUnusedParameter` for callback parameter `$root` in the forced failed-publish validation scriptblock inside `Invoke-NxbV1UpdateCertification.ps1`.
+
+No new error ID is allocated. Both are the same update-successor application of **NXB-ERR-014**: authority declarations must be consumed by evidence or runtime behavior rather than left as dead analyzer state.
+
+### Repair contract
+
+- Remove `$updateRepositoryRoot`; sibling authority files already resolve from `$PSScriptRoot` and the variable has no semantic role.
+- Keep the failed-publish validation callback parameter, rename it to a semantic `$publishedRoot`, and actually validate that the published root exists before intentionally returning `false` to exercise rollback.
+- Do not suppress `PSUseDeclaredVarsMoreThanAssignments` or `PSReviewUnusedParameter`.
+- Keep update successor machine-rule count at `6`; PSScriptAnalyzer remains the general guard for unused declarations.
+- Keep the dual-runtime Pester contract at exactly `24` tests, independent Python at `16/16 + 12/12`, and the review ZIP at exactly `28` entries.
+
+The V3 run stopped before the repo-owned dual-runtime Pester contract, Stage, Apply, failure rollback, manual rollback, Python replay, or review packaging. None of those later update layers are certified by this run.
