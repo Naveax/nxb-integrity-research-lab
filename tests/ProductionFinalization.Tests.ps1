@@ -84,7 +84,7 @@ Describe 'NXB IRL-006 Part 6-10 production finalization contract' {
     It 'requires canonical permit scope host method and kill switch for non-certification validation' {
         $context = Get-NxbFinalTestContext
         $source = Get-Content -LiteralPath $context.common -Raw
-        foreach ($token in @('$Plan.permit_sha256','$Plan.permit_scope_id','$Plan.permit_host','$Plan.permit_method','$Plan.scope_authorized','$Plan.kill_switch_armed',"@('nxb-part7-permit-v1',$permitScopeId,$permitHost,$permitMethod)",'Get-NxbFinalSha256Text -Text $permitMaterial')) {
+        foreach ($token in @('$Plan.permit_sha256','$Plan.permit_scope_id','$Plan.permit_host','$Plan.permit_method','$Plan.scope_authorized','$Plan.kill_switch_armed','@(''nxb-part7-permit-v1'',$permitScopeId,$permitHost,$permitMethod)','Get-NxbFinalSha256Text -Text $permitMaterial')) {
             $source | Should -Match ([regex]::Escape($token))
         }
     }
