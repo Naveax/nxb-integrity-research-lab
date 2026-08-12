@@ -101,7 +101,7 @@ Describe 'NXB v1 signed staged update contract' {
         [string]$s.properties.ps7.const | Should -BeExactly '24/24'
         [int]$s.properties.independent_requirements.const | Should -Be 16
         [int]$s.properties.independent_negative_controls.const | Should -Be 12
-        [int]$s.properties.update_known_error_rules.const | Should -Be 6
+        [int]$s.properties.update_known_error_rules.const | Should -Be 7
     }
 
     It 'requires RSA verification and an exact pinned signer fingerprint' {
@@ -109,12 +109,12 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('Test-NxbV1SignedReleaseEnvelope','trusted_signer_fingerprint','Envelope.public_key.fingerprint','production-windows-certificate-store','certification-ephemeral')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'binds signed descriptor manifest and package artifacts to real fixture bytes' {
+    It 'binds signed descriptor manifest package and empty release notes to real fixture bytes' {
         $c=Get-NxbV1UpdateTestContext
         $source=Get-Content -LiteralPath $c.common -Raw
         foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap')) { $source | Should -Match ([regex]::Escape($token)) }
         $authoritySource=Get-Content -LiteralPath $c.authority -Raw
-        foreach ($token in @('$artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative','$artifactItem=Get-Item -LiteralPath $artifactPath','bytes=[int64]$artifactItem.Length','sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath)')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative','$artifactItem=Get-Item -LiteralPath $artifactPath','bytes=[int64]$artifactItem.Length','sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath)',"$emptyNotesPath=Join-Path $fixtureRoot 'release-notes.md'",'$emptyNotesSha=Get-NxbV1UpdateCertSha256 $emptyNotesPath')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'uses ordinal update tree canonicalization' {
@@ -144,6 +144,9 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @('.nxb-update-candidate-','.nxb-update-rollback-','Invoke-NxbV1UpdateAtomicSwap','rollback_available=$true','rollback_tree_sha256=$previousTreeSha','highest_seen_release_sequence=[int]$descriptor.release_sequence')) { $operatorSource | Should -Match ([regex]::Escape($token)) }
         $commonSource=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).common -Raw
         foreach ($token in @('Invoke-NxbV1UpdateAtomicSwap','PostPublishValidation','Atomic update post-publish validation failed.','[IO.Directory]::Move($rollback,$current)')) { $commonSource | Should -Match ([regex]::Escape($token)) }
+        $authoritySource=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).authority -Raw
+        foreach ($token in @('param($publishedRoot)','Test-Path -LiteralPath $publishedRoot -PathType Container','Published failure-test root is missing.')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
+        $commonSource | Should -Not -Match '(?im)^\s*\$updateRepositoryRoot\s*='
     }
 
     It 'restores the previous install if update state publication fails' {
@@ -176,11 +179,11 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback','update_state','highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'carries six update successor rules without duplicating release ERR-036' {
+    It 'carries seven update successor rules without duplicating release ERR-036' {
         $d=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).update_errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 6
+        @($d.rules).Count | Should -Be 7
         $ids=@($d.rules | ForEach-Object { [string]$_.id })
-        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037','NXB-ERR-038','NXB-ERR-039')) { $ids | Should -Contain $id }
+        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-037','NXB-ERR-038','NXB-ERR-039','NXB-ERR-040')) { $ids | Should -Contain $id }
         $ids | Should -Not -Contain 'NXB-ERR-036'
     }
 
