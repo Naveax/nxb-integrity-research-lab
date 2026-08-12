@@ -62,7 +62,7 @@ $partStatus = [pscustomobject][ordered]@{
     part9 = 'passed'
     part10 = 'passed'
 }
-$report = New-NxbFinalReportObject -ExactHead $ExpectedHead -ReleaseVersion ([string]$policy.part10.release_version) -Finding $findings -PartStatus $partStatus
+$report = Get-NxbFinalReportObject -ExactHead $ExpectedHead -ReleaseVersion ([string]$policy.part10.release_version) -Finding $findings -PartStatus $partStatus
 $reportPath = Join-Path $OutputDirectory 'nxb-v1-candidate-report.json'
 Write-NxbFinalAtomicJson -Path $reportPath -InputObject $report
 
