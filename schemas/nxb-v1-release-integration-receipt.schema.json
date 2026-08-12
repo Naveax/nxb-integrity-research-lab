@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nxb.local/schemas/nxb-v1-release-integration-receipt.schema.json",
+  "title": "NXB v1 Release Integration Preflight Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "authority",
+    "certified_implementation_head",
+    "release_head",
+    "main_head",
+    "candidate_version",
+    "target_version",
+    "checks",
+    "changed_paths",
+    "failure_count",
+    "failures"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "status": { "enum": ["passed", "failed"] },
+    "authority": { "const": "nxb-v1-release-integration-preflight-v1" },
+    "certified_implementation_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "release_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "main_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "candidate_version": { "const": "1.0.0-candidate" },
+    "target_version": { "const": "1.0.0" },
+    "checks": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "required": [
+        "clean_worktree",
+        "certified_head_ancestor",
+        "main_head_ancestor",
+        "certified_runtime_unchanged",
+        "successor_paths_allowed",
+        "generated_artifacts_absent",
+        "private_key_material_absent",
+        "production_signer_separated",
+        "candidate_version_preserved"
+      ]
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "failure_count": { "type": "integer", "minimum": 0 },
+    "failures": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "created_utc": { "type": "string" }
+  }
+}
