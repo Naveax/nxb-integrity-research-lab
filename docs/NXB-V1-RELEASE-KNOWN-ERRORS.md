@@ -56,3 +56,24 @@ No new error ID is allocated. The two classes are already defined by the native-
 - The review closure includes a dedicated `signing-known-error-scan.json` receipt.
 
 The V1 failure occurred before dual-runtime signing tests, real-file fixture signing, RSA replay, adversarial controls, or review packaging executed. Therefore none of those later production-signing layers are considered native-certified by this run.
+
+## NXB-ERR-037 — assignment to readonly PowerShell platform automatic variable
+
+**Class:** PSScriptAnalyzer / PowerShell 6+ readonly automatic platform state.
+
+**Native discovery:** Installer Portable V1 at exact head `24e445f4bcdbdccd8a92c23605913d5c6aa93a67` on Windows 10.0.19045 / PowerShell 7.6.3.
+
+The run passed exact-head clone and all external installer fast gates (`22` source tests, four installer successor rules, ERR-004/007/018/036, path-boundary checks, sentinel binding, and Python syntax). It stopped in the first repo-owned installer authority stage because PSScriptAnalyzer reported exactly one finding in `Test-NxbV1InstallerHost.ps1`: assignment to `$isWindows`, which resolves case-insensitively to the readonly `$IsWindows` automatic variable in PowerShell 6 and newer.
+
+### Repair contract
+
+- Use a semantic local such as `$windowsHost`; never assign `$IsWindows`, `$IsLinux`, `$IsMacOS`, or `$IsCoreCLR`.
+- Carry an installer-successor machine signature that rejects assignments to those readonly platform automatic variables across the active installer PowerShell surface.
+- Extend the existing release ERR-036 scanner across installer files instead of duplicating ERR-036 inside the installer-successor rule set.
+- Keep the installer-successor scanner at four rules: ERR-004, ERR-007, ERR-018, and ERR-037.
+- Keep the installer Pester contract exactly 22 tests while adding ERR-037 behavioral/source regression coverage.
+- In the same repair sweep, precompute the host receipt status string before object construction so the host surface also remains inside existing ERR-018 PS5.1 compatibility discipline.
+
+### Native scope of the failed run
+
+Installer Portable V1 failed before dual-runtime installer Pester execution, host lifecycle execution, package manifest generation, Stage/Install/Corrupt/Repair/Uninstall, independent Python replay, or review ZIP packaging. None of those later installer layers are considered native-certified by this V1 run.
