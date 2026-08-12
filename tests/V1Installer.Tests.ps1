@@ -80,6 +80,7 @@ Describe 'NXB v1 installer contract' {
         [string]$s.properties.ps7.const | Should -BeExactly '22/22'
         [int]$s.properties.independent_requirements.const | Should -Be 14
         [int]$s.properties.independent_negative_controls.const | Should -Be 10
+        [int]$s.properties.installer_known_error_rules.const | Should -Be 5
     }
 
     It 'rejects traversal rooted backslash delimiter and control paths' {
@@ -119,9 +120,11 @@ Describe 'NXB v1 installer contract' {
         $source | Should -Match ([regex]::Escape('[Text.UTF8Encoding]::new($false)'))
     }
 
-    It 'uses bounded native stderr handling in host preflight' {
+    It 'uses bounded native stderr handling and safe platform state in host preflight' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).host -Raw
-        foreach ($token in @('$previousErrorActionPreference = $ErrorActionPreference','$ErrorActionPreference = ''Continue''','$nativeExitCode = if ($null -eq $LASTEXITCODE)','PSNativeCommandUseErrorActionPreference')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$previousErrorActionPreference = $ErrorActionPreference','$ErrorActionPreference = ''Continue''','$nativeExitCode = if ($null -eq $LASTEXITCODE)','PSNativeCommandUseErrorActionPreference','$windowsHost = ($env:OS -ceq ''Windows_NT'')','$statusText = ''failed''','if ($statusPassed) { $statusText = ''passed'' }','windows=$windowsHost','status=$statusText')) { $source | Should -Match ([regex]::Escape($token)) }
+        $source | Should -Not -Match '(?im)^\s*\$(?:IsWindows|IsLinux|IsMacOS|IsCoreCLR)\s*='
+        $source | Should -Not -Match '(?im)=\s*\(if\s*\('
     }
 
     It 'makes the mutating installer operator support ShouldProcess' {
@@ -159,11 +162,11 @@ Describe 'NXB v1 installer contract' {
         foreach ($token in @('"requirement_count": 14','"negative_count": 10','--data-sentinel','--evidence-sentinel','duplicate_manifest_path','traversal_manifest_path','unsorted_manifest','tampered_file_hash','wrong_total_bytes','stale_source_head','missing_corruption_detection','machine_install_claim','uninstall_data_removal','receipt_manifest_mismatch')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'carries four installer successor known-error rules without changing predecessors' {
+    It 'carries five installer successor known-error rules without changing predecessors' {
         $d=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).installer_errors -Raw | ConvertFrom-Json
-        @($d.rules).Count | Should -Be 4
+        @($d.rules).Count | Should -Be 5
         $ids=@($d.rules | ForEach-Object { [string]$_.id })
-        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-036')) { $ids | Should -Contain $id }
+        foreach ($id in @('NXB-ERR-004','NXB-ERR-007','NXB-ERR-018','NXB-ERR-036','NXB-ERR-037')) { $ids | Should -Contain $id }
     }
 
     It 'locks the installer contract at exactly twenty-two tests' {
