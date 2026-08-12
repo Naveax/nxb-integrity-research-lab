@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-signing-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-007",
+      "description": "Signing helpers must not regress to New-* verbs that trigger ShouldProcess analyzer findings when the helper only constructs in-memory signing objects.",
+      "include": [
+        "scripts/NxbV1ProductionSigning.Common.ps1",
+        "scripts/Invoke-NxbV1ReleaseManifestSigning.ps1",
+        "tests/V1ProductionSigning.Tests.ps1"
+      ],
+      "regex": "(?im)\\b(?:New-NxbV1CertificationSigner|New-NxbV1SignedReleaseEnvelope)\\b"
+    },
+    {
+      "id": "NXB-ERR-014",
+      "description": "Dual-runtime Pester result objects must be consumed in certification evidence rather than assigned and replaced by hard-coded 18/18 receipt fields.",
+      "include": [
+        "scripts/Invoke-NxbV1ProductionSigningCertification.ps1"
+      ],
+      "regex": "(?im)\\bps(?:7|51)\\s*=\\s*(?:\\(\\s*'18/18'\\s*\\)|'18/18')"
+    }
+  ]
+}
