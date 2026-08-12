@@ -23,6 +23,11 @@ def load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def lower_hex(value: Any, length: int) -> bool:
+    text = str(value or "")
+    return len(text) == length and all(c in "0123456789abcdef" for c in text)
+
+
 def canonical_sha256(value: Any) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256_text(payload)
@@ -64,6 +69,10 @@ def validate_all(
         failures.append("part6_correlation_counts")
     if part6.get("severity_promoted") is not False:
         failures.append("part6_severity_boundary")
+    if part6.get("target_session_binding") is not True or part6.get("orchestration_mode") != "bounded-authorized-session":
+        failures.append("part6_target_session_binding")
+    if part6.get("scope_authorized") is not True or part6.get("evidence_only") is not True or part6.get("destructive_validation_allowed") is not False:
+        failures.append("part6_orchestration_safety")
     for item in part6.get("findings", []):
         hashes = sorted(set(str(x) for x in item.get("evidence_hashes", [])))
         aggregate = sha256_text("\n".join(hashes))
@@ -73,6 +82,9 @@ def validate_all(
         if finding_id(item) != item.get("finding_id"):
             failures.append("part6_finding_id")
             break
+        if item.get("target_id") != part6.get("target_id") or item.get("session_id") != part6.get("session_id"):
+            failures.append("part6_finding_session_escape")
+            break
 
     if part7.get("loopback_native_probe") is not True:
         failures.append("part7_loopback_probe")
@@ -80,8 +92,19 @@ def validate_all(
         failures.append("part7_secret_boundary")
     if part7.get("permit_required_for_noncertification") is not True:
         failures.append("part7_permit_boundary")
+    if part7.get("permit_target_binding") is not True or part7.get("permit_method_binding") is not True:
+        failures.append("part7_permit_binding")
     if part7.get("kill_switch_required_for_noncertification") is not True:
         failures.append("part7_kill_switch")
+    if part7.get("browser_api_session_boundary") is not True or part7.get("credential_reference_only") is not True:
+        failures.append("part7_browser_api_boundary")
+    session = part7.get("session_boundary", {})
+    if session.get("read_only_default") is not True or session.get("secret_material_embedded") is not False:
+        failures.append("part7_session_secret_boundary")
+    if sorted(session.get("adapter_modes", [])) != ["browser", "http-api"]:
+        failures.append("part7_adapter_modes")
+    if not lower_hex(session.get("credential_reference_sha256"), 64):
+        failures.append("part7_credential_reference")
 
     faults = part8.get("fault_matrix", [])
     if len(faults) < 5 or any(row.get("rejected") is not True for row in faults):
@@ -93,17 +116,20 @@ def validate_all(
 
     if part9.get("staged_update_only") is not True or part9.get("auto_apply") is not False:
         failures.append("part9_update_boundary")
-    if part9.get("unified_cli") is not True or part9.get("tamper_rejection") is not True:
+    if part9.get("unified_cli") is not True or part9.get("tamper_rejection") is not True or part9.get("deterministic_package_manifest") is not True:
         failures.append("part9_cli_or_tamper")
     if package.get("staged_only") is not True or package.get("auto_apply") is not False:
         failures.append("part9_package_boundary")
     signer = str(package.get("signer_fingerprint_sha256", ""))
-    if len(signer) != 64 or any(c not in "0123456789abcdef" for c in signer):
+    if not lower_hex(signer, 64):
         failures.append("part9_signer_fingerprint")
     for row in package.get("files", []):
         digest = str(row.get("sha256", ""))
-        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        if not lower_hex(digest, 64):
             failures.append("part9_file_hash")
+            break
+        if int(row.get("bytes", -1)) < 0:
+            failures.append("part9_file_size")
             break
 
     if part10.get("production_safety_gate") is not True:
