@@ -48,7 +48,7 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
         $source = Get-Content -LiteralPath $context.pnp -Raw
         $fixtureSource = Get-Content -LiteralPath $context.pnp_fixture -Raw
         foreach ($token in @(
-            'SwDeviceCreate','SwDeviceClose','HTREE\ROOT\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
+            'SwDeviceCreate','SwDeviceClose','HTREE\\ROOT\\0','SetupDiCreateDeviceInfoW','SetupDiCallClassInstaller',
             'DIF_REGISTERDEVICE','DiUninstallDevice','CleanupRebootRequired','CM_Locate_DevNodeW','0x8007007E','setupapi_root_fallback',
             'EventSource','EventListener','NXB-Semantic-PnP-Fixture','EmitCreateIfPresent','EmitRemoveIfAbsent','FixtureCreateConfirmed','FixtureRemoveConfirmed'
         )) { $fixtureSource | Should -Match ([regex]::Escape($token)) }
