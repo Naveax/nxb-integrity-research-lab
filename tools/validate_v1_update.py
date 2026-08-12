@@ -202,7 +202,7 @@ def main():
         ap.add_argument('--'+name.replace('_','-'), required=True)
     a=ap.parse_args()
     policy=load_json(a.policy); manifest=load_json(a.manifest); desc=load_json(a.descriptor); env=load_json(a.envelope); trust=load_json(a.trust); lifecycle=load_json(a.lifecycle)
-    stage=load_json(a.stage_receipt); applyr=load_json(a.apply_receipt); rollback=load_json(a.rollback_receipt)
+    stage=load_json(a.stage_receipt); applyr=load_json(a.apply_receipt); rollback=load_json(a.rollback_receipt); initial_state=load_json(a.initial_install_state)
     req={}
     req['policy_identity']=policy.get('contract_id')=='nxb-v1-update-v1' and policy.get('predecessor_installer_head')==INSTALLER and policy.get('production_signing_head')==SIGNING and policy.get('release_integration_head')==RELEASE_INTEGRATION and policy.get('certified_implementation_head')==CERTIFIED
     req['trust_contract']=valid_trust(trust)
@@ -222,7 +222,13 @@ def main():
     req['sentinel_hashes']=sha256_file(a.data_sentinel)==lifecycle.get('data_sentinel_sha256') and sha256_file(a.evidence_sentinel)==lifecycle.get('evidence_sentinel_sha256')
     req['sequence_channel']=desc.get('release_sequence')==1 and desc.get('channel')=='stable' and lifecycle.get('target_release_sequence')==1 and lifecycle.get('channel')=='stable'
     req['production_boundaries']=env.get('production_signer_claimed') is False and lifecycle.get('machine_install_performed') is False and lifecycle.get('production_release_updated') is False
-    req['authority_counts']=len(req)==16
+    req['receipt_release_binding']=(
+        stage.get('release_head')==a.expected_head and stage.get('release_sequence')==1 and stage.get('channel')=='stable' and
+        applyr.get('release_head')==a.expected_head and applyr.get('release_sequence')==1 and applyr.get('channel')=='stable' and
+        rollback.get('release_head')==initial_state.get('source_head') and rollback.get('release_sequence')==0 and rollback.get('channel')=='stable'
+    )
+    if len(req) != 16:
+        raise RuntimeError(f'update requirement cardinality drift: {len(req)}')
 
     neg={}
     bad=copy.deepcopy(env); bad['public_key']['fingerprint']='0'*64; neg['wrong_signer']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,bad,trust,0)
@@ -237,6 +243,8 @@ def main():
     badm=copy.deepcopy(manifest); badm['files'][0]['sha256']='0'*64; neg['tampered_package_hash']=not valid_manifest(badm) or not package_matches(a.package_root,badm)
     badr=copy.deepcopy(applyr); badr['auto_apply']=True; neg['auto_apply_claim']=not (badr.get('auto_apply') is False)
     badl=copy.deepcopy(lifecycle); badl['manual_rollback_passed']=False; neg['missing_manual_rollback']=not all(badl.get(k) is True for k in core_true)
+    if len(neg) != 12:
+        raise RuntimeError(f'update negative-control cardinality drift: {len(neg)}')
 
     failures=[k for k,v in req.items() if not v]; negative_failures=[k for k,v in neg.items() if not v]
     result={
