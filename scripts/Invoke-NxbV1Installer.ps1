@@ -150,6 +150,12 @@ finally {
     }
 }
 
+$receiptFilesVerified = $filesVerified
+$receiptBytesVerified = $bytesVerified
+if ($Action -ceq 'Uninstall') {
+    $receiptFilesVerified = [int]$existingState.managed_file_count
+    $receiptBytesVerified = [int64]$existingState.managed_total_bytes
+}
 $receipt = [pscustomobject][ordered]@{
     schema_version=1
     status='passed'
@@ -160,8 +166,8 @@ $receipt = [pscustomobject][ordered]@{
     source_head=[string]$manifest.source_head
     install_root=$installFull
     package_manifest_sha256=$manifestSha
-    files_verified=(if ($Action -ceq 'Uninstall') { [int]$existingState.managed_file_count } else { $filesVerified })
-    bytes_verified=(if ($Action -ceq 'Uninstall') { [int64]$existingState.managed_total_bytes } else { $bytesVerified })
+    files_verified=$receiptFilesVerified
+    bytes_verified=$receiptBytesVerified
     data_removed=$false
     evidence_removed=$false
     rollback_used=$rollbackUsed
