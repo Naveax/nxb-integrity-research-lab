@@ -32,11 +32,11 @@
       ".key",
       ".zip"
     ],
-    "forbidden_private_key_markers": [
-      "-----BEGIN PRIVATE KEY-----",
-      "-----BEGIN RSA PRIVATE KEY-----",
-      "-----BEGIN EC PRIVATE KEY-----",
-      "-----BEGIN OPENSSH PRIVATE KEY-----"
+    "forbidden_private_key_marker_ids": [
+      "pkcs8",
+      "rsa",
+      "ec",
+      "openssh"
     ]
   },
   "signing": {
