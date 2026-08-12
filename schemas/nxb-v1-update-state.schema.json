@@ -4,7 +4,7 @@
   "title": "NXB v1 Update State",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version","contract_id","current_release_sequence","current_release_head","current_package_manifest_sha256","current_envelope_sha256","rollback_available","rollback_release_sequence","rollback_release_head","rollback_tree_sha256","rollback_root","updated_utc"],
+  "required": ["schema_version","contract_id","current_release_sequence","current_release_head","current_package_manifest_sha256","current_envelope_sha256","rollback_available","rollback_release_sequence","rollback_release_head","rollback_package_manifest_sha256","rollback_envelope_sha256","rollback_tree_sha256","rollback_root","updated_utc"],
   "properties": {
     "schema_version": {"const": 1},
     "contract_id": {"const": "nxb-v1-update-state-v1"},
@@ -15,6 +15,8 @@
     "rollback_available": {"type": "boolean"},
     "rollback_release_sequence": {"type": "integer", "minimum": 0},
     "rollback_release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "rollback_package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rollback_envelope_sha256": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|none)$"},
     "rollback_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "rollback_root": {"type": "string"},
     "updated_utc": {"type": "string", "minLength": 1}
