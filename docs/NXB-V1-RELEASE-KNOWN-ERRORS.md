@@ -196,3 +196,26 @@ The failing call intentionally attempted to hash empty release-notes content thr
 ### Native scope of the failed run
 
 V4 stopped during fixture construction before signed trust-anchor validation, Stage, Apply, forced failure rollback, manual rollback, independent Python replay, or review packaging. None of those later update layers are certified by the V4 run.
+
+## NXB-ERR-041 — persisted signed timestamp coerced out of canonical string form
+
+**Class:** observed-native / JSON round-trip canonical-signature drift.
+
+**Native discovery:** Update Portable V5 at exact head `48b54b6df5a4e2ea9e182c5121b14fbe6e03405e` on PowerShell 7.6.4.
+
+The run passed exact-head clone, all external fast gates, the repo-owned parser/analyzer/schema/known-error gate, the dual-runtime `24/24` contract, real bounded fixture construction, in-memory signed trust-anchor validation, and all trust/revocation/sequence/tamper negative controls. It failed only when the real Stage operator reloaded the persisted signed envelope from JSON and revalidated the same bundle.
+
+PowerShell 7.6 `ConvertFrom-Json` defaults timestamp-shaped JSON strings to DateTime objects. The release-signature canonical material signs `created_utc` as a string. Therefore the in-memory envelope verified, while the persisted/reloaded envelope could present `created_utc` as DateTime and reconstruct different canonical material before RSA verification.
+
+### Repair contract
+
+- Keep the native-certified production-signing predecessor unchanged.
+- Normalize a persisted envelope `created_utc` value back to invariant UTC round-trip (`o`) string form only when JSON parsing has materialized it as `[datetime]`.
+- Centralize this behavior inside update bundle verification so Stage, Apply, and future update callers share one canonicalization boundary.
+- Verify RSA against the normalized `$verificationEnvelope`, not directly against the possibly coerced `$Envelope` object.
+- Keep update successor machine-rule count at `7`; ERR-041 is tracked in this release-layer ledger and regression-locked inside the existing `24`-test update contract instead of perturbing scanner cardinality again.
+- Preserve independent Python `16/16 + 12/12`, exact 28-entry review closure, anti-replay floor, rollback, and no-auto-apply boundaries.
+
+### Native scope of the failed run
+
+V5 reached the real Stage action but failed before Stage publication completed. Apply, automatic failed-publish rollback, manual Rollback, independent Python replay, and review packaging were not certified by V5.
