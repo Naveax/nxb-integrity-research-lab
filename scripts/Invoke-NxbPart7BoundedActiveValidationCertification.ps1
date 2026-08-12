@@ -78,6 +78,25 @@ if (Test-NxbFinalAuthorizedRequestPlan -Policy $policy -Plan $productionWrongHos
     throw 'Part 7 production plan outside the permit host boundary unexpectedly passed.'
 }
 
+$sessionBoundary = [pscustomobject][ordered]@{
+    session_id = 'part7-certification-session'
+    target_id = 'cert-target-loopback'
+    adapter_modes = @('http-api','browser')
+    read_only_default = $true
+    credential_reference_sha256 = Get-NxbFinalSha256Text -Text 'credential-reference-only-part7'
+    secret_material_embedded = $false
+    scope_authorized = $true
+}
+if ([string]$sessionBoundary.credential_reference_sha256 -notmatch '^[0-9a-f]{64}$') {
+    throw 'Part 7 credential reference hash is invalid.'
+}
+if ([bool]$sessionBoundary.secret_material_embedded -or -not [bool]$sessionBoundary.read_only_default) {
+    throw 'Part 7 browser/API session boundary is unsafe.'
+}
+if (@($sessionBoundary.adapter_modes).Count -ne 2 -or @($sessionBoundary.adapter_modes) -cnotcontains 'http-api' -or @($sessionBoundary.adapter_modes) -cnotcontains 'browser') {
+    throw 'Part 7 browser/API adapter boundary is incomplete.'
+}
+
 $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback,0)
 $listener.Start()
 $client = $null
@@ -143,6 +162,9 @@ $receipt = [pscustomobject][ordered]@{
     permit_target_binding = $true
     permit_method_binding = $true
     kill_switch_required_for_noncertification = $true
+    browser_api_session_boundary = $true
+    credential_reference_only = $true
+    session_boundary = $sessionBoundary
     requirements_validated = @($policy.part7.requirements).Count
 }
 $path = Join-Path $OutputDirectory 'part7-bounded-active-validation-receipt.json'
@@ -155,5 +177,6 @@ if ($PassThru) {
         receipt_sha256 = Get-NxbFinalFileSha256 -Path $path
         requirements_validated = [int]$receipt.requirements_validated
         loopback_native_probe = $true
+        browser_api_session_boundary = $true
     }
 }
