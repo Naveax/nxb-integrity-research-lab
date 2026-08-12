@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-release-integration-v1",
+  "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
+  "certified_main_ancestor": "b55fed4e4c960f8fea73b959f29dd57649c6bd65",
+  "candidate_version": "1.0.0-candidate",
+  "target_version": "1.0.0",
+  "main_branch": "main",
+  "release_branch": "release/nxb-v1.0.0-prep",
+  "integration": {
+    "require_clean_worktree": true,
+    "require_main_ancestor_of_release_head": true,
+    "require_certified_head_ancestor_of_release_head": true,
+    "allow_history_rewrite": false,
+    "allow_certified_runtime_modification": false,
+    "allow_generated_evidence_in_tree": false,
+    "allowed_successor_paths": [
+      ".github/workflows/nxb-v1-",
+      "config/nxb-v1-",
+      "docs/NXB-V1-",
+      "schemas/nxb-v1-",
+      "scripts/Invoke-NxbV1",
+      "scripts/Test-NxbV1",
+      "tests/V1",
+      "tools/validate_v1_"
+    ],
+    "forbidden_artifact_suffixes": [
+      ".etl",
+      ".etl.tmp",
+      ".pfx",
+      ".p12",
+      ".key",
+      ".zip"
+    ],
+    "forbidden_private_key_markers": [
+      "-----BEGIN PRIVATE KEY-----",
+      "-----BEGIN RSA PRIVATE KEY-----",
+      "-----BEGIN EC PRIVATE KEY-----",
+      "-----BEGIN OPENSSH PRIVATE KEY-----"
+    ]
+  },
+  "signing": {
+    "certification_signer_reuse_allowed": false,
+    "production_signer_required_for_release": true,
+    "private_key_in_repository_allowed": false,
+    "key_rotation_policy_required": true,
+    "revocation_policy_required": true
+  },
+  "release": {
+    "production_merge_required_before_v1_tag": true,
+    "signed_release_manifest_required": true,
+    "installer_or_package_hashes_required": true,
+    "post_integration_smoke_required": true,
+    "release_receipt_required": true
+  }
+}
