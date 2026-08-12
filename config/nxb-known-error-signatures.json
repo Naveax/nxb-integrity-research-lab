@@ -133,6 +133,12 @@
       "description": "Mandatory mutable transport transcript rejects the valid empty initial transcript before the first loopback request can be recorded",
       "include_globs": ["scripts/Invoke-NxbControllerTargetTransportExperiment.ps1"],
       "regex": "(?im)\\[Parameter\\(Mandatory\\)\\]\\[Collections\\.Generic\\.List\\[object\\]\\]\\$Transcript\\b"
+    },
+    {
+      "id": "NXB-ERR-034",
+      "description": "Root/trace authority selects WPR independently from Xperf or starts an unbound WPR instance, allowing split-toolchain stop/merge failures such as RPC_E_CHANGED_MODE",
+      "include_globs": ["scripts/Invoke-NxbSemanticRootTraceExperiment.ps1"],
+      "regex": "(?im)(?:^\\s*\\$wpr\\s*=\\s*\\(Get-Command\\s+wpr\\.exe\\b|@\\('-start',\\$profileReference,'-filemode'\\))"
     }
   ]
 }
