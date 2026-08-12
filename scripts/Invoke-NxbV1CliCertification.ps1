@@ -28,10 +28,7 @@ function Invoke-NxbV1CliNative {
         $ErrorActionPreference = $previousErrorActionPreference
         if ($nativePreferenceAvailable) { Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $previousNativePreference -Scope Local }
     }
-    return [pscustomobject][ordered]@{
-        exit_code = $nativeExitCode
-        output = (@($nativeOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
-    }
+    return [pscustomobject][ordered]@{ exit_code=$nativeExitCode; output=(@($nativeOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) }
 }
 
 function Invoke-NxbV1CliPester {
@@ -107,9 +104,7 @@ function Invoke-NxbV1CliSuccessorScan {
     }
     $scanStatus = 'failed'
     if ($findings.Count -eq 0) { $scanStatus = 'passed' }
-    $receipt = [pscustomobject][ordered]@{
-        schema_version=1; status=$scanStatus; contract_id=$ExpectedContractId; rule_count=@($document.rules).Count; finding_count=$findings.Count; findings=@($findings)
-    }
+    $receipt = [pscustomobject][ordered]@{ schema_version=1; status=$scanStatus; contract_id=$ExpectedContractId; rule_count=@($document.rules).Count; finding_count=$findings.Count; findings=@($findings) }
     Write-NxbV1CliCertJson -Path $OutputPath -Value $receipt
     return $receipt
 }
@@ -133,7 +128,7 @@ function Invoke-NxbV1CliJsonCommand {
     return $document
 }
 
-function Add-NxbV1CliReviewZip {
+function Write-NxbV1CliReviewZip {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ReviewRoot,[Parameter(Mandatory)][string]$ZipPath)
     Add-Type -AssemblyName System.IO.Compression
@@ -261,12 +256,14 @@ $ps51Path = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershel
 if (-not (Test-Path -LiteralPath $ps51Path -PathType Leaf)) { throw 'Windows PowerShell 5.1 executable is missing.' }
 $ps7Result = Invoke-NxbV1CliPester -Executable $pwshPath -RepositoryRoot $repositoryRoot -TestPath $testPath -ExpectedCount 24 -Label 'PS7'
 $ps51Result = Invoke-NxbV1CliPester -Executable $ps51Path -RepositoryRoot $repositoryRoot -TestPath $testPath -ExpectedCount 24 -Label 'PS5.1'
+if ([int]$ps7Result.passed -ne 24 -or [int]$ps7Result.total -ne 24 -or [int]$ps7Result.failed -ne 0 -or [int]$ps7Result.skipped -ne 0) { throw 'CLI PS7 24-test summary drift.' }
+if ([int]$ps51Result.passed -ne 24 -or [int]$ps51Result.total -ne 24 -or [int]$ps51Result.failed -ne 0 -or [int]$ps51Result.skipped -ne 0) { throw 'CLI PS5.1 24-test summary drift.' }
 
 Write-Information '[3/7] Native JSON and exit-code contract on PS7 and PS5.1'
 $versionPs7Path = Join-Path $workRoot 'version-ps7.json'
-$versionPs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath -Arguments @('-Command','version') -ExpectedExitCode 0 -OutputPath $versionPs7Path
+$versionPs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath -Arguments @('-Command','version','-NonInteractive') -ExpectedExitCode 0 -OutputPath $versionPs7Path
 $versionPs51Path = Join-Path $workRoot 'version-ps51.json'
-$versionPs51 = Invoke-NxbV1CliJsonCommand -Executable $ps51Path -CliPath $cliPath -Arguments @('-Command','version') -ExpectedExitCode 0 -OutputPath $versionPs51Path
+$versionPs51 = Invoke-NxbV1CliJsonCommand -Executable $ps51Path -CliPath $cliPath -Arguments @('-Command','version','-NonInteractive') -ExpectedExitCode 0 -OutputPath $versionPs51Path
 $usagePs7Path = Join-Path $workRoot 'usage-ps7.json'
 $usagePs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath -Arguments @('-Command','hash') -ExpectedExitCode 2 -OutputPath $usagePs7Path
 $usagePs51Path = Join-Path $workRoot 'usage-ps51.json'
@@ -276,9 +273,10 @@ $configPs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath 
 $configPs51Path = Join-Path $workRoot 'config-ps51.json'
 $configPs51 = Invoke-NxbV1CliJsonCommand -Executable $ps51Path -CliPath $cliPath -Arguments @('-Command','config-validate','-ConfigPath',$exampleConfigPath) -ExpectedExitCode 0 -OutputPath $configPs51Path
 if ([string]$versionPs7.status -cne 'passed' -or [string]$versionPs51.status -cne 'passed' -or [string]$usagePs7.category -cne 'usage' -or [string]$usagePs51.category -cne 'usage') { throw 'CLI cross-runtime JSON/exit contract failed.' }
+if ([string]$configPs7.status -cne 'passed' -or -not [bool]$configPs7.data.valid -or [string]$configPs51.status -cne 'passed' -or -not [bool]$configPs51.data.valid) { throw 'CLI cross-runtime config-validation contract failed.' }
 
 Write-Information '[4/7] Doctor and bounded legacy stage-update dry-run'
-$doctorRun = Invoke-NxbV1CliNative -Executable $pwshPath -ArgumentList @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$cliPath,'-CliProcess','-Json','-Command','doctor')
+$doctorRun = Invoke-NxbV1CliNative -Executable $pwshPath -ArgumentList @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$cliPath,'-CliProcess','-Json','-Command','doctor','-NonInteractive')
 if ($doctorRun.exit_code -ne 0) { throw ('CLI doctor failed:{0}{1}' -f [Environment]::NewLine,$doctorRun.output) }
 $doctorDoc = $doctorRun.output | ConvertFrom-Json
 if ([string]$doctorDoc.status -cne 'passed' -or [string]$doctorDoc.data.status -cne 'passed') { throw 'CLI doctor output contract failed.' }
@@ -298,41 +296,17 @@ if (-not (Test-NxbFinalPackageManifest -Manifest $legacyManifest -ExpectedVersio
 Write-NxbV1CliCertJson -Path $legacyManifestPath -Value $legacyManifest
 $legacyStageRoot = Join-Path $workRoot 'legacy-stage-root'
 $dryRunPs7Path = Join-Path $workRoot 'dry-run-stage-ps7.json'
-$dryRunPs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath -Arguments @('-Command','stage-update','-Path',$legacyManifestPath,'-ExpectedVersion','1.0.0','-StagingRoot',$legacyStageRoot,'-DryRun') -ExpectedExitCode 0 -OutputPath $dryRunPs7Path
+$dryRunPs7 = Invoke-NxbV1CliJsonCommand -Executable $pwshPath -CliPath $cliPath -Arguments @('-Command','stage-update','-Path',$legacyManifestPath,'-ExpectedVersion','1.0.0','-StagingRoot',$legacyStageRoot,'-DryRun','-NonInteractive') -ExpectedExitCode 0 -OutputPath $dryRunPs7Path
 if ([bool]$dryRunPs7.mutation_performed -or [bool]$dryRunPs7.data.auto_apply -or -not [bool]$dryRunPs7.data.dry_run -or (Test-Path -LiteralPath $legacyStageRoot)) { throw 'CLI dry-run mutation boundary failed.' }
 
 Write-Information '[5/7] Build certification receipt and independent Python 14/14 + 10/10 replay'
 $receiptPath = Join-Path $outputFull 'cli-certification-receipt.json'
 $receipt = [pscustomobject][ordered]@{
-    schema_version=1
-    status='passed'
-    contract_id='nxb-v1-cli-certification-v1'
-    head_sha=$ExpectedHead.ToLowerInvariant()
-    predecessor_update_head='27507531154099ab28a05cfe8e4e900d72f22e7b'
-    ps7='24/24'
-    ps51='24/24'
-    independent_requirements=14
-    independent_negative_controls=10
-    base_known_error_rules=[int]$baseScan.rule_count
-    production_known_error_rules=[int]$productionScan.extension_rule_count
-    production_schema_contracts=[int]$productionScan.schema_contract_count
-    production_guard_contracts=[int]$productionScan.guard_contract_count
-    release_known_error_rules=[int]$releaseScan.rule_count
-    signing_known_error_rules=[int]$signingScan.rule_count
-    installer_known_error_rules=[int]$installerScan.rule_count
-    update_known_error_rules=[int]$updateScan.rule_count
-    cli_known_error_rules=[int]$cliScan.rule_count
-    known_error_findings=0
-    analyzer_findings=0
-    legacy_commands_preserved=$true
-    signed_update_delegation=$true
-    stable_json_output=$true
-    stable_exit_codes=$true
-    explicit_mutation_confirmation=$true
-    dry_run_supported=$true
-    auto_apply=$false
-    production_release_updated=$false
-    review_entries=20
+    schema_version=1; status='passed'; contract_id='nxb-v1-cli-certification-v1'; head_sha=$ExpectedHead.ToLowerInvariant(); predecessor_update_head='27507531154099ab28a05cfe8e4e900d72f22e7b';
+    ps7='24/24'; ps51='24/24'; independent_requirements=14; independent_negative_controls=10;
+    base_known_error_rules=[int]$baseScan.rule_count; production_known_error_rules=[int]$productionScan.extension_rule_count; production_schema_contracts=[int]$productionScan.schema_contract_count; production_guard_contracts=[int]$productionScan.guard_contract_count;
+    release_known_error_rules=[int]$releaseScan.rule_count; signing_known_error_rules=[int]$signingScan.rule_count; installer_known_error_rules=[int]$installerScan.rule_count; update_known_error_rules=[int]$updateScan.rule_count; cli_known_error_rules=[int]$cliScan.rule_count;
+    known_error_findings=0; analyzer_findings=0; legacy_commands_preserved=$true; signed_update_delegation=$true; stable_json_output=$true; stable_exit_codes=$true; explicit_mutation_confirmation=$true; dry_run_supported=$true; auto_apply=$false; production_release_updated=$false; review_entries=20
 }
 Write-NxbV1CliCertJson -Path $receiptPath -Value $receipt
 $independentPath = Join-Path $outputFull 'cli-independent-validation.json'
@@ -346,30 +320,14 @@ Write-NxbV1CliCertJson -Path $independentPath -Value $independent
 Write-Information '[6/7] Build exact 20-entry review ZIP'
 [IO.Directory]::CreateDirectory($reviewRoot) | Out-Null
 $reviewMap = [ordered]@{
-    'base-known-error-scan.json'=$baseScanPath
-    'production-known-error-scan.json'=$productionScanPath
-    'release-known-error-scan.json'=$releaseScanPath
-    'signing-known-error-scan.json'=$signingScanPath
-    'installer-known-error-scan.json'=$installerScanPath
-    'update-known-error-scan.json'=$updateScanPath
-    'cli-known-error-scan.json'=$cliScanPath
-    'cli-policy.json'=$policyPath
-    'cli-output-schema.json'=$outputSchemaPath
-    'cli-config-schema.json'=$configSchemaPath
-    'cli-certification-schema.json'=$certificationSchemaPath
-    'version-ps7.json'=$versionPs7Path
-    'version-ps51.json'=$versionPs51Path
-    'usage-ps7.json'=$usagePs7Path
-    'usage-ps51.json'=$usagePs51Path
-    'config-ps7.json'=$configPs7Path
-    'config-ps51.json'=$configPs51Path
-    'dry-run-stage-ps7.json'=$dryRunPs7Path
-    'cli-independent-validation.json'=$independentPath
-    'cli-certification-receipt.json'=$receiptPath
+    'base-known-error-scan.json'=$baseScanPath; 'production-known-error-scan.json'=$productionScanPath; 'release-known-error-scan.json'=$releaseScanPath; 'signing-known-error-scan.json'=$signingScanPath; 'installer-known-error-scan.json'=$installerScanPath;
+    'update-known-error-scan.json'=$updateScanPath; 'cli-known-error-scan.json'=$cliScanPath; 'cli-policy.json'=$policyPath; 'cli-output-schema.json'=$outputSchemaPath; 'cli-config-schema.json'=$configSchemaPath;
+    'cli-certification-schema.json'=$certificationSchemaPath; 'version-ps7.json'=$versionPs7Path; 'version-ps51.json'=$versionPs51Path; 'usage-ps7.json'=$usagePs7Path; 'usage-ps51.json'=$usagePs51Path;
+    'config-ps7.json'=$configPs7Path; 'config-ps51.json'=$configPs51Path; 'dry-run-stage-ps7.json'=$dryRunPs7Path; 'cli-independent-validation.json'=$independentPath; 'cli-certification-receipt.json'=$receiptPath
 }
 if ($reviewMap.Count -ne 20) { throw 'CLI review map cardinality drift.' }
 foreach ($entry in $reviewMap.GetEnumerator()) { [IO.File]::Copy([string]$entry.Value,(Join-Path -Path $reviewRoot -ChildPath ([string]$entry.Key)),$false) }
-Add-NxbV1CliReviewZip -ReviewRoot $reviewRoot -ZipPath $reviewZip
+Write-NxbV1CliReviewZip -ReviewRoot $reviewRoot -ZipPath $reviewZip
 
 Write-Information '[7/7] Final CLI certification closure'
 $zipEntries = @()
@@ -388,20 +346,7 @@ $reviewSha = Get-NxbV1CliCertSha256 -Path $reviewZip
 Write-Information ('NXB v1 CLI certification passed: head={0} PS7=24/24 PS5.1=24/24 independent=14/14 negatives=10/10 rules=23+/9+1+1/1/2/4/7/4 findings=0 analyzer=0 review=20.' -f $ExpectedHead.ToLowerInvariant())
 if ($PassThru) {
     return [pscustomobject][ordered]@{
-        status='passed'
-        head_sha=$ExpectedHead.ToLowerInvariant()
-        predecessor_update_head='27507531154099ab28a05cfe8e4e900d72f22e7b'
-        ps7='24/24'
-        ps51='24/24'
-        independent='14/14'
-        negatives='10/10'
-        cli_known_error_rules=4
-        known_error_findings=0
-        analyzer_findings=0
-        review_entries=20
-        receipt_path=$receiptPath
-        receipt_sha256=$receiptSha
-        review_zip=$reviewZip
-        review_zip_sha256=$reviewSha
+        status='passed'; head_sha=$ExpectedHead.ToLowerInvariant(); predecessor_update_head='27507531154099ab28a05cfe8e4e900d72f22e7b'; ps7='24/24'; ps51='24/24'; independent='14/14'; negatives='10/10';
+        cli_known_error_rules=4; known_error_findings=0; analyzer_findings=0; review_entries=20; receipt_path=$receiptPath; receipt_sha256=$receiptSha; review_zip=$reviewZip; review_zip_sha256=$reviewSha
     }
 }
