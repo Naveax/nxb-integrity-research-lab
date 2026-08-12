@@ -179,12 +179,18 @@ function Test-NxbFinalAuthorizedRequestPlan {
         return $true
     }
 
+    $permitScopeId = [string]$Plan.permit_scope_id
+    $permitHost = [string]$Plan.permit_host
+    $permitMethod = ([string]$Plan.permit_method).ToUpperInvariant()
     $permitSha = [string]$Plan.permit_sha256
-    if ($permitSha.Length -ne 64 -or $permitSha -cnotmatch '^[0-9a-f]+$') { return $false }
+    if ([string]::IsNullOrWhiteSpace($permitScopeId) -or [string]::IsNullOrWhiteSpace($permitHost) -or [string]::IsNullOrWhiteSpace($permitMethod)) { return $false }
+    if ($hostName -cne $permitHost -or $method -cne $permitMethod) { return $false }
+    $permitMaterial = @('nxb-part7-permit-v1',$permitScopeId,$permitHost,$permitMethod) -join "`n"
+    $expectedPermitSha = Get-NxbFinalSha256Text -Text $permitMaterial
+    if ($permitSha -cne $expectedPermitSha) { return $false }
     if (-not [bool]$Plan.scope_authorized) { return $false }
     if (-not [bool]$Plan.kill_switch_armed) { return $false }
-    if (-not [bool]$Plan.permit_host_authorized) { return $false }
-    if (-not [bool]$Plan.permit_method_authorized) { return $false }
+    if ([bool]$Plan.production_secret_attached) { return $false }
     return $true
 }
 
