@@ -87,7 +87,7 @@ function Test-NxbV1SigningRsaProtected {
     return $false
 }
 
-function New-NxbV1CertificationSigner {
+function Get-NxbV1CertificationSigner {
     [CmdletBinding()]
     param([Parameter()][int]$KeySizeBits = 3072)
     if ($KeySizeBits -lt 3072) { throw 'Certification signer must be at least 3072 bits.' }
@@ -129,7 +129,7 @@ function Get-NxbV1ProductionCertificateSigner {
     finally { $store.Close(); $store.Dispose() }
 }
 
-function New-NxbV1SignedReleaseEnvelope {
+function ConvertTo-NxbV1SignedReleaseEnvelope {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object]$Signer,[Parameter(Mandatory)][string]$ReleaseHead,[Parameter(Mandatory)][string]$CertifiedImplementationHead,
