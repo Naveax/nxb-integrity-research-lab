@@ -9,6 +9,7 @@
     "scripts/Invoke-NxbPart9SupplyChainCertification.ps1",
     "scripts/Invoke-NxbPart10ProductionFreezeCertification.ps1",
     "scripts/Invoke-NxbProductionFinalCertification.ps1",
+    "scripts/Invoke-NxbProductionFinalCertificationV2.ps1",
     "scripts/nxb.ps1",
     "tests/ProductionFinalization.Tests.ps1"
   ],
