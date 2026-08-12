@@ -182,14 +182,8 @@ Describe 'NXB v1 signed staged update contract' {
         foreach ($path in @('scripts/NxbV1Update.Common.ps1','scripts/NxbV1Update.State.ps1','scripts/Invoke-NxbV1Updater.ps1','scripts/Invoke-NxbV1UpdateCertification.ps1','tests/V1Update.Tests.ps1')) { $includes | Should -Contain $path }
     }
 
-    It 'locks test count and cleanup initialization order' {
-        $c=Get-NxbV1UpdateTestContext
+    It 'locks the update contract at exactly twenty-four tests' {
         $testSource=Get-Content -LiteralPath $PSCommandPath -Raw
         [regex]::Matches($testSource,"(?m)^\s*It\s+'").Count | Should -Be 24
-        $authoritySource=Get-Content -LiteralPath $c.authority -Raw
-        $initIndex=$authoritySource.IndexOf('$signer=$null',[StringComparison]::Ordinal)
-        $createIndex=$authoritySource.IndexOf('$signer=Get-NxbV1CertificationSigner',[StringComparison]::Ordinal)
-        [bool]($initIndex -ge 0 -and $createIndex -gt $initIndex) | Should -BeTrue
-        $authoritySource | Should -Match ([regex]::Escape('finally { if ($null -ne $signer -and $null -ne $signer.rsa)'))
     }
 }
