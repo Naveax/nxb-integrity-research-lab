@@ -104,4 +104,26 @@ The cleanup `finally` around the certification signer was also reviewed. It is e
 - Carry an update-successor machine signature that rejects the old direct `File.WriteAllText($full, ...)` publication shape.
 - Keep the existing 24-test update contract count unchanged while binding the atomic publication tokens into the persistent-state contract.
 
-This class was caught before any native Update Portable V1 was issued. Update successor known-error rule count advances from four to five.
+This class was caught before any native Update Portable V1 was issued. Update successor known-error rule count advanced from four to five at this step.
+
+## NXB-ERR-039 — rollback lowers the anti-replay sequence floor
+
+**Class:** caught-preflight / signed update replay prevention across manual rollback.
+
+**Pre-native discovery:** final signed staged update behavior audit before Update Portable V1.
+
+The initial update-state design used only `current_release_sequence` as the replay floor. A successful Apply moved the fixture from sequence `0` to sequence `1`; a manual Rollback restored the old release and wrote `current_release_sequence=0`. Because later Stage/Apply validation compared a signed descriptor only against that current sequence, the already-seen sequence `1` bundle could become admissible again after rollback even though `allow_sequence_replay=false`.
+
+### Repair contract
+
+- Persist a monotonic `highest_seen_release_sequence` in authoritative update state.
+- Require `highest_seen_release_sequence >= current_release_sequence` whenever state is read.
+- Use `highest_seen_release_sequence`, not the currently installed rollback sequence, as the admission floor for future signed updates.
+- Successful Apply advances the highest-seen floor to the target sequence.
+- Manual Rollback may lower `current_release_sequence` to the restored release but must preserve the previous highest-seen floor.
+- Native certification must prove `current=0`, `highest_seen=1`, `rollback_available=false` after rollback and must reject replay of the already-seen signed sequence `1` bundle.
+- Independent Python replay must consume the final `update-state.json` and enforce the same persisted floor.
+- Carry an update-successor machine signature that rejects the old getter shape returning `current_release_sequence` as the anti-replay admission floor.
+- Keep the update Pester contract exactly 24 tests; update successor machine-rule count advances from five to six.
+
+This class was caught before any native Update Portable V1 was issued.
