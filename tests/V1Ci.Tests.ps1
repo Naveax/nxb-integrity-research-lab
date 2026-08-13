@@ -9,8 +9,10 @@ Describe 'NXB v1 CI and native authority automation contract' {
             return [pscustomobject][ordered]@{
                 root = $full
                 policy = Join-Path $full 'config\nxb-v1-ci-policy.json'
+                known_error_config = Join-Path $full 'config\nxb-v1-ci-known-error-signatures.json'
                 workflow = Join-Path $full '.github\workflows\nxb-v1-ci.yml'
                 hosted = Join-Path $full 'scripts\Invoke-NxbV1CiHostedValidation.ps1'
+                known_error_scanner = Join-Path $full 'scripts\Invoke-NxbV1CiKnownErrorScan.ps1'
                 validator = Join-Path $full 'tools\validate_v1_ci.py'
                 native = Join-Path $full 'scripts\Invoke-NxbV1CiNativeValidation.ps1'
                 signing = Join-Path $full 'scripts\Invoke-NxbV1ProductionSigningCertification.ps1'
@@ -20,7 +22,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
 
     It 'keeps every CI authority component repo-owned' {
         $c = Get-NxbV1CiTestContext
-        foreach ($path in @($c.policy,$c.workflow,$c.hosted,$c.validator,$c.native,$c.signing)) { Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue }
+        foreach ($path in @($c.policy,$c.known_error_config,$c.workflow,$c.hosted,$c.known_error_scanner,$c.validator,$c.native,$c.signing)) { Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue }
         $validatorSource = Get-Content -LiteralPath $c.validator -Raw
         $validatorSource | Should -Match 'nxb-v1-ci-independent-v1'
         $validatorSource | Should -Match 'requirement_count'
@@ -118,8 +120,18 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Not -Match 'Invoke-NxbV1CiNativeValidation\.ps1'
     }
 
-    It 'runs hosted analyzer and Python syntax gates' {
-        $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).hosted -Raw
+    It 'runs hosted known-error analyzer and Python syntax gates' {
+        $c = Get-NxbV1CiTestContext
+        $source = Get-Content -LiteralPath $c.hosted -Raw
+        $scannerSource = Get-Content -LiteralPath $c.known_error_scanner -Raw
+        $knownErrorConfig = Get-Content -LiteralPath $c.known_error_config -Raw | ConvertFrom-Json
+        $source | Should -Match ([regex]::Escape('Invoke-NxbV1CiKnownErrorScan.ps1'))
+        $source | Should -Match ([regex]::Escape("known_error_authority='nxb-v1-ci-known-error-scan-v1'"))
+        $scannerSource | Should -Match ([regex]::Escape('Invoke-NxbKnownErrorScan.ps1'))
+        $scannerSource | Should -Match ([regex]::Escape('Invoke-NxbProductionKnownErrorScan.ps1'))
+        foreach ($token in @('nxb-v1-release-known-error-signatures.json','nxb-v1-signing-known-error-signatures.json','nxb-v1-installer-known-error-signatures.json','nxb-v1-update-known-error-signatures.json','nxb-v1-cli-known-error-signatures.json')) { $scannerSource | Should -Match ([regex]::Escape($token)) }
+        [string]$knownErrorConfig.contract_id | Should -BeExactly 'nxb-v1-ci-known-error-signatures-v1'
+        @($knownErrorConfig.rules).Count | Should -Be 6
         $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer'))
         $source | Should -Match ([regex]::Escape('-m py_compile'))
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tools'''))
