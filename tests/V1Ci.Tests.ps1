@@ -12,7 +12,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
                 workflow = Join-Path $full '.github\workflows\nxb-v1-ci.yml'
                 hosted = Join-Path $full 'scripts\Invoke-NxbV1CiHostedValidation.ps1'
                 validator = Join-Path $full 'tools\validate_v1_ci.py'
-                native = Join-Path $full 'scripts\Invoke-NxbLocalValidation.ps1'
+                native = Join-Path $full 'scripts\Invoke-NxbV1CiNativeValidation.ps1'
                 signing = Join-Path $full 'scripts\Invoke-NxbV1ProductionSigningCertification.ps1'
             }
         }
@@ -83,11 +83,18 @@ Describe 'NXB v1 CI and native authority automation contract' {
         foreach ($token in @('WindowsPrincipal','Administrator','wpr.exe','xperf.exe','pwsh.exe','python')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'delegates native execution to the existing local validation authority' {
-        $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).workflow -Raw
-        $source | Should -Match ([regex]::Escape('Invoke-NxbLocalValidation.ps1'))
-        $source | Should -Match ([regex]::Escape('-RepetitionCount 1'))
-        $source | Should -Match ([regex]::Escape('-WarmupCount 0'))
+    It 'delegates native execution to the Phase 7 trusted native authority' {
+        $c = Get-NxbV1CiTestContext
+        $workflowSource = Get-Content -LiteralPath $c.workflow -Raw
+        $nativeSource = Get-Content -LiteralPath $c.native -Raw
+        $workflowSource | Should -Match ([regex]::Escape('Invoke-NxbV1CiNativeValidation.ps1'))
+        $workflowSource | Should -Match ([regex]::Escape('-RepetitionCount 1'))
+        $workflowSource | Should -Match ([regex]::Escape('-WarmupCount 0'))
+        $nativeSource | Should -Match ([regex]::Escape('Invoke-NxbV1CiHostedValidation.ps1'))
+        $nativeSource | Should -Match ([regex]::Escape('Invoke-CollectorOverheadCalibration.ps1'))
+        $nativeSource | Should -Match ([regex]::Escape("authority = 'nxb-v1-ci-native-v1'"))
+        $nativeSource | Should -Match ([regex]::Escape('review_entries = 7'))
+        $nativeSource | Should -Match ([regex]::Escape('production_release_updated = $false'))
     }
 
     It 'delegates signed-release verification with fail-closed result-shape checks' {
@@ -105,7 +112,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('Test-PublicRepositoryContent.ps1'))
         $source | Should -Match ([regex]::Escape('Test-Repository.ps1'))
         $source | Should -Not -Match '(?i)\bwpr(?:\.exe)?\b'
-        $source | Should -Not -Match 'Invoke-NxbLocalValidation\.ps1'
+        $source | Should -Not -Match 'Invoke-NxbV1CiNativeValidation\.ps1'
     }
 
     It 'runs hosted analyzer and Python syntax gates' {
