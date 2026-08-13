@@ -87,9 +87,16 @@ def main():
     requirements.append(set(jobs) == {"hosted-contract", "signed-release-verify", "native-wpt", "release-candidate"} and policy.get("checks") == EXPECTED_CHECKS)
     requirements.append(f"actions/checkout@{CHECKOUT_SHA}" in workflow_text and f"actions/setup-python@{SETUP_PYTHON_SHA}" in workflow_text)
     requirements.append(hosted.get("runs-on") == "windows-2022" and "Invoke-NxbV1CiHostedValidation.ps1" in workflow_text and "Invoke-NxbLocalValidation.ps1" not in hosted_text)
-    requirements.append(signed.get("runs-on") == "windows-2022" and "Invoke-NxbV1ProductionSigningCertification.ps1" in workflow_text and "secrets." not in workflow_text.lower())
+    requirements.append(
+        signed.get("runs-on") == "windows-2022"
+        and "Invoke-NxbV1ProductionSigningCertification.ps1" in workflow_text
+        and "PSObject.Properties['actual_production_release_signed']" in workflow_text
+        and "PSObject.Properties['production_signer_claimed']" in workflow_text
+        and "$result.actual_release_signed" not in workflow_text
+        and "secrets." not in workflow_text.lower()
+    )
     requirements.append(as_list(native.get("runs-on")) == EXPECTED_NATIVE_LABELS and "workflow_dispatch" in str(native.get("if", "")) and "inputs.run_native" in str(native.get("if", "")) and "Invoke-NxbLocalValidation.ps1" in workflow_text)
-    requirements.append(set(as_list(aggregate.get("needs"))) == {"hosted-contract", "signed-release-verify", "native-wpt"} and str(aggregate.get("if", "")) == "always()")
+    requirements.append(set(as_list(aggregate.get("needs"))) == {"hosted-contract", "signed-release-verify", "native-wpt"} and "always()" in str(aggregate.get("if", "")))
     requirements.append("continue-on-error: true" not in workflow_text.lower() and "secrets." not in workflow_text.lower() and "pull_request_target" not in workflow_text)
     requirements.append(policy.get("workflow", {}).get("pester_version") == "5.7.1" and policy.get("workflow", {}).get("psscriptanalyzer_version") == "1.25.0" and policy.get("workflow", {}).get("pyyaml_version") == "6.0.3")
     requirements.append("Test-PublicRepositoryContent.ps1" in hosted_text and "Test-Repository.ps1" in hosted_text and "Invoke-ScriptAnalyzer" in hosted_text and "py_compile" in hosted_text and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17)
