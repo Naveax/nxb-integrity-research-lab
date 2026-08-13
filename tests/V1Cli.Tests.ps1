@@ -131,10 +131,9 @@ Describe 'NXB v1 production CLI contract' {
         foreach ($token in @('$CliProcess -and -not $DryRun -and -not $ConfirmMutation','stage-update requires -ConfirmMutation in CLI process mode or -DryRun.')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'retains final certification delegation' {
+    It 'retains final certification delegation without contaminating structured stdout' {
         $source=Get-Content -LiteralPath (Get-NxbV1CliTestContext).cli -Raw
-        $source | Should -Match ([regex]::Escape('Invoke-NxbProductionFinalCertificationV2.ps1'))
-        $source | Should -Match ([regex]::Escape("-Category 'certification'"))
+        foreach ($token in @('Invoke-NxbProductionFinalCertificationV2.ps1','$finalPipeline = @(& $finalAuthority','-PassThru 3>$null 4>$null 5>$null 6>$null','Final certification authority returned no passed result.',"-Category 'certification'")) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'delegates doctor to the installer host preflight' {
@@ -166,14 +165,14 @@ Describe 'NXB v1 production CLI contract' {
         foreach ($token in @("'update-check'",'-Mode Check','-DryRun')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'requires confirmation or dry-run for signed update mutations' {
+    It 'requires confirmation, dry-run preflight and truthful failure mutation evidence for signed update mutations' {
         $source=Get-Content -LiteralPath (Get-NxbV1CliTestContext).cli -Raw
-        foreach ($token in @('update-stage requires -ConfirmMutation or -DryRun.','update-apply requires -ConfirmMutation or -DryRun.','update-rollback requires -ConfirmMutation or -DryRun.')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('update-stage requires -ConfirmMutation or -DryRun.','update-apply requires -ConfirmMutation or -DryRun.','update-rollback requires -ConfirmMutation or -DryRun.','$null = Invoke-NxbV1CliSignedUpdate','$mutationPerformed = $true','$envelope.mutation_performed = $mutationPerformed')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'separates JSON human output and process exit behavior' {
         $source=Get-Content -LiteralPath (Get-NxbV1CliTestContext).cli -Raw
-        foreach ($token in @('$Json','$CliProcess','$NonInteractive','[Console]::Out.WriteLine','[Console]::Error.WriteLine','$Host.SetShouldExit','ConvertTo-Json -Depth 32 -Compress')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$Json','$CliProcess','$NonInteractive','[Console]::Out.WriteLine','[Console]::Error.WriteLine','$Host.SetShouldExit','ConvertTo-Json -Depth 32 -Compress','$envelope.mutation_performed = $mutationPerformed')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'carries five CLI successor rules without duplicating release ERR-036' {
