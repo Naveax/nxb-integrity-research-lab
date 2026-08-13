@@ -1,0 +1,179 @@
+name: NXB v1 CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_native:
+        description: Run the trusted self-hosted Windows WPT authority
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  NXB_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  hosted-contract:
+    name: nxb-v1 / hosted-contract
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.NXB_EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned validation dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          $ps51ModuleRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
+          $ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
+          if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
+            Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
+          }
+          python -m pip install --disable-pip-version-check PyYAML==6.0.3
+
+      - name: Run repo-owned hosted validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'nxb-v1-hosted-validation'
+          $result = & ./scripts/Invoke-NxbV1CiHostedValidation.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -OutputDirectory $output -PassThru
+          if ([string]$result.status -cne 'passed') { throw 'Hosted validation did not return PASS.' }
+          Write-Output ('HostedPS7=' + [string]$result.ps7_passed + '/' + [string]$result.ps7_total)
+          Write-Output ('HostedPS51=' + [string]$result.ps51_passed + '/' + [string]$result.ps51_total)
+
+      - name: Run independent CI workflow validator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python ./tools/validate_v1_ci.py --repository-root . --expected-head $env:NXB_EXPECTED_SHA
+          if ($LASTEXITCODE -ne 0) { throw ('Independent CI validator failed: exit=' + $LASTEXITCODE) }
+
+  signed-release-verify:
+    name: nxb-v1 / signed-release-verify
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.NXB_EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned signing-certification dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          $ps51ModuleRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
+          $ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
+          if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
+            Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
+          }
+
+      - name: Verify certification-safe signed-release authority
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'nxb-v1-signing-verification'
+          $result = & ./scripts/Invoke-NxbV1ProductionSigningCertification.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -OutputDirectory $output -PassThru
+          if ([string]$result.status -cne 'passed') { throw 'Signed-release verification authority did not return PASS.' }
+          if ([bool]$result.production_signer_claimed -or [bool]$result.actual_release_signed) { throw 'Hosted signing lane crossed the production signer boundary.' }
+
+  native-wpt:
+    name: nxb-v1 / native-wpt
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native }}
+    runs-on: [self-hosted, Windows, X64, nxb-native, wpt]
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.NXB_EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fail-closed native runner preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          try {
+            $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+            if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'NXB native runner must be Administrator.' }
+          }
+          finally { $identity.Dispose() }
+          foreach ($command in @('wpr.exe','xperf.exe','pwsh.exe','git.exe')) {
+            if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue)) { throw ('NXB native runner dependency missing: ' + $command) }
+          }
+          $python = Get-Command python.exe -ErrorAction SilentlyContinue
+          if ($null -eq $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
+          if ($null -eq $python) { throw 'NXB native runner dependency missing: python' }
+          $pester = Get-Module -ListAvailable Pester | Where-Object Version -eq ([version]'5.7.1') | Select-Object -First 1
+          if ($null -eq $pester) { throw 'NXB native runner requires Pester 5.7.1.' }
+          $analyzer = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1
+          if ($null -eq $analyzer) { throw 'NXB native runner requires PSScriptAnalyzer 1.25.0.' }
+
+      - name: Run existing native Windows WPT authority
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'nxb-v1-native-validation'
+          $result = & ./scripts/Invoke-NxbLocalValidation.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -ResultsRoot $output -RepetitionCount 1 -WarmupCount 0 -Confirm:$false -PassThru
+          if ([string]$result.status -cne 'passed') { throw 'Native WPT authority did not return PASS.' }
+
+  release-candidate:
+    name: nxb-v1 / release-candidate
+    if: ${{ always() }}
+    needs: [hosted-contract, signed-release-verify, native-wpt]
+    runs-on: windows-2022
+    timeout-minutes: 5
+    env:
+      RUN_NATIVE: ${{ inputs.run_native }}
+      HOSTED_RESULT: ${{ needs.hosted-contract.result }}
+      SIGNED_RESULT: ${{ needs.signed-release-verify.result }}
+      NATIVE_RESULT: ${{ needs.native-wpt.result }}
+    steps:
+      - name: Enforce release-candidate child results
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:HOSTED_RESULT -cne 'success') { throw ('Hosted contract result: ' + $env:HOSTED_RESULT) }
+          if ($env:SIGNED_RESULT -cne 'success') { throw ('Signed-release verification result: ' + $env:SIGNED_RESULT) }
+          $nativeRequired = ($env:GITHUB_EVENT_NAME -ceq 'workflow_dispatch' -and $env:RUN_NATIVE -ceq 'true')
+          if ($nativeRequired) {
+            if ($env:NATIVE_RESULT -cne 'success') { throw ('Required native WPT result: ' + $env:NATIVE_RESULT) }
+          }
+          elseif (@('skipped','success') -cnotcontains $env:NATIVE_RESULT) {
+            throw ('Unexpected optional native WPT result: ' + $env:NATIVE_RESULT)
+          }
+          Write-Output 'NXB v1 release-candidate CI aggregate PASS.'
+          Write-Output 'production_release_updated=false'
+          Write-Output 'production_tag_created=false'
+          Write-Output 'production_merge_performed=false'
