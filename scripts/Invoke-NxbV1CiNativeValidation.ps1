@@ -203,9 +203,8 @@ try {
         Seed = 73
         WprExecutablePath = $wprPath
         Confirm = $false
-        PassThru = $true
     }
-    $calibrationResult = & (Join-Path $PSScriptRoot 'Invoke-CollectorOverheadCalibration.ps1') @calibrationParameters
+    & (Join-Path $PSScriptRoot 'Invoke-CollectorOverheadCalibration.ps1') @calibrationParameters | Out-Null
     $sourceCalibrationPath = Join-Path ([string]$parent) 'analysis\collector-overhead-calibration.json'
     if (-not (Test-Path -LiteralPath $sourceCalibrationPath -PathType Leaf)) { throw 'Native calibration evidence was not produced.' }
     & (Join-Path $PSScriptRoot 'Test-CollectorOverheadCalibration.ps1') -Path $sourceCalibrationPath
