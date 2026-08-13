@@ -47,7 +47,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
             Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
           }
-          python -m pip install --disable-pip-version-check PyYAML==6.0.3
+          python -m pip install --disable-pip-version-check PyYAML==6.0.3 jsonschema==4.26.0
 
       - name: Run repo-owned hosted validation
         shell: pwsh
@@ -58,6 +58,7 @@ jobs:
           if ([string]$result.status -cne 'passed') { throw 'Hosted validation did not return PASS.' }
           Write-Output ('HostedPS7=' + [string]$result.ps7_passed + '/' + [string]$result.ps7_total)
           Write-Output ('HostedPS51=' + [string]$result.ps51_passed + '/' + [string]$result.ps51_total)
+          Write-Output ('HostedJsonSchema=' + [string]$result.jsonschema_version)
 
       - name: Run independent CI workflow validator
         shell: pwsh
