@@ -169,7 +169,14 @@ try {
             Assert-NxbV1CliValue -Policy $cliPolicy -Value $OutputDirectory -Name '-OutputDirectory'
             $finalAuthority = Join-Path $RepositoryRoot 'scripts\Invoke-NxbProductionFinalCertificationV2.ps1'
             try {
-                $commandData = & $finalAuthority -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory
+                $finalPipeline = @(& $finalAuthority -ExpectedHead $ExpectedHead -OutputDirectory $OutputDirectory -PassThru 3>$null 4>$null 5>$null 6>$null)
+                $commandData = $null
+                foreach ($item in $finalPipeline) {
+                    if ($null -eq $item) { continue }
+                    $statusProperty = $item.PSObject.Properties['status']
+                    if ($null -ne $statusProperty -and [string]$statusProperty.Value -ceq 'passed') { $commandData = $item }
+                }
+                if ($null -eq $commandData) { throw 'Final certification authority returned no passed result.' }
             }
             catch {
                 throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'certification' -Message $_.Exception.Message)
@@ -214,8 +221,14 @@ try {
                 @('-ManifestPath',$ManifestPath),@('-DescriptorPath',$DescriptorPath),@('-EnvelopePath',$EnvelopePath),@('-TrustPath',$TrustPath)
             )) { Assert-NxbV1CliValue -Policy $cliPolicy -Value ([string]$required[1]) -Name ([string]$required[0]) }
             if (-not $DryRun -and -not $ConfirmMutation) { throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'usage' -Message 'update-stage requires -ConfirmMutation or -DryRun.') }
-            $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Stage -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -PackageRoot $PackageRoot -ManifestPath $ManifestPath -DescriptorPath $DescriptorPath -EnvelopePath $EnvelopePath -TrustPath $TrustPath -DryRun:$DryRun
-            $mutationPerformed = -not [bool]$DryRun
+            if ($DryRun) {
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Stage -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -PackageRoot $PackageRoot -ManifestPath $ManifestPath -DescriptorPath $DescriptorPath -EnvelopePath $EnvelopePath -TrustPath $TrustPath -DryRun
+            }
+            else {
+                $null = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Stage -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -PackageRoot $PackageRoot -ManifestPath $ManifestPath -DescriptorPath $DescriptorPath -EnvelopePath $EnvelopePath -TrustPath $TrustPath -DryRun
+                $mutationPerformed = $true
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Stage -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -PackageRoot $PackageRoot -ManifestPath $ManifestPath -DescriptorPath $DescriptorPath -EnvelopePath $EnvelopePath -TrustPath $TrustPath
+            }
             break
         }
         'update-apply' {
@@ -223,8 +236,14 @@ try {
                 Assert-NxbV1CliValue -Policy $cliPolicy -Value ([string]$required[1]) -Name ([string]$required[0])
             }
             if (-not $DryRun -and -not $ConfirmMutation) { throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'usage' -Message 'update-apply requires -ConfirmMutation or -DryRun.') }
-            $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Apply -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -TrustPath $TrustPath -DryRun:$DryRun
-            $mutationPerformed = -not [bool]$DryRun
+            if ($DryRun) {
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Apply -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -TrustPath $TrustPath -DryRun
+            }
+            else {
+                $null = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Apply -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -TrustPath $TrustPath -DryRun
+                $mutationPerformed = $true
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Apply -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -TrustPath $TrustPath
+            }
             break
         }
         'update-rollback' {
@@ -232,8 +251,14 @@ try {
                 Assert-NxbV1CliValue -Policy $cliPolicy -Value ([string]$required[1]) -Name ([string]$required[0])
             }
             if (-not $DryRun -and -not $ConfirmMutation) { throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'usage' -Message 'update-rollback requires -ConfirmMutation or -DryRun.') }
-            $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Rollback -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -DryRun:$DryRun
-            $mutationPerformed = -not [bool]$DryRun
+            if ($DryRun) {
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Rollback -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -DryRun
+            }
+            else {
+                $null = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Rollback -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath -DryRun
+                $mutationPerformed = $true
+                $commandData = Invoke-NxbV1CliSignedUpdate -Policy $cliPolicy -RepositoryRoot $RepositoryRoot -Mode Rollback -InstallRoot $InstallRoot -UpdateRoot $UpdateRoot -ReceiptPath $ReceiptPath
+            }
             break
         }
     }
@@ -242,6 +267,7 @@ try {
 catch {
     if (-not $CliProcess -and -not $Json) { throw }
     $envelope = ConvertTo-NxbV1CliFailureEnvelope -Policy $cliPolicy -Command $Command -ErrorRecord $_
+    $envelope.mutation_performed = $mutationPerformed
 }
 
 if (-not $CliProcess -and -not $Json) {
