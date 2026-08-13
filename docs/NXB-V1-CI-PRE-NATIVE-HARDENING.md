@@ -133,6 +133,52 @@ Repair contract:
 
 The failed run stopped before repo-wide analyzer/Pester execution, independent CI validation, and the release-candidate aggregate. It does not certify Phase 7.
 
+## Third hosted Actions run - existing ERR-021 and ERR-014 reused for repo-wide analyzer findings
+
+**Hosted discovery:** pull-request workflow run `31681838569` at exact Phase 7 head:
+
+```text
+a1cf317f32640c1aa17aafe4bb9f72b0c715e55f
+```
+
+This run proved the ERR-045 dependency closure: the pinned PyYAML/jsonschema bootstrap and import/version probe passed, the public-repository guard passed, and `Test-Repository.ps1` completed with `Repository validation passed.` The signed-release verification lane completed successfully for a third run, while the self-hosted native WPT lane remained correctly skipped for the pull-request event.
+
+The hosted lane then reached the intended repo-wide PSScriptAnalyzer gate and reported exactly five inherited findings:
+
+```text
+Invoke-NxbStorageProfileLocalValidation.ps1:158
+PSAvoidAssignmentToAutomaticVariable
+$profile assignment
+
+Invoke-NxbSuperblock1SemanticEligibilityCertification.ps1:190
+PSAvoidAssignmentToAutomaticVariable
+$profile assignment
+
+Invoke-NxbSuperblock2DirectStateTransitionCertification.ps1:155
+PSUseDeclaredVarsMoreThanAssignments
+$ps7 assigned but not consumed
+
+Invoke-NxbSuperblock2DirectStateTransitionCertification.ps1:156
+PSUseDeclaredVarsMoreThanAssignments
+$ps51 assigned but not consumed
+
+Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertification.ps1:202
+PSUseDeclaredVarsMoreThanAssignments
+$analysisB assigned but not consumed
+```
+
+No new error IDs are allocated. The two automatic-variable findings are the existing **NXB-ERR-021** class. A same-class repository code sweep found the two implementation assignments above as the active `$profile =` instances; other search hits are regression/ledger text. The three unused-state findings are the existing **NXB-ERR-014** class.
+
+Repair:
+
+- rename storage validation `$profile` to semantic `$storageProfile` and preserve the emitted `profile` evidence property;
+- rename semantic eligibility `$profile` to `$captureProfile` and preserve the exact WPR profile reference behavior;
+- consume L4 PS7/PS5.1 Pester summaries in the certification receipt/result instead of hard-coded `20/20` strings;
+- execute the second deterministic L3 analysis replay for its output file without retaining an unused `$analysisB` object; byte-identical replay hash validation remains unchanged;
+- do not suppress PSScriptAnalyzer rules or narrow the repo-wide analyzer surface.
+
+The failed run did not reach full PS7/PS5.1 Pester execution, independent CI validation, or the release-candidate aggregate. It does not certify Phase 7.
+
 ## Current pre-native CI boundary
 
 ```text
