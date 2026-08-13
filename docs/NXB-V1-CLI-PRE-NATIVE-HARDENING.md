@@ -9,7 +9,7 @@ certified/nxb-v1-update
 27507531154099ab28a05cfe8e4e900d72f22e7b
 ```
 
-No CLI Portable native authority had been issued when the findings below were discovered. No new error IDs are allocated; existing classes are reused.
+No CLI Portable native authority had been issued when the findings below were discovered. Existing error classes are reused where applicable; two CLI-specific machine-output classes are allocated below and regression-locked without perturbing the five-rule CLI successor scanner cardinality.
 
 ## ERR-009 — scanner self-match avoided
 
@@ -59,6 +59,36 @@ Repair:
 
 The first Python duplicate-command negative appended an existing command but compared the distinct-command count to the expected distinct cardinality, causing the adversarial check itself to evaluate false. The repair tests `len(commands) != len(set(commands))`, preserving the intended ten-negative closure.
 
+## NXB-ERR-042 — failed CLI result can falsely claim no mutation
+
+**Class:** caught-preflight / machine-readable side-effect evidence drift.
+
+A handled CLI failure originally passed through `ConvertTo-NxbV1CliFailureEnvelope`, which always emitted `mutation_performed=false`. That was false for a legacy `stage-update` that had already created its staging root or copied files before a later hash/copy failure. The same blind false claim was possible around delegated signed-update mutations if a real authority call failed after crossing its mutation boundary.
+
+Repair:
+
+- preserve a top-level mutation marker through the handled failure path;
+- after a legacy stage root is created, any later handled failure reports `mutation_performed=true`;
+- signed `update-stage`, `update-apply`, and `update-rollback` first run the same native-certified updater authority under `WhatIf` as a fail-closed preflight;
+- only after the dry-run preflight passes does the CLI mark mutation as entered and invoke the real authority;
+- the handled failure envelope copies that marker instead of hard-coding `false`;
+- existing 24-test and independent 14+10 contracts bind these source semantics without changing CLI successor scanner count.
+
+## NXB-ERR-043 — delegated progress stream contaminates single-document JSON stdout
+
+**Class:** caught-preflight / structured CLI stream isolation.
+
+The first Phase 6 `certify-final` path directly invoked `Invoke-NxbProductionFinalCertificationV2.ps1`. That authority intentionally emits Information progress lines. In `-CliProcess -Json` mode those delegated progress records could escape before the final compressed JSON envelope, violating the stable `json_is_single_document=true` contract even though the certification result itself was valid.
+
+Repair:
+
+- invoke the existing final-certification authority with `-PassThru`;
+- capture its success pipeline rather than forwarding it to the caller;
+- suppress delegated Warning/Verbose/Debug/Information streams (`3` through `6`) at the CLI boundary;
+- select the structured `status=passed` result and fail closed if no passed object is returned;
+- keep the final certification authority itself unchanged;
+- bind stream-isolation tokens in the existing 24-test and independent 14+10 contracts.
+
 ## Current pre-native contract
 
 ```text
@@ -69,6 +99,7 @@ PS7 / PS5.1 tests           24 / 24
 independent                 14 requirements + 10 negatives
 CLI successor rules         5 (ERR-004/006/007/018/037)
 release ERR-036             inherited single-rule authority
+ERR-042 / ERR-043           human-ledger + Pester/independent regression locks
 review closure              exactly 20 entries
 ```
 
