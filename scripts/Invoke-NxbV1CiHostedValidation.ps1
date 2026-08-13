@@ -49,12 +49,20 @@ if ($LASTEXITCODE -ne 0) { throw 'Hosted CI Python dependency closure failed.' }
 
 $testsPath = Join-Path $repositoryRoot 'tests'
 $rootVariablePattern = [regex]::new('\$env:(?<name>NXB_[A-Z0-9_]+_REPOSITORY_ROOT)')
+$ps51ExcludedTag = 'PS7Only'
+$expectedPs51ExcludedTests = 7
+$ps51TagPattern = [regex]::new("(?m)^\s*It\s+'[^']+'[^\r\n]*-Tag\s+'PS7Only'(?:\s|$)")
+$ps51TaggedTestCount = 0
 $rootVariableNames = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
 foreach ($testFile in @(Get-ChildItem -LiteralPath $testsPath -Filter '*.ps1' -File)) {
     $testText = Get-Content -LiteralPath $testFile.FullName -Raw
     foreach ($rootVariableMatch in @($rootVariablePattern.Matches($testText))) {
         [void]$rootVariableNames.Add([string]$rootVariableMatch.Groups['name'].Value)
     }
+    $ps51TaggedTestCount += $ps51TagPattern.Matches($testText).Count
+}
+if ($ps51TaggedTestCount -ne $expectedPs51ExcludedTests) {
+    throw ('Hosted CI PS5.1 runtime partition drift: tag={0} expected={1} actual={2}' -f $ps51ExcludedTag,$expectedPs51ExcludedTests,$ps51TaggedTestCount)
 }
 foreach ($rootVariableName in $rootVariableNames) {
     [Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)
@@ -91,39 +99,43 @@ $config.TestResult.Enabled = $true
 $config.TestResult.OutputFormat = 'NUnitXml'
 $config.TestResult.OutputPath = $ps7ResultPath
 $ps7Result = Invoke-Pester -Configuration $config
-if ([int]$ps7Result.FailedCount -ne 0 -or [int]$ps7Result.SkippedCount -ne 0) { throw 'Hosted CI PS7 Pester failed or skipped tests.' }
+if ([int]$ps7Result.FailedCount -ne 0 -or [int]$ps7Result.SkippedCount -ne 0 -or [int]$ps7Result.NotRunCount -ne 0) { throw 'Hosted CI PS7 Pester failed, skipped, or excluded tests.' }
 
 $runnerPath = Join-Path $outputFull 'run-ps51.ps1'
 $summaryPath = Join-Path $outputFull 'ps51-summary.json'
 $runner = @'
-param([string]$TestsPath,[string]$ModulePath,[string]$ResultPath,[string]$SummaryPath)
+param([string]$TestsPath,[string]$ModulePath,[string]$ResultPath,[string]$SummaryPath,[string]$ExcludedTag,[int]$ExpectedExcludedCount)
 $ErrorActionPreference='Stop'
 Import-Module $ModulePath -Force
 $config=New-PesterConfiguration
 $config.Run.Path=@($TestsPath)
 $config.Run.PassThru=$true
+$config.Filter.ExcludeTag=@($ExcludedTag)
 $config.Output.Verbosity='Normal'
 $config.TestResult.Enabled=$true
 $config.TestResult.OutputFormat='NUnitXml'
 $config.TestResult.OutputPath=$ResultPath
 $result=Invoke-Pester -Configuration $config
-$summary=[pscustomobject][ordered]@{ passed=[int]$result.PassedCount; failed=[int]$result.FailedCount; skipped=[int]$result.SkippedCount; total=[int]$result.TotalCount }
+$summary=[pscustomobject][ordered]@{ passed=[int]$result.PassedCount; failed=[int]$result.FailedCount; skipped=[int]$result.SkippedCount; not_run=[int]$result.NotRunCount; total=[int]$result.TotalCount; excluded_tag=$ExcludedTag; expected_excluded=[int]$ExpectedExcludedCount }
 [IO.File]::WriteAllText($SummaryPath,(($summary|ConvertTo-Json -Depth 4)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
-if ($summary.failed -ne 0 -or $summary.skipped -ne 0) { exit 1 }
+if ($summary.failed -ne 0 -or $summary.skipped -ne 0 -or $summary.not_run -ne $ExpectedExcludedCount -or ($summary.passed + $summary.not_run) -ne $summary.total) { exit 1 }
 '@
 [IO.File]::WriteAllText($runnerPath,$runner,[Text.UTF8Encoding]::new($false))
-& $ps51 -NoLogo -NoProfile -ExecutionPolicy Bypass -File $runnerPath -TestsPath $testsPath -ModulePath $ps51Pester -ResultPath $ps51ResultPath -SummaryPath $summaryPath
+& $ps51 -NoLogo -NoProfile -ExecutionPolicy Bypass -File $runnerPath -TestsPath $testsPath -ModulePath $ps51Pester -ResultPath $ps51ResultPath -SummaryPath $summaryPath -ExcludedTag $ps51ExcludedTag -ExpectedExcludedCount $expectedPs51ExcludedTests
 $ps51Exit = $LASTEXITCODE
-if ($ps51Exit -ne 0) { throw ('Hosted CI PS5.1 Pester failed: exit={0}' -f $ps51Exit) }
+if ($ps51Exit -ne 0) { throw ('Hosted CI PS5.1 Pester failed or runtime partition drifted: exit={0}' -f $ps51Exit) }
 $ps51Summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+if ([int]$ps51Summary.total -ne [int]$ps7Result.TotalCount) { throw 'Hosted CI PS5.1 discovery cardinality differs from PS7.' }
+if ([int]$ps51Summary.not_run -ne $expectedPs51ExcludedTests -or [int]$ps51Summary.passed -ne ([int]$ps7Result.TotalCount - $expectedPs51ExcludedTests)) { throw 'Hosted CI PS5.1 compatible-partition cardinality drift.' }
 
 $receipt = [pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-ci-hosted-v1'; head_sha=$currentHead;
     pester_version='5.7.1'; psscriptanalyzer_version='1.25.0'; python_version=$pythonVersionText.Trim();
     pyyaml_version='6.0.3'; jsonschema_version='4.26.0'; test_repository_root_variables=$rootVariableNames.Count;
     analyzer_findings=0; python_files_compiled=$tools.Count;
-    ps7_passed=[int]$ps7Result.PassedCount; ps7_total=[int]$ps7Result.TotalCount;
-    ps51_passed=[int]$ps51Summary.passed; ps51_total=[int]$ps51Summary.total;
+    ps7_passed=[int]$ps7Result.PassedCount; ps7_total=[int]$ps7Result.TotalCount; ps7_not_run=[int]$ps7Result.NotRunCount;
+    ps51_passed=[int]$ps51Summary.passed; ps51_total=[int]$ps51Summary.total; ps51_not_run=[int]$ps51Summary.not_run;
+    ps51_excluded_tag=$ps51ExcludedTag; ps51_expected_excluded=$expectedPs51ExcludedTests;
     public_repository_guard=$true; repository_smoke=$true; production_release_updated=$false
 }
 $receiptPath = Join-Path $outputFull 'hosted-ci-receipt.json'
