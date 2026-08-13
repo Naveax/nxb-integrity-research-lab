@@ -166,6 +166,15 @@ jobs:
           if ([int]$result.review_entries -ne 7) { throw 'Native WPT authority review cardinality drift.' }
           if ([bool]$result.production_release_updated) { throw 'Native WPT authority crossed the production release boundary.' }
 
+      - name: Upload native validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}
+          path: ${{ runner.temp }}/nxb-v1-native-validation
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-candidate:
     name: nxb-v1 / release-candidate
     if: ${{ always() }}
