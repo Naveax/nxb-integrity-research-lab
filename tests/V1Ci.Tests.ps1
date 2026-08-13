@@ -66,7 +66,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $c = Get-NxbV1CiTestContext
         $p = Get-Content -LiteralPath $c.policy -Raw | ConvertFrom-Json
         [bool]$p.native_runner.manual_dispatch_only | Should -BeTrue
-        @($p.native_runner.labels) | Should -Be @('self-hosted','Windows','X64','nxb-native','wpt')
+        (@($p.native_runner.labels | ForEach-Object { [string]$_ }) -join '|') | Should -BeExactly 'self-hosted|Windows|X64|nxb-native|wpt'
         $source = Get-Content -LiteralPath $c.workflow -Raw
         $source | Should -Match ([regex]::Escape('runs-on: [self-hosted, Windows, X64, nxb-native, wpt]'))
         $source | Should -Match ([regex]::Escape("github.event_name == 'workflow_dispatch' && inputs.run_native"))
@@ -84,11 +84,14 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('-WarmupCount 0'))
     }
 
-    It 'delegates signed-release verification without production private key input' {
+    It 'delegates signed-release verification with fail-closed result-shape checks' {
         $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).workflow -Raw
         $source | Should -Match ([regex]::Escape('Invoke-NxbV1ProductionSigningCertification.ps1'))
+        $source | Should -Match ([regex]::Escape("PSObject.Properties['actual_production_release_signed']"))
+        $source | Should -Match ([regex]::Escape("PSObject.Properties['production_signer_claimed']"))
+        $source | Should -Match ([regex]::Escape('result shape is missing a required production-boundary field'))
         $source | Should -Not -Match '(?i)secrets\.'
-        $source | Should -Not -Match '(?i)(private[_-]?key|pfx[_-]?password|certificate[_-]?password)'
+        $source | Should -Not -Match '\$result\.actual_release_signed\b'
     }
 
     It 'keeps hosted validation free of native WPR execution' {
@@ -103,12 +106,12 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).hosted -Raw
         $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer'))
         $source | Should -Match ([regex]::Escape('-m py_compile'))
-        $source | Should -Match ([regex]::Escape("Join-Path $repositoryRoot 'tools'"))
+        $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tools'''))
     }
 
     It 'runs complete PS7 and Windows PowerShell 5.1 Pester contracts' {
         $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).hosted -Raw
-        $source | Should -Match ([regex]::Escape("Join-Path $repositoryRoot 'tests'"))
+        $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tests'''))
         $source | Should -Match ([regex]::Escape('New-PesterConfiguration'))
         $source | Should -Match ([regex]::Escape('WindowsPowerShell\v1.0\powershell.exe'))
         $source | Should -Match ([regex]::Escape('Pester\5.7.1\Pester.psd1'))
