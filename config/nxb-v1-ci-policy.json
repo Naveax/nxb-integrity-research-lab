@@ -14,7 +14,8 @@
     "python_version": "3.12",
     "pester_version": "5.7.1",
     "psscriptanalyzer_version": "1.25.0",
-    "pyyaml_version": "6.0.3"
+    "pyyaml_version": "6.0.3",
+    "jsonschema_version": "4.26.0"
   },
   "checks": {
     "hosted_contract": "nxb-v1 / hosted-contract",
