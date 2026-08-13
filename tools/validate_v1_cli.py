@@ -118,8 +118,8 @@ def main():
     req.append("[Array]::Sort($paths,[StringComparer]::Ordinal)" in cli and re.search(r"Sort-Object\b[^\r\n]*(?:path|relative|entry|file)", cli, re.I) is None)
     req.append(policy.get("delegation",{}).get("signed_update") == "scripts/Invoke-NxbV1Updater.ps1" and "Invoke-NxbV1CliSignedUpdate" in common)
     req.append(policy.get("delegation",{}).get("doctor") == "scripts/Test-NxbV1InstallerHost.ps1" and policy.get("delegation",{}).get("evidence_verify") == "scripts/Test-EvidenceBundle.ps1")
-    req.append("$Host.SetShouldExit" in cli and "ConvertTo-Json -Depth 32 -Compress" in cli and "[Console]::Error.WriteLine" in cli)
-    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun."]) and len(errors.get("rules",[])) == 5)
+    req.append(all(x in cli for x in ["$Host.SetShouldExit","ConvertTo-Json -Depth 32 -Compress","[Console]::Error.WriteLine","$envelope.mutation_performed = $mutationPerformed","$finalPipeline = @(& $finalAuthority","-PassThru 3>$null 4>$null 5>$null 6>$null"]))
+    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun.","$null = Invoke-NxbV1CliSignedUpdate","$mutationPerformed = $true"]) and len(errors.get("rules",[])) == 5)
 
     negatives = []
     p = copy.deepcopy(policy); p["predecessor_update_head"] = "0" * 40; negatives.append(not validate_policy(p))
@@ -131,7 +131,7 @@ def main():
     s = copy.deepcopy(config_schema); s["additionalProperties"] = True; negatives.append(s["additionalProperties"] is not False)
     bad = copy.deepcopy(example); bad["unexpected"] = True; negatives.append(not validate_config(bad))
     negatives.append("Test-NxbV1SignedReleaseEnvelope" not in cli and "Test-NxbV1SignedReleaseEnvelope" not in common)
-    negatives.append("Sort-Object path" not in cli and "update-apply requires -ConfirmMutation or -DryRun." in cli)
+    negatives.append("Sort-Object path" not in cli and "update-apply requires -ConfirmMutation or -DryRun." in cli and "$commandData = & $finalAuthority" not in cli)
 
     artifacts = {}
     if args.version_json:
