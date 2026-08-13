@@ -116,7 +116,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('m.version("jsonschema") == "4.26.0"'))
     }
 
-    It 'runs complete PS7 and Windows PowerShell 5.1 Pester contracts' {
+    It 'runs complete PS7 and explicit Windows PowerShell 5.1 compatible Pester partitions' {
         $c = Get-NxbV1CiTestContext
         $source = Get-Content -LiteralPath $c.hosted -Raw
         $workflow = Get-Content -LiteralPath $c.workflow -Raw
@@ -126,6 +126,16 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('Pester\5.7.1\Pester.psd1'))
         $source | Should -Match ([regex]::Escape('NXB_[A-Z0-9_]+_REPOSITORY_ROOT'))
         $source | Should -Match ([regex]::Escape('[Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)'))
+        $source | Should -Match ([regex]::Escape('$ps51ExcludedTag = ''PS7Only'''))
+        $source | Should -Match ([regex]::Escape('$expectedPs51ExcludedTests = 7'))
+        $source | Should -Match ([regex]::Escape('$config.Filter.ExcludeTag=@($ExcludedTag)'))
+        $source | Should -Match ([regex]::Escape('NotRunCount'))
+        $taggedCount = 0
+        foreach ($testFile in @(Get-ChildItem -LiteralPath (Join-Path $c.root 'tests') -Filter '*.ps1' -File)) {
+            $testText = Get-Content -LiteralPath $testFile.FullName -Raw
+            $taggedCount += [regex]::Matches($testText,"(?m)^\s*It\s+'[^']+'[^\r\n]*-Tag\s+'PS7Only'(?:\s|$)").Count
+        }
+        $taggedCount | Should -Be 7
         $workflow | Should -Match ([regex]::Escape('nxb-v1-hosted-validation-${{ env.NXB_EXPECTED_SHA }}'))
         $workflow | Should -Match ([regex]::Escape('${{ runner.temp }}/nxb-v1-hosted-validation'))
     }
