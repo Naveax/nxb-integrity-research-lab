@@ -21,6 +21,10 @@ Describe 'NXB v1 CI and native authority automation contract' {
     It 'keeps every CI authority component repo-owned' {
         $c = Get-NxbV1CiTestContext
         foreach ($path in @($c.policy,$c.workflow,$c.hosted,$c.validator,$c.native,$c.signing)) { Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue }
+        $validatorSource = Get-Content -LiteralPath $c.validator -Raw
+        $validatorSource | Should -Match 'nxb-v1-ci-independent-v1'
+        $validatorSource | Should -Match 'requirement_count'
+        $validatorSource | Should -Match 'negative_count'
     }
 
     It 'binds CI to the native-certified CLI predecessor' {
@@ -49,9 +53,11 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $p = Get-Content -LiteralPath $c.policy -Raw | ConvertFrom-Json
         [string]$p.workflow.checkout_sha | Should -BeExactly '3d3c42e5aac5ba805825da76410c181273ba90b1'
         [string]$p.workflow.setup_python_sha | Should -BeExactly '5fda3b95a4ea91299a34e894583c3862153e4b97'
+        [string]$p.workflow.upload_artifact_sha | Should -BeExactly 'ea165f8d65b6e75b540449e92b4886f43607fa02'
         $source = Get-Content -LiteralPath $c.workflow -Raw
         $source | Should -Match ([regex]::Escape('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'))
         $source | Should -Match ([regex]::Escape('actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97'))
+        $source | Should -Match ([regex]::Escape('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'))
     }
 
     It 'defines stable check names for branch-protection use' {
@@ -111,13 +117,17 @@ Describe 'NXB v1 CI and native authority automation contract' {
     }
 
     It 'runs complete PS7 and Windows PowerShell 5.1 Pester contracts' {
-        $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).hosted -Raw
+        $c = Get-NxbV1CiTestContext
+        $source = Get-Content -LiteralPath $c.hosted -Raw
+        $workflow = Get-Content -LiteralPath $c.workflow -Raw
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tests'''))
         $source | Should -Match ([regex]::Escape('New-PesterConfiguration'))
         $source | Should -Match ([regex]::Escape('WindowsPowerShell\v1.0\powershell.exe'))
         $source | Should -Match ([regex]::Escape('Pester\5.7.1\Pester.psd1'))
         $source | Should -Match ([regex]::Escape('NXB_[A-Z0-9_]+_REPOSITORY_ROOT'))
         $source | Should -Match ([regex]::Escape('[Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)'))
+        $workflow | Should -Match ([regex]::Escape('nxb-v1-hosted-validation-${{ env.NXB_EXPECTED_SHA }}'))
+        $workflow | Should -Match ([regex]::Escape('${{ runner.temp }}/nxb-v1-hosted-validation'))
     }
 
     It 'pins CI dependency versions in policy and workflow bootstrap' {
@@ -147,13 +157,6 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source = Get-Content -LiteralPath $c.workflow -Raw
         $source | Should -Not -Match '(?i)secrets\.'
         $source | Should -Not -Match '(?im)continue-on-error:\s*true'
-    }
-
-    It 'keeps the independent CI validator repo-owned' {
-        $source = Get-Content -LiteralPath (Get-NxbV1CiTestContext).validator -Raw
-        $source | Should -Match 'nxb-v1-ci-independent-v1'
-        $source | Should -Match 'requirement_count'
-        $source | Should -Match 'negative_count'
     }
 
     It 'locks the CI contract at exactly seventeen tests' {

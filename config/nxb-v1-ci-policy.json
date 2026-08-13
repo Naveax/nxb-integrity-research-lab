@@ -11,6 +11,7 @@
     },
     "checkout_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
     "setup_python_sha": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "upload_artifact_sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
     "python_version": "3.12",
     "pester_version": "5.7.1",
     "psscriptanalyzer_version": "1.25.0",

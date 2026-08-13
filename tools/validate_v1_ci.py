@@ -11,6 +11,7 @@ import yaml
 EXPECTED_PREDECESSOR = "e665e8c27cb085853d23c8804ffaa97a19807eb9"
 CHECKOUT_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON_SHA = "5fda3b95a4ea91299a34e894583c3862153e4b97"
+UPLOAD_ARTIFACT_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
 EXPECTED_CHECKS = {
     "hosted_contract": "nxb-v1 / hosted-contract",
     "signed_release_verify": "nxb-v1 / signed-release-verify",
@@ -86,8 +87,21 @@ def main():
     requirements.append(permissions == {"contents": "read"} and not text_has_write_permission(workflow_text))
     requirements.append(isinstance(triggers, dict) and "pull_request" in triggers and "workflow_dispatch" in triggers and "pull_request_target" not in triggers)
     requirements.append(set(jobs) == {"hosted-contract", "signed-release-verify", "native-wpt", "release-candidate"} and policy.get("checks") == EXPECTED_CHECKS)
-    requirements.append(f"actions/checkout@{CHECKOUT_SHA}" in workflow_text and f"actions/setup-python@{SETUP_PYTHON_SHA}" in workflow_text)
-    requirements.append(hosted.get("runs-on") == "windows-2022" and "Invoke-NxbV1CiHostedValidation.ps1" in workflow_text and "Invoke-NxbLocalValidation.ps1" not in hosted_text)
+    requirements.append(
+        workflow_policy.get("checkout_sha") == CHECKOUT_SHA
+        and workflow_policy.get("setup_python_sha") == SETUP_PYTHON_SHA
+        and workflow_policy.get("upload_artifact_sha") == UPLOAD_ARTIFACT_SHA
+        and f"actions/checkout@{CHECKOUT_SHA}" in workflow_text
+        and f"actions/setup-python@{SETUP_PYTHON_SHA}" in workflow_text
+        and f"actions/upload-artifact@{UPLOAD_ARTIFACT_SHA}" in workflow_text
+    )
+    requirements.append(
+        hosted.get("runs-on") == "windows-2022"
+        and "Invoke-NxbV1CiHostedValidation.ps1" in workflow_text
+        and "Invoke-NxbLocalValidation.ps1" not in hosted_text
+        and "nxb-v1-hosted-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text
+        and "${{ runner.temp }}/nxb-v1-hosted-validation" in workflow_text
+    )
     requirements.append(
         signed.get("runs-on") == "windows-2022"
         and "Invoke-NxbV1ProductionSigningCertification.ps1" in workflow_text

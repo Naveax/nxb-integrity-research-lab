@@ -60,6 +60,15 @@ jobs:
           Write-Output ('HostedPS51=' + [string]$result.ps51_passed + '/' + [string]$result.ps51_total)
           Write-Output ('HostedJsonSchema=' + [string]$result.jsonschema_version)
 
+      - name: Upload hosted validation diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nxb-v1-hosted-validation-${{ env.NXB_EXPECTED_SHA }}
+          path: ${{ runner.temp }}/nxb-v1-hosted-validation
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Run independent CI workflow validator
         shell: pwsh
         run: |
