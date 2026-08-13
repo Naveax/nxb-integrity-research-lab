@@ -79,6 +79,7 @@ def main():
     signed = jobs.get("signed-release-verify", {})
     native = jobs.get("native-wpt", {})
     aggregate = jobs.get("release-candidate", {})
+    workflow_policy = policy.get("workflow", {})
 
     requirements = []
     requirements.append(validate_policy(policy) and re.fullmatch(r"[0-9a-f]{40}", args.expected_head) is not None)
@@ -98,8 +99,23 @@ def main():
     requirements.append(as_list(native.get("runs-on")) == EXPECTED_NATIVE_LABELS and "workflow_dispatch" in str(native.get("if", "")) and "inputs.run_native" in str(native.get("if", "")) and "Invoke-NxbLocalValidation.ps1" in workflow_text)
     requirements.append(set(as_list(aggregate.get("needs"))) == {"hosted-contract", "signed-release-verify", "native-wpt"} and "always()" in str(aggregate.get("if", "")))
     requirements.append("continue-on-error: true" not in workflow_text.lower() and "secrets." not in workflow_text.lower() and "pull_request_target" not in workflow_text)
-    requirements.append(policy.get("workflow", {}).get("pester_version") == "5.7.1" and policy.get("workflow", {}).get("psscriptanalyzer_version") == "1.25.0" and policy.get("workflow", {}).get("pyyaml_version") == "6.0.3")
-    requirements.append("Test-PublicRepositoryContent.ps1" in hosted_text and "Test-Repository.ps1" in hosted_text and "Invoke-ScriptAnalyzer" in hosted_text and "py_compile" in hosted_text and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17)
+    requirements.append(
+        workflow_policy.get("pester_version") == "5.7.1"
+        and workflow_policy.get("psscriptanalyzer_version") == "1.25.0"
+        and workflow_policy.get("pyyaml_version") == "6.0.3"
+        and workflow_policy.get("jsonschema_version") == "4.26.0"
+        and "PyYAML==6.0.3 jsonschema==4.26.0" in workflow_text
+    )
+    requirements.append(
+        "Test-PublicRepositoryContent.ps1" in hosted_text
+        and "Test-Repository.ps1" in hosted_text
+        and "Invoke-ScriptAnalyzer" in hosted_text
+        and "py_compile" in hosted_text
+        and 'm.version("jsonschema") == "4.26.0"' in hosted_text
+        and "NXB_[A-Z0-9_]+_REPOSITORY_ROOT" in hosted_text
+        and "SetEnvironmentVariable($rootVariableName,$repositoryRoot" in hosted_text
+        and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17
+    )
 
     negatives = []
     mutated = copy.deepcopy(policy)
@@ -129,6 +145,7 @@ def main():
         "negative_controls_validated": sum(bool(value) for value in negatives),
         "negative_count": 8,
         "job_count": len(jobs),
+        "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
         "production_release_updated": False,
     }
