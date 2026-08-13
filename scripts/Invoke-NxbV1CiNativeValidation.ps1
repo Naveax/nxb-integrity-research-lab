@@ -77,7 +77,7 @@ function Resolve-NxbCiNativeCommand {
     return $null
 }
 
-function New-NxbCiNativeReviewZip {
+function Write-NxbCiNativeReviewZip {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -259,7 +259,7 @@ try {
         'pester-ps7.xml' = $ps7XmlPath
         'ps51-summary.json' = $ps51SummaryPath
     }
-    New-NxbCiNativeReviewZip -Path $reviewZipPath -Entries $reviewEntries
+    Write-NxbCiNativeReviewZip -Path $reviewZipPath -Entries $reviewEntries
     $completed = $true
 
     if ($PassThru) {
