@@ -154,13 +154,17 @@ jobs:
           $analyzer = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1
           if ($null -eq $analyzer) { throw 'NXB native runner requires PSScriptAnalyzer 1.25.0.' }
 
-      - name: Run existing native Windows WPT authority
+      - name: Run Phase 7 trusted native Windows WPT authority
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
           $output = Join-Path $env:RUNNER_TEMP 'nxb-v1-native-validation'
-          $result = & ./scripts/Invoke-NxbLocalValidation.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -ResultsRoot $output -RepetitionCount 1 -WarmupCount 0 -Confirm:$false -PassThru
+          $result = & ./scripts/Invoke-NxbV1CiNativeValidation.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -OutputDirectory $output -RepetitionCount 1 -WarmupCount 0 -PassThru
           if ([string]$result.status -cne 'passed') { throw 'Native WPT authority did not return PASS.' }
+          if ([string]$result.head_sha -cne $env:NXB_EXPECTED_SHA) { throw 'Native WPT authority exact-head result drift.' }
+          if ([int]$result.review_entries -ne 7) { throw 'Native WPT authority review cardinality drift.' }
+          if ([bool]$result.production_release_updated) { throw 'Native WPT authority crossed the production release boundary.' }
 
   release-candidate:
     name: nxb-v1 / release-candidate
