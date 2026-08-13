@@ -107,6 +107,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer'))
         $source | Should -Match ([regex]::Escape('-m py_compile'))
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tools'''))
+        $source | Should -Match ([regex]::Escape('m.version("jsonschema") == "4.26.0"'))
     }
 
     It 'runs complete PS7 and Windows PowerShell 5.1 Pester contracts' {
@@ -115,6 +116,8 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $source | Should -Match ([regex]::Escape('New-PesterConfiguration'))
         $source | Should -Match ([regex]::Escape('WindowsPowerShell\v1.0\powershell.exe'))
         $source | Should -Match ([regex]::Escape('Pester\5.7.1\Pester.psd1'))
+        $source | Should -Match ([regex]::Escape('NXB_[A-Z0-9_]+_REPOSITORY_ROOT'))
+        $source | Should -Match ([regex]::Escape('[Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)'))
     }
 
     It 'pins CI dependency versions in policy and workflow bootstrap' {
@@ -123,8 +126,9 @@ Describe 'NXB v1 CI and native authority automation contract' {
         [string]$p.workflow.pester_version | Should -BeExactly '5.7.1'
         [string]$p.workflow.psscriptanalyzer_version | Should -BeExactly '1.25.0'
         [string]$p.workflow.pyyaml_version | Should -BeExactly '6.0.3'
+        [string]$p.workflow.jsonschema_version | Should -BeExactly '4.26.0'
         $source = Get-Content -LiteralPath $c.workflow -Raw
-        foreach ($token in @('Pester -RequiredVersion 5.7.1','PSScriptAnalyzer -RequiredVersion 1.25.0','PyYAML==6.0.3')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('Pester -RequiredVersion 5.7.1','PSScriptAnalyzer -RequiredVersion 1.25.0','PyYAML==6.0.3','jsonschema==4.26.0')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'keeps production release mutation claims false' {
