@@ -67,6 +67,38 @@ Repair contract:
 - regression-lock the exact property names in both Pester and the independent Python validator;
 - never provision, reference, or expose production private signing material in hosted CI.
 
+## First hosted Actions run - existing ERR-029 reused for inherited parser literal drift
+
+**Hosted discovery:** pull-request workflow run `31680814048` at exact Phase 7 head:
+
+```text
+de81904da85b09e55c25b1aeaf919420f6781f79
+```
+
+The run established several CI boundaries before the failure:
+
+- exact candidate checkout succeeded;
+- pinned checkout/setup-python actions resolved by exact SHA;
+- `contents: read` was the effective token permission;
+- `nxb-v1 / signed-release-verify` completed successfully;
+- `nxb-v1 / native-wpt` was correctly skipped for the pull-request event;
+- `nxb-v1 / hosted-contract` reached the repo-owned hosted validation authority.
+
+The hosted authority passed the public-repository guard and then `Test-Repository.ps1` found a pre-existing parser error in `tests/PlatformTransitionSurfaceDiscovery.Tests.ps1`. The fingerprint-contract test encoded embedded PowerShell double quotes with C-style `\"` escaping inside a PowerShell double-quoted string. PowerShell does not use backslash as its quote escape, so the source failed to parse at the expected tab-literal assertions.
+
+The same defective test bytes were already present in the native-certified CLI predecessor `e665e8c27cb085853d23c8804ffaa97a19807eb9`; Phase 7 did not introduce them. Earlier successor authorities parsed only their bounded active surfaces, while the new hosted lane intentionally runs the repository-wide syntax gate and therefore exposed the latent defect.
+
+No new error ID is allocated. This is another **NXB-ERR-029** source-literal/source-contract escaping drift, consistent with the earlier Part 2 source-literal escaping recurrence.
+
+Repair:
+
+- preserve the five intended fingerprint source assertions;
+- express the embedded source snippets as valid PowerShell single-quoted literals, doubling embedded single quotes while leaving the literal backtick-tab source text intact;
+- do not modify the fingerprint producer or canonical contract;
+- rerun the exact repo-wide hosted syntax gate on the successor head.
+
+The failed hosted run did not execute the independent CI validator or the release-candidate aggregate. It does not certify Phase 7.
+
 ## Current pre-native CI boundary
 
 ```text
