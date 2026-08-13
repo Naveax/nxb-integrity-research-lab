@@ -166,7 +166,15 @@ def main():
         and "nxb-v1-cli-known-error-signatures.json" in known_error_scanner_text
         and "Test-PublicRepositoryContent.ps1" in hosted_text
         and "Test-Repository.ps1" in hosted_text
-        and "Invoke-ScriptAnalyzer" in hosted_text
+        and "Invoke-NxbV1CiNativeProcess" in hosted_text
+        and "Get-Command pwsh.exe" in hosted_text
+        and "Import-Module $AnalyzerModulePath -Force" in hosted_text
+        and "Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot 'scripts') -Recurse -Settings $SettingsPath" in hosted_text
+        and "Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot 'tests') -Recurse -Settings $SettingsPath" in hosted_text
+        and "nxb-v1-ci-analyzer-isolated-v1" in hosted_text
+        and "main process must remain Pester-assembly-free" in hosted_text
+        and "contaminated the main Pester assembly context" in hosted_text
+        and "Import-Module $analyzerModule.Path -Force" not in hosted_text
         and "py_compile" in hosted_text
         and 'm.version("jsonschema") == "4.26.0"' in hosted_text
         and "NXB_[A-Z0-9_]+_REPOSITORY_ROOT" in hosted_text

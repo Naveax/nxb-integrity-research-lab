@@ -255,6 +255,45 @@ Repair contract:
 
 The fifth hosted run is not a Phase 7 certification. A new exact successor head must pass the entire hosted PS7 and Windows PowerShell 5.1 Pester matrix, independent CI validation, signed-release verification, and later the separately gated trusted native/Portable authority before any certified pointer may move.
 
+## NXB-ERR-045 recurrence - co-installed Pester assembly contamination
+
+Class: observed-native / dependency-runtime assembly contamination.
+
+Portable V1.3 on the frozen pre-native candidate `bc741eec6faf010cf31305f3ed7a014b1b6ae2d9` passed exact-head, external parser/analyzer/known-error, independent `12/12 + 8/8`, and certification-safe signed-release verification before the local replay of the repo-owned hosted authority failed at the PowerShell 7 Pester import.
+
+A dedicated three-mode load probe preserved the co-installed local module set and proved the sequence exactly:
+
+```text
+fresh                         no Pester assembly loaded
+after PSScriptAnalyzer import no Pester assembly loaded
+after repository smoke        no Pester assembly loaded
+after repo-wide analyzer      Pester 6.0.1.0 loaded
+Pester 5.7.1 import           FileLoadException
+```
+
+The loaded assembly was the co-installed user module:
+
+```text
+Documents\PowerShell\Modules\Pester\6.0.1\bin\net8.0\Pester.dll
+```
+
+Both `Import-Module <Pester-5.7.1> -Force` and the same import without `-Force` failed because the PowerShell process already contained a different `Pester` assembly simple name. The GitHub-hosted lane had passed because its clean runner bootstrap installs only exact Pester `5.7.1`; the trusted/native boundary cannot assume that a long-lived self-hosted machine has no other Pester version installed.
+
+This is an NXB-ERR-045 dependency-closure recurrence rather than a new class. The missing closure was runtime assembly isolation, not package availability.
+
+Repair contract:
+
+- keep exact Pester `5.7.1` and PSScriptAnalyzer `1.25.0`;
+- do not require operators to uninstall unrelated co-installed Pester versions;
+- execute repo-wide PSScriptAnalyzer in a fresh `pwsh -NoProfile` child process;
+- pass the exact PSScriptAnalyzer module manifest path and repo-owned settings path into the child;
+- serialize child analyzer status/findings through a bounded JSON result and fail closed on missing/malformed/nonzero output;
+- require the hosted authority main process to be free of any loaded `Pester` assembly both immediately before and immediately after the isolated analyzer step;
+- import exact Pester `5.7.1` only after the isolated analyzer child has exited;
+- regression-lock the isolation in the existing 17-test CI contract and existing independent `12 + 8` validator without changing their cardinalities;
+- preserve all known-error scanner counts, PS7/PS5.1 runtime partition counts, production safety booleans, and native review cardinality.
+
+The old frozen head is not native-certified by the failed Portable run. A successor exact head must rerun hosted closure and then trusted native/Portable certification.
 ## Current pre-native CI boundary
 
 ```text

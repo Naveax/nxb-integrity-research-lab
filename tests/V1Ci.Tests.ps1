@@ -132,7 +132,15 @@ Describe 'NXB v1 CI and native authority automation contract' {
         foreach ($token in @('nxb-v1-release-known-error-signatures.json','nxb-v1-signing-known-error-signatures.json','nxb-v1-installer-known-error-signatures.json','nxb-v1-update-known-error-signatures.json','nxb-v1-cli-known-error-signatures.json')) { $scannerSource | Should -Match ([regex]::Escape($token)) }
         [string]$knownErrorConfig.contract_id | Should -BeExactly 'nxb-v1-ci-known-error-signatures-v1'
         @($knownErrorConfig.rules).Count | Should -Be 6
-        $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer'))
+        $source | Should -Match ([regex]::Escape('Invoke-NxbV1CiNativeProcess'))
+        $source | Should -Match ([regex]::Escape('Get-Command pwsh.exe'))
+        $source | Should -Match ([regex]::Escape('Import-Module $AnalyzerModulePath -Force'))
+        $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot ''scripts'') -Recurse -Settings $SettingsPath'))
+        $source | Should -Match ([regex]::Escape('Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot ''tests'') -Recurse -Settings $SettingsPath'))
+        $source | Should -Match ([regex]::Escape('nxb-v1-ci-analyzer-isolated-v1'))
+        $source | Should -Match ([regex]::Escape('main process must remain Pester-assembly-free'))
+        $source | Should -Match ([regex]::Escape('contaminated the main Pester assembly context'))
+        $source | Should -Not -Match '(?m)^\s*Import-Module\s+\$analyzerModule\.Path\s+-Force\s*$'
         $source | Should -Match ([regex]::Escape('-m py_compile'))
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tools'''))
         $source | Should -Match ([regex]::Escape('m.version("jsonschema") == "4.26.0"'))

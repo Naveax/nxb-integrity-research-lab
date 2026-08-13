@@ -8,11 +8,44 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Invoke-NxbV1CiNativeProcess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Executable,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $nativePreferenceVariable = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    $nativePreferenceAvailable = ($null -ne $nativePreferenceVariable)
+    $previousNativePreference = if ($nativePreferenceAvailable) { [bool]$nativePreferenceVariable.Value } else { $null }
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($nativePreferenceAvailable) {
+            Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $false -Scope Local
+        }
+        $nativeOutput = @(& $Executable @ArgumentList 2>&1)
+        $nativeExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($nativePreferenceAvailable) {
+            Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $previousNativePreference -Scope Local
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        exit_code = $nativeExitCode
+        output = @($nativeOutput | ForEach-Object { [string]$_ })
+    }
+}
+
 if ($env:OS -cne 'Windows_NT') { throw 'NXB v1 hosted CI validation requires Windows.' }
 if ($PSVersionTable.PSEdition -cne 'Core') { throw 'NXB v1 hosted CI validation requires PowerShell Core.' }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $git = (Get-Command git.exe -ErrorAction Stop).Source
+$pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
 if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
 $python = [string]$pythonCommand.Source
@@ -30,7 +63,6 @@ $pester7 = Get-Module -ListAvailable Pester | Where-Object Version -eq ([version
 if ($null -eq $pester7) { throw 'Hosted CI requires Pester 5.7.1.' }
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1
 if ($null -eq $analyzerModule) { throw 'Hosted CI requires PSScriptAnalyzer 1.25.0.' }
-Import-Module $analyzerModule.Path -Force
 
 $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if (-not (Test-Path -LiteralPath $ps51 -PathType Leaf)) { throw 'Windows PowerShell 5.1 is missing.' }
@@ -79,13 +111,87 @@ if ([int]$knownErrorScan.base_rule_count -lt 23 -or [int]$knownErrorScan.product
 & (Join-Path $PSScriptRoot 'Test-Repository.ps1')
 
 $settings = Join-Path $repositoryRoot '.github\PSScriptAnalyzerSettings.psd1'
-$findings = @(
-    Invoke-ScriptAnalyzer -Path (Join-Path $repositoryRoot 'scripts') -Recurse -Settings $settings
-    Invoke-ScriptAnalyzer -Path (Join-Path $repositoryRoot 'tests') -Recurse -Settings $settings
+$preAnalyzerPesterAssemblies = @(
+    [AppDomain]::CurrentDomain.GetAssemblies() |
+        Where-Object { $_.GetName().Name -ceq 'Pester' }
 )
-if ($findings.Count -gt 0) {
-    $detail = @($findings | Sort-Object ScriptName,Line,Column,RuleName | ForEach-Object { '{0}:{1}:{2} {3} {4}' -f $_.ScriptName,$_.Line,$_.Column,$_.RuleName,$_.Message }) -join [Environment]::NewLine
-    throw ('Hosted CI PSScriptAnalyzer findings: {0}{1}{2}' -f $findings.Count,[Environment]::NewLine,$detail)
+if ($preAnalyzerPesterAssemblies.Count -ne 0) {
+    throw 'Hosted CI main process must remain Pester-assembly-free before isolated PSScriptAnalyzer.'
+}
+
+$analyzerWorkRoot = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v1-ci-analyzer-{0}' -f [Guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($analyzerWorkRoot) | Out-Null
+$analyzerRunnerPath = Join-Path $analyzerWorkRoot 'run-analyzer.ps1'
+$analyzerResultPath = Join-Path $analyzerWorkRoot 'analyzer-result.json'
+$analyzerRunner = @'
+param(
+    [Parameter(Mandatory)][string]$RepositoryRoot,
+    [Parameter(Mandatory)][string]$AnalyzerModulePath,
+    [Parameter(Mandatory)][string]$SettingsPath,
+    [Parameter(Mandatory)][string]$ResultPath
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Import-Module $AnalyzerModulePath -Force
+$findings = @(
+    Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot 'scripts') -Recurse -Settings $SettingsPath
+    Invoke-ScriptAnalyzer -Path (Join-Path $RepositoryRoot 'tests') -Recurse -Settings $SettingsPath
+)
+$detail = @(
+    $findings |
+        Sort-Object ScriptName,Line,Column,RuleName |
+        ForEach-Object { '{0}:{1}:{2} {3} {4}' -f $_.ScriptName,$_.Line,$_.Column,$_.RuleName,$_.Message }
+)
+$result = [pscustomobject][ordered]@{
+    schema_version = 1
+    status = if ($findings.Count -eq 0) { 'passed' } else { 'failed' }
+    authority = 'nxb-v1-ci-analyzer-isolated-v1'
+    psscriptanalyzer_version = '1.25.0'
+    finding_count = [int]$findings.Count
+    findings = $detail
+}
+[IO.File]::WriteAllText(
+    $ResultPath,
+    (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine),
+    [Text.UTF8Encoding]::new($false)
+)
+if ($findings.Count -ne 0) { exit 1 }
+'@
+[IO.File]::WriteAllText($analyzerRunnerPath,$analyzerRunner,[Text.UTF8Encoding]::new($false))
+
+try {
+    $analyzerRun = Invoke-NxbV1CiNativeProcess -Executable $pwsh -ArgumentList @(
+        '-NoLogo',
+        '-NoProfile',
+        '-ExecutionPolicy','Bypass',
+        '-File',$analyzerRunnerPath,
+        '-RepositoryRoot',$repositoryRoot,
+        '-AnalyzerModulePath',[string]$analyzerModule.Path,
+        '-SettingsPath',$settings,
+        '-ResultPath',$analyzerResultPath
+    )
+    if (-not (Test-Path -LiteralPath $analyzerResultPath -PathType Leaf)) {
+        throw ('Hosted CI isolated PSScriptAnalyzer result missing: exit={0} output={1}' -f [int]$analyzerRun.exit_code,(@($analyzerRun.output) -join [Environment]::NewLine))
+    }
+    $analyzerResult = Get-Content -LiteralPath $analyzerResultPath -Raw | ConvertFrom-Json
+    if ([int]$analyzerRun.exit_code -ne 0 -or [string]$analyzerResult.status -cne 'passed' -or [int]$analyzerResult.finding_count -ne 0 -or [string]$analyzerResult.authority -cne 'nxb-v1-ci-analyzer-isolated-v1' -or [string]$analyzerResult.psscriptanalyzer_version -cne '1.25.0') {
+        $detail = @($analyzerResult.findings | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+        throw ('Hosted CI isolated PSScriptAnalyzer failed: exit={0} findings={1}{2}{3}{4}{5}' -f [int]$analyzerRun.exit_code,[int]$analyzerResult.finding_count,[Environment]::NewLine,$detail,[Environment]::NewLine,(@($analyzerRun.output) -join [Environment]::NewLine))
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $analyzerWorkRoot -PathType Container) {
+        Remove-Item -LiteralPath $analyzerWorkRoot -Recurse -Force
+    }
+}
+
+$postAnalyzerPesterAssemblies = @(
+    [AppDomain]::CurrentDomain.GetAssemblies() |
+        Where-Object { $_.GetName().Name -ceq 'Pester' }
+)
+if ($postAnalyzerPesterAssemblies.Count -ne 0) {
+    throw 'Hosted CI isolated PSScriptAnalyzer contaminated the main Pester assembly context.'
 }
 
 $tools = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tools') -Filter '*.py' -File)
@@ -144,7 +250,7 @@ $receipt = [pscustomobject][ordered]@{
     known_error_release_rules=[int]$knownErrorScan.release_rule_count; known_error_signing_rules=[int]$knownErrorScan.signing_rule_count;
     known_error_installer_rules=[int]$knownErrorScan.installer_rule_count; known_error_update_rules=[int]$knownErrorScan.update_rule_count;
     known_error_cli_rules=[int]$knownErrorScan.cli_rule_count; known_error_ci_rules=[int]$knownErrorScan.ci_rule_count;
-    analyzer_findings=0; python_files_compiled=$tools.Count;
+    analyzer_findings=0; analyzer_authority='nxb-v1-ci-analyzer-isolated-v1'; analyzer_process_isolated=$true; python_files_compiled=$tools.Count;
     ps7_passed=[int]$ps7Result.PassedCount; ps7_total=[int]$ps7Result.TotalCount; ps7_not_run=[int]$ps7Result.NotRunCount;
     ps51_passed=[int]$ps51Summary.passed; ps51_total=[int]$ps51Summary.total; ps51_not_run=[int]$ps51Summary.not_run;
     ps51_excluded_tag=$ps51ExcludedTag; ps51_expected_excluded=$expectedPs51ExcludedTests;
