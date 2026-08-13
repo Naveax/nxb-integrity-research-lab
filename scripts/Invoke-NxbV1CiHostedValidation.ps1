@@ -68,6 +68,13 @@ foreach ($rootVariableName in $rootVariableNames) {
     [Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)
 }
 
+$knownErrorPath = Join-Path $outputFull 'known-error-scan.json'
+$knownErrorScan = & (Join-Path $PSScriptRoot 'Invoke-NxbV1CiKnownErrorScan.ps1') -RepositoryRoot $repositoryRoot -OutputPath $knownErrorPath -PassThru
+if ([string]$knownErrorScan.status -cne 'passed' -or [int]$knownErrorScan.finding_count -ne 0) { throw 'Hosted CI cumulative known-error scanner did not return clean PASS.' }
+if ([int]$knownErrorScan.base_rule_count -lt 23 -or [int]$knownErrorScan.production_extension_rule_count -ne 9 -or [int]$knownErrorScan.production_schema_contract_count -ne 1 -or [int]$knownErrorScan.production_guard_contract_count -ne 1 -or [int]$knownErrorScan.release_rule_count -ne 1 -or [int]$knownErrorScan.signing_rule_count -ne 2 -or [int]$knownErrorScan.installer_rule_count -ne 4 -or [int]$knownErrorScan.update_rule_count -ne 7 -or [int]$knownErrorScan.cli_rule_count -ne 5 -or [int]$knownErrorScan.ci_rule_count -ne 6) {
+    throw 'Hosted CI cumulative known-error scanner cardinality drift.'
+}
+
 & (Join-Path $PSScriptRoot 'Test-PublicRepositoryContent.ps1') -RepositoryRoot $repositoryRoot
 & (Join-Path $PSScriptRoot 'Test-Repository.ps1')
 
@@ -132,6 +139,11 @@ $receipt = [pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-ci-hosted-v1'; head_sha=$currentHead;
     pester_version='5.7.1'; psscriptanalyzer_version='1.25.0'; python_version=$pythonVersionText.Trim();
     pyyaml_version='6.0.3'; jsonschema_version='4.26.0'; test_repository_root_variables=$rootVariableNames.Count;
+    known_error_authority='nxb-v1-ci-known-error-scan-v1'; known_error_findings=[int]$knownErrorScan.finding_count;
+    known_error_base_rules=[int]$knownErrorScan.base_rule_count; known_error_production_rules=[int]$knownErrorScan.production_extension_rule_count;
+    known_error_release_rules=[int]$knownErrorScan.release_rule_count; known_error_signing_rules=[int]$knownErrorScan.signing_rule_count;
+    known_error_installer_rules=[int]$knownErrorScan.installer_rule_count; known_error_update_rules=[int]$knownErrorScan.update_rule_count;
+    known_error_cli_rules=[int]$knownErrorScan.cli_rule_count; known_error_ci_rules=[int]$knownErrorScan.ci_rule_count;
     analyzer_findings=0; python_files_compiled=$tools.Count;
     ps7_passed=[int]$ps7Result.PassedCount; ps7_total=[int]$ps7Result.TotalCount; ps7_not_run=[int]$ps7Result.NotRunCount;
     ps51_passed=[int]$ps51Summary.passed; ps51_total=[int]$ps51Summary.total; ps51_not_run=[int]$ps51Summary.not_run;
