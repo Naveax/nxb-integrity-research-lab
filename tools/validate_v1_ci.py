@@ -63,15 +63,19 @@ def main():
 
     root = pathlib.Path(args.repository_root).resolve()
     policy_path = root / "config" / "nxb-v1-ci-policy.json"
+    known_error_config_path = root / "config" / "nxb-v1-ci-known-error-signatures.json"
     workflow_path = root / ".github" / "workflows" / "nxb-v1-ci.yml"
     hosted_path = root / "scripts" / "Invoke-NxbV1CiHostedValidation.ps1"
+    known_error_scanner_path = root / "scripts" / "Invoke-NxbV1CiKnownErrorScan.ps1"
     native_path = root / "scripts" / "Invoke-NxbV1CiNativeValidation.ps1"
     tests_path = root / "tests" / "V1Ci.Tests.ps1"
 
     policy = load_json(policy_path)
+    known_error_config = load_json(known_error_config_path)
     workflow = load_workflow(workflow_path)
     workflow_text = workflow_path.read_text(encoding="utf-8-sig")
     hosted_text = hosted_path.read_text(encoding="utf-8-sig")
+    known_error_scanner_text = known_error_scanner_path.read_text(encoding="utf-8-sig")
     native_text = native_path.read_text(encoding="utf-8-sig")
     tests_text = tests_path.read_text(encoding="utf-8-sig")
     all_tests_text = "\n".join(
@@ -147,7 +151,20 @@ def main():
         and "PyYAML==6.0.3 jsonschema==4.26.0" in workflow_text
     )
     requirements.append(
-        "Test-PublicRepositoryContent.ps1" in hosted_text
+        known_error_config.get("schema_version") == 1
+        and known_error_config.get("contract_id") == "nxb-v1-ci-known-error-signatures-v1"
+        and len(known_error_config.get("rules", [])) == 6
+        and "Invoke-NxbV1CiKnownErrorScan.ps1" in hosted_text
+        and "nxb-v1-ci-known-error-scan-v1" in hosted_text
+        and "known_error_findings" in hosted_text
+        and "Invoke-NxbKnownErrorScan.ps1" in known_error_scanner_text
+        and "Invoke-NxbProductionKnownErrorScan.ps1" in known_error_scanner_text
+        and "nxb-v1-release-known-error-signatures.json" in known_error_scanner_text
+        and "nxb-v1-signing-known-error-signatures.json" in known_error_scanner_text
+        and "nxb-v1-installer-known-error-signatures.json" in known_error_scanner_text
+        and "nxb-v1-update-known-error-signatures.json" in known_error_scanner_text
+        and "nxb-v1-cli-known-error-signatures.json" in known_error_scanner_text
+        and "Test-PublicRepositoryContent.ps1" in hosted_text
         and "Test-Repository.ps1" in hosted_text
         and "Invoke-ScriptAnalyzer" in hosted_text
         and "py_compile" in hosted_text
@@ -192,6 +209,8 @@ def main():
         "job_count": len(jobs),
         "ps51_excluded_tag": "PS7Only",
         "ps51_excluded_test_count": ps7_only_count,
+        "known_error_authority": "nxb-v1-ci-known-error-scan-v1",
+        "ci_known_error_rules": len(known_error_config.get("rules", [])),
         "native_authority": "nxb-v1-ci-native-v1",
         "native_review_entries": 7,
         "native_evidence_retained": "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text,
