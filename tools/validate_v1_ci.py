@@ -72,6 +72,16 @@ def main():
     workflow_text = workflow_path.read_text(encoding="utf-8-sig")
     hosted_text = hosted_path.read_text(encoding="utf-8-sig")
     tests_text = tests_path.read_text(encoding="utf-8-sig")
+    all_tests_text = "\n".join(
+        path.read_text(encoding="utf-8-sig")
+        for path in sorted((root / "tests").glob("*.ps1"))
+    )
+    ps7_only_count = len(
+        re.findall(
+            r"(?m)^\s*It\s+'[^']+'[^\r\n]*-Tag\s+'PS7Only'(?:\s|$)",
+            all_tests_text,
+        )
+    )
 
     jobs = workflow.get("jobs", {}) if isinstance(workflow, dict) else {}
     triggers = workflow.get("on", {}) if isinstance(workflow, dict) else {}
@@ -128,6 +138,11 @@ def main():
         and 'm.version("jsonschema") == "4.26.0"' in hosted_text
         and "NXB_[A-Z0-9_]+_REPOSITORY_ROOT" in hosted_text
         and "SetEnvironmentVariable($rootVariableName,$repositoryRoot" in hosted_text
+        and "$ps51ExcludedTag = 'PS7Only'" in hosted_text
+        and "$expectedPs51ExcludedTests = 7" in hosted_text
+        and "$config.Filter.ExcludeTag=@($ExcludedTag)" in hosted_text
+        and "NotRunCount" in hosted_text
+        and ps7_only_count == 7
         and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17
     )
 
@@ -159,6 +174,8 @@ def main():
         "negative_controls_validated": sum(bool(value) for value in negatives),
         "negative_count": 8,
         "job_count": len(jobs),
+        "ps51_excluded_tag": "PS7Only",
+        "ps51_excluded_test_count": ps7_only_count,
         "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
         "production_release_updated": False,
