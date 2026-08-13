@@ -99,6 +99,40 @@ Repair:
 
 The failed hosted run did not execute the independent CI validator or the release-candidate aggregate. It does not certify Phase 7.
 
+## NXB-ERR-045 - incomplete hosted Python dependency closure
+
+Class: observed-hosted / repo-wide validator dependency bootstrap.
+
+**Hosted discovery:** pull-request workflow run `31681102775` at exact Phase 7 head:
+
+```text
+bd499a6984f54c841c48b1c064d1c8307f6062e6
+```
+
+This run proved the inherited ERR-029 parser repair: the hosted lane passed public-repository content validation, repo-wide PowerShell syntax validation, bounded WPR profile contract parsing, and JSON discovery before entering the repository smoke validator chain. `nxb-v1 / signed-release-verify` again completed successfully, and `nxb-v1 / native-wpt` remained correctly skipped for the pull-request event.
+
+The hosted lane then failed when `Test-CollectorOverheadCalibration.ps1` invoked `tools/validate_overhead_calibration.py` and Python reported:
+
+```text
+ModuleNotFoundError: No module named 'jsonschema'
+```
+
+The workflow had pinned and installed PyYAML for the new CI workflow validator but had not modeled the existing repo-wide schema-validator dependency closure. `py_compile` alone is not an import/dependency authority and could not prove runtime import availability.
+
+No existing NXB error class covers incomplete hosted dependency closure, so **NXB-ERR-045** is allocated.
+
+Repair contract:
+
+- pin the hosted Python dependencies required by the combined existing/new validator surface in `nxb-v1-ci-policy.json`;
+- retain PyYAML `6.0.3` and add jsonschema `4.26.0`;
+- install both exact versions in the hosted workflow bootstrap;
+- execute an explicit hosted import/version preflight before repository smoke validation;
+- bind the exact dependency versions into the 17-test CI contract and independent validator;
+- discover `NXB_[A-Z0-9_]+_REPOSITORY_ROOT` variables from test source and bind them to the exact checkout root before the full PS7/PS5.1 Pester matrix so successor test roots are inherited deterministically by child PowerShell;
+- keep independent validator cardinality `12 requirements + 8 negatives` and CI Pester cardinality `17` unchanged.
+
+The failed run stopped before repo-wide analyzer/Pester execution, independent CI validation, and the release-candidate aggregate. It does not certify Phase 7.
+
 ## Current pre-native CI boundary
 
 ```text
@@ -109,6 +143,7 @@ native WPT check              nxb-v1 / native-wpt
 aggregate check               nxb-v1 / release-candidate
 CI Pester contract            17 tests
 independent validator         12 requirements + 8 negatives
+hosted Python deps            PyYAML 6.0.3 + jsonschema 4.26.0
 native WPT trigger            manual workflow_dispatch only
 native runner                 self-hosted Windows X64 nxb-native wpt
 workflow permission           contents: read
