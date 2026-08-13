@@ -101,10 +101,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
           $output = Join-Path $env:RUNNER_TEMP 'nxb-v1-signing-verification'
           $result = & ./scripts/Invoke-NxbV1ProductionSigningCertification.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -OutputDirectory $output -PassThru
           if ([string]$result.status -cne 'passed') { throw 'Signed-release verification authority did not return PASS.' }
-          if ([bool]$result.production_signer_claimed -or [bool]$result.actual_release_signed) { throw 'Hosted signing lane crossed the production signer boundary.' }
+          $signerProperty = $result.PSObject.Properties['production_signer_claimed']
+          $releaseProperty = $result.PSObject.Properties['actual_production_release_signed']
+          if ($null -eq $signerProperty -or $null -eq $releaseProperty) { throw 'Signed-release authority result shape is missing a required production-boundary field.' }
+          if ([bool]$signerProperty.Value -or [bool]$releaseProperty.Value) { throw 'Hosted signing lane crossed the production signer boundary.' }
 
   native-wpt:
     name: nxb-v1 / native-wpt
