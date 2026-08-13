@@ -1,32 +1,43 @@
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
-$sourcePath = Join-Path $repositoryRoot 'fixtures\superblock1-multidomain\main.cpp'
-$buildPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
-$certificationPath = Join-Path $repositoryRoot 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertification.ps1'
-
 Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
+    BeforeAll {
+        function Get-NxbSuperblock1SemanticFixtureTestContext {
+            $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+            return [pscustomobject][ordered]@{
+                root = $root
+                source = Join-Path $root 'fixtures\superblock1-multidomain\main.cpp'
+                build = Join-Path $root 'scripts\Invoke-NxbSuperblock1SemanticFixtureBuild.ps1'
+                certification = Join-Path $root 'scripts\Invoke-NxbSuperblock1SemanticEligibilityCertification.ps1'
+            }
+        }
+    }
+
     It 'keeps the native source build runner and certification repo-owned' {
-        Test-Path -LiteralPath $sourcePath -PathType Leaf | Should -BeTrue
-        Test-Path -LiteralPath $buildPath -PathType Leaf | Should -BeTrue
-        Test-Path -LiteralPath $certificationPath -PathType Leaf | Should -BeTrue
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        Test-Path -LiteralPath $context.source -PathType Leaf | Should -BeTrue
+        Test-Path -LiteralPath $context.build -PathType Leaf | Should -BeTrue
+        Test-Path -LiteralPath $context.certification -PathType Leaf | Should -BeTrue
     }
 
     It 'uses hardware D3D11 without a WARP fallback' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match ([regex]::Escape('D3D_DRIVER_TYPE_HARDWARE'))
         $sourceText | Should -Not -Match ([regex]::Escape('D3D_DRIVER_TYPE_WARP'))
         $sourceText | Should -Match ([regex]::Escape('D3D11CreateDeviceAndSwapChain'))
     }
 
     It 'bounds the Present stimulus' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match 'constexpr\s+UINT\s+kPresentCount\s*=\s*128'
         $sourceText | Should -Match ([regex]::Escape('swap_chain->Present(0, 0)'))
     }
 
     It 'keeps network activity local bounded and timeout protected' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match ([regex]::Escape('GetAddrInfoW(L"localhost"'))
         $sourceText | Should -Match ([regex]::Escape('INADDR_LOOPBACK'))
         $sourceText | Should -Not -Match 'https?://|www\.|8\.8\.8\.8|1\.1\.1\.1'
@@ -37,7 +48,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'performs registry reads without registry writes' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match ([regex]::Escape('RegOpenCurrentUser(KEY_READ'))
         $sourceText | Should -Match ([regex]::Escape('RegQueryInfoKeyW'))
         $sourceText | Should -Not -Match 'RegSetValue|RegCreateKey|RegDeleteKey|RegDeleteValue'
@@ -45,7 +57,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'joins bounded workers and removes the temporary file' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match 'kWorkerIterations\s*=\s*250000'
         $sourceText | Should -Match ([regex]::Escape('worker.join()'))
         $sourceText | Should -Match ([regex]::Escape('server.join()'))
@@ -54,7 +67,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'records the owned PID and bounded stimulus counters' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         $sourceText | Should -Match ([regex]::Escape('GetCurrentProcessId()'))
         $sourceText | Should -Match 'present_calls_attempted'
         $sourceText | Should -Match 'present_calls_succeeded'
@@ -63,7 +77,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'keeps ETW semantic and causal claims disabled' {
-        $sourceText = Get-Content -LiteralPath $sourcePath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $sourceText = Get-Content -LiteralPath $context.source -Raw
         foreach ($claimName in @(
             'etw_event_mapping_validated',
             'present_semantics_validated',
@@ -76,8 +91,9 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'requires exact clean heads external output and owned-session cancellation only' {
-        $buildText = Get-Content -LiteralPath $buildPath -Raw
-        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $buildText = Get-Content -LiteralPath $context.build -Raw
+        $certificationText = Get-Content -LiteralPath $context.certification -Raw
         foreach ($scriptText in @($buildText,$certificationText)) {
             $scriptText | Should -Match ([regex]::Escape('rev-parse HEAD'))
             $scriptText | Should -Match ([regex]::Escape('status --porcelain=v1 --untracked-files=all'))
@@ -92,7 +108,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'uses installed Visual Studio x64 tools with strict compiler warnings' {
-        $buildText = Get-Content -LiteralPath $buildPath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $buildText = Get-Content -LiteralPath $context.build -Raw
         $buildText | Should -Match ([regex]::Escape('Microsoft.VisualStudio.Component.VC.Tools.x86.x64'))
         $buildText | Should -Match ([regex]::Escape('VsDevCmd.bat'))
         $buildText | Should -Match ([regex]::Escape('/W4 /WX'))
@@ -100,7 +117,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'requires same-PID three-domain attribution and deterministic replay' {
-        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $certificationText = Get-Content -LiteralPath $context.certification -Raw
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.gpu'))
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.network'))
         $certificationText | Should -Match ([regex]::Escape('target_pid.domain_counts.kernel_lifecycle'))
@@ -115,7 +133,8 @@ Describe 'SUPERBLOCK 1 controlled same-PID semantic fixture contract' {
     }
 
     It 'keeps raw ETL dumper normalized rows and pair records out of review evidence' {
-        $certificationText = Get-Content -LiteralPath $certificationPath -Raw
+        $context = Get-NxbSuperblock1SemanticFixtureTestContext
+        $certificationText = Get-Content -LiteralPath $context.certification -Raw
         foreach ($forbidden in @(
             '.etl','.exe','.obj','xperf-dumper','normalized-events','correlation-records','wpr-status','.wprp'
         )) {

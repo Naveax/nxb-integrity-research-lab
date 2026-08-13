@@ -179,6 +179,82 @@ Repair:
 
 The failed run did not reach full PS7/PS5.1 Pester execution, independent CI validation, or the release-candidate aggregate. It does not certify Phase 7.
 
+## Fourth hosted Actions run - existing ERR-029 reused for CI test-cardinality drift
+
+**Hosted discovery:** pull-request workflow run `31682765772` at exact Phase 7 head:
+
+```text
+0bcb50fc66b050a4fd79868072c33f040605cf1b
+```
+
+The hosted lane passed parser, dependency, repository-smoke, and repo-wide analyzer gates before entering the full Pester surface. The CI contract file contained `18` `It` blocks while its own cardinality assertion and the independent CI validator both required exactly `17`.
+
+No new error ID is allocated. This is an existing **NXB-ERR-029** source/contract cardinality-drift recurrence.
+
+Repair:
+
+- preserve all independent-validator assertions by merging them into the existing repo-owned-component test;
+- remove only the redundant standalone `It` wrapper;
+- restore the exact 17-test CI contract;
+- keep the independent validator at `12 requirements + 8 negatives`;
+- pin `actions/upload-artifact` to exact commit `ea165f8d65b6e75b540449e92b4886f43607fa02` and retain hosted Pester diagnostics from the exact candidate run so later failures are independently inspectable.
+
+The repair produced exact head `4695dfbbcf4381fa4b9e2cc77f301867ceea2496`. No Phase 7 certification is claimed by that repair.
+
+## Fifth hosted Actions run - full PS7 contract sweep
+
+**Hosted discovery:** pull-request workflow run `31690055571` at exact Phase 7 head:
+
+```text
+4695dfbbcf4381fa4b9e2cc77f301867ceea2496
+```
+
+The signed-release verification lane passed and the self-hosted native WPT lane was correctly skipped. The hosted authority reached the full PowerShell 7 Pester surface and produced retained diagnostics before stopping; Windows PowerShell 5.1 Pester was not reached.
+
+Retained hosted diagnostic artifact:
+
+```text
+artifact id   9177139118
+zip sha256    496982537350497032cab074b0717444ef0c270ecba4c23b74507d12b923a6f3
+PS7 total     893
+PS7 passed    874
+PS7 failed    19
+PS7 skipped   0
+```
+
+The complete 19-failure sweep classified the failures before repair:
+
+- **NXB-ERR-014 x12:** `Superblock1SemanticFixture.Tests.ps1` stored repository paths as loose discovery-scope variables; the hosted Pester run scope could not consume them. Repair uses a context factory returned and consumed inside every `It`.
+- **NXB-ERR-003 x1:** `SemanticHardening.Tests.ps1` built a nested SystemCollector/EventCollector inventory, allowing memory collectors through a projected `Id` match and then dereferencing `MaximumFileSize`. Repair explicitly flattens both collector inventories before filtering file collectors.
+- **NXB-ERR-015 x1:** `PlatformTransitionSurfaceDiscovery.Tests.ps1` double-quoted an expected source literal containing `$_`, allowing interpolation. Repair uses a literal-safe assertion.
+- **NXB-ERR-029 x4:** stale transition-analysis filenames/message, a brittle raw-artifact source assertion, stale Xperf malformed-size prose, and a stale PageFault-unmapped expectation after `DemandZeroFault` became an explicitly mapped subtype. Repairs bind current stable behavior instead of restoring obsolete implementation text.
+- **NXB-ERR-046 x1:** an optional XML `Stack` attribute was dereferenced directly under StrictMode.
+
+No production implementation behavior, WPR capture boundary, normalizer mapping policy, signing authority, or native execution gate is weakened by this sweep.
+
+## NXB-ERR-046 - StrictMode-unsafe optional XML attribute dereference
+
+Class: observed-hosted / XML object-shape handling under PowerShell StrictMode.
+
+The GPU WPR profile contract intentionally permits an EventProvider to omit the optional `Stack` attribute while forbidding `Stack="true"`. The test used:
+
+```powershell
+[string]$provider.Stack | Should -Not -Be 'true'
+```
+
+Under `Set-StrictMode -Version Latest`, an absent optional XML attribute is not equivalent to a null property: direct member access throws `PropertyNotFoundException`. That turned a valid omitted attribute into a test-runtime failure.
+
+Repair contract:
+
+- keep StrictMode enabled;
+- inspect optional XML members through `PSObject.Properties['Stack']` before reading a value;
+- if the optional member exists, require its value not to enable provider-wide stacks;
+- if the optional member is absent, treat absence according to the existing profile contract rather than manufacturing a required attribute;
+- keep required XML attributes fail-closed;
+- sweep the active test surface for the same raw optional-member dereference shape before the next hosted authority run.
+
+The fifth hosted run is not a Phase 7 certification. A new exact successor head must pass the entire hosted PS7 and Windows PowerShell 5.1 Pester matrix, independent CI validation, signed-release verification, and later the separately gated trusted native/Portable authority before any certified pointer may move.
+
 ## Current pre-native CI boundary
 
 ```text
