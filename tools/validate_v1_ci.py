@@ -65,12 +65,14 @@ def main():
     policy_path = root / "config" / "nxb-v1-ci-policy.json"
     workflow_path = root / ".github" / "workflows" / "nxb-v1-ci.yml"
     hosted_path = root / "scripts" / "Invoke-NxbV1CiHostedValidation.ps1"
+    native_path = root / "scripts" / "Invoke-NxbV1CiNativeValidation.ps1"
     tests_path = root / "tests" / "V1Ci.Tests.ps1"
 
     policy = load_json(policy_path)
     workflow = load_workflow(workflow_path)
     workflow_text = workflow_path.read_text(encoding="utf-8-sig")
     hosted_text = hosted_path.read_text(encoding="utf-8-sig")
+    native_text = native_path.read_text(encoding="utf-8-sig")
     tests_text = tests_path.read_text(encoding="utf-8-sig")
     all_tests_text = "\n".join(
         path.read_text(encoding="utf-8-sig")
@@ -108,7 +110,7 @@ def main():
     requirements.append(
         hosted.get("runs-on") == "windows-2022"
         and "Invoke-NxbV1CiHostedValidation.ps1" in workflow_text
-        and "Invoke-NxbLocalValidation.ps1" not in hosted_text
+        and "Invoke-NxbV1CiNativeValidation.ps1" not in hosted_text
         and "nxb-v1-hosted-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text
         and "${{ runner.temp }}/nxb-v1-hosted-validation" in workflow_text
     )
@@ -120,7 +122,18 @@ def main():
         and "$result.actual_release_signed" not in workflow_text
         and "secrets." not in workflow_text.lower()
     )
-    requirements.append(as_list(native.get("runs-on")) == EXPECTED_NATIVE_LABELS and "workflow_dispatch" in str(native.get("if", "")) and "inputs.run_native" in str(native.get("if", "")) and "Invoke-NxbLocalValidation.ps1" in workflow_text)
+    requirements.append(
+        as_list(native.get("runs-on")) == EXPECTED_NATIVE_LABELS
+        and "workflow_dispatch" in str(native.get("if", ""))
+        and "inputs.run_native" in str(native.get("if", ""))
+        and "Invoke-NxbV1CiNativeValidation.ps1" in workflow_text
+        and "Invoke-NxbLocalValidation.ps1" not in workflow_text
+        and "Invoke-NxbV1CiHostedValidation.ps1" in native_text
+        and "Invoke-CollectorOverheadCalibration.ps1" in native_text
+        and "nxb-v1-ci-native-v1" in native_text
+        and "review_entries = 7" in native_text
+        and "production_release_updated = $false" in native_text
+    )
     requirements.append(set(as_list(aggregate.get("needs"))) == {"hosted-contract", "signed-release-verify", "native-wpt"} and "always()" in str(aggregate.get("if", "")))
     requirements.append("continue-on-error: true" not in workflow_text.lower() and "secrets." not in workflow_text.lower() and "pull_request_target" not in workflow_text)
     requirements.append(
@@ -176,6 +189,8 @@ def main():
         "job_count": len(jobs),
         "ps51_excluded_tag": "PS7Only",
         "ps51_excluded_test_count": ps7_only_count,
+        "native_authority": "nxb-v1-ci-native-v1",
+        "native_review_entries": 7,
         "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
         "production_release_updated": False,
