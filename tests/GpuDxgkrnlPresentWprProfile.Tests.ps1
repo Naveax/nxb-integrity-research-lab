@@ -49,7 +49,10 @@ Describe 'NXB GPU DXGKRNL present WPR profile contract' {
     It 'fails closed on provider absence and avoids provider-wide stacks' {
         foreach ($provider in @($script:Xml.WindowsPerformanceRecorder.Profiles.EventProvider)) {
             $provider.Strict | Should -Be 'true'
-            [string]$provider.Stack | Should -Not -Be 'true'
+            $stackProperty = $provider.PSObject.Properties['Stack']
+            if ($null -ne $stackProperty) {
+                [string]$stackProperty.Value | Should -Not -Be 'true'
+            }
         }
     }
 
