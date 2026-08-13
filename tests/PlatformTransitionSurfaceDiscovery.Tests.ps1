@@ -63,7 +63,13 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery contract' {
     It 'uses an explicit cross-runtime fingerprint contract' {
         $root = Get-NxbL3TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbTransitionSurfaceDiscovery.ps1') -Raw
-        foreach ($needle in @("fingerprint_contract = 'ordinal_tsv_v1'","'binding' + \"`t\"","'metadata' + \"`t\"","'P' + \"`t\"","'S' + \"`t\"")) {
+        foreach ($needle in @(
+            'fingerprint_contract = ''ordinal_tsv_v1''',
+            '''binding'' + "`t"',
+            '''metadata'' + "`t"',
+            '''P'' + "`t"',
+            '''S'' + "`t"'
+        )) {
             $source | Should -Match ([regex]::Escape($needle))
         }
     }
