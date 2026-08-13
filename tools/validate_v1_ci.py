@@ -133,6 +133,9 @@ def main():
         and "nxb-v1-ci-native-v1" in native_text
         and "review_entries = 7" in native_text
         and "production_release_updated = $false" in native_text
+        and "Upload native validation evidence" in workflow_text
+        and "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text
+        and "${{ runner.temp }}/nxb-v1-native-validation" in workflow_text
     )
     requirements.append(set(as_list(aggregate.get("needs"))) == {"hosted-contract", "signed-release-verify", "native-wpt"} and "always()" in str(aggregate.get("if", "")))
     requirements.append("continue-on-error: true" not in workflow_text.lower() and "secrets." not in workflow_text.lower() and "pull_request_target" not in workflow_text)
@@ -191,6 +194,7 @@ def main():
         "ps51_excluded_test_count": ps7_only_count,
         "native_authority": "nxb-v1-ci-native-v1",
         "native_review_entries": 7,
+        "native_evidence_retained": "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text,
         "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
         "production_release_updated": False,
