@@ -204,13 +204,15 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery contract' {
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertification.ps1') -Raw
         $cert | Should -Match ([regex]::Escape('transition-surface-analysis.json'))
         $cert | Should -Match ([regex]::Escape('transition-surface-analysis-replay.json'))
-        $cert | Should -Match ([regex]::Escape('Transition differential analysis replay mismatch.'))
+        $cert | Should -Match ([regex]::Escape('analysis replay mismatch'))
     }
 
     It 'keeps review evidence bounded and free of raw trace exports' {
         $root = Get-NxbL3TestRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertification.ps1') -Raw
         $cert | Should -Match ([regex]::Escape('(?i)\.(etl|evtx|xml|jsonl|exe|obj|pdb)$'))
-        $cert | Should -Match ([regex]::Escape('Forbidden review artifact type: '))
+        $cert | Should -Match ([regex]::Escape('(?i)"(message|xml|payload|properties|event_data|user_data|raw_event)"\s*:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact content:'))
     }
 }
