@@ -43,6 +43,23 @@ $pythonMajor = [int]$Matches['major']
 $pythonMinor = [int]$Matches['minor']
 if ($pythonMajor -lt 3 -or ($pythonMajor -eq 3 -and $pythonMinor -lt 9)) { throw 'Hosted CI requires Python 3.9 or newer.' }
 
+$dependencyProbeCode = 'import importlib.metadata as m; assert m.version("PyYAML") == "6.0.3"; assert m.version("jsonschema") == "4.26.0"; import yaml, jsonschema'
+& $python -c $dependencyProbeCode
+if ($LASTEXITCODE -ne 0) { throw 'Hosted CI Python dependency closure failed.' }
+
+$testsPath = Join-Path $repositoryRoot 'tests'
+$rootVariablePattern = [regex]::new('\$env:(?<name>NXB_[A-Z0-9_]+_REPOSITORY_ROOT)')
+$rootVariableNames = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+foreach ($testFile in @(Get-ChildItem -LiteralPath $testsPath -Filter '*.ps1' -File)) {
+    $testText = Get-Content -LiteralPath $testFile.FullName -Raw
+    foreach ($rootVariableMatch in @($rootVariablePattern.Matches($testText))) {
+        [void]$rootVariableNames.Add([string]$rootVariableMatch.Groups['name'].Value)
+    }
+}
+foreach ($rootVariableName in $rootVariableNames) {
+    [Environment]::SetEnvironmentVariable($rootVariableName,$repositoryRoot,[EnvironmentVariableTarget]::Process)
+}
+
 & (Join-Path $PSScriptRoot 'Test-PublicRepositoryContent.ps1') -RepositoryRoot $repositoryRoot
 & (Join-Path $PSScriptRoot 'Test-Repository.ps1')
 
@@ -62,7 +79,6 @@ foreach ($tool in $tools) {
     if ($LASTEXITCODE -ne 0) { throw ('Python syntax validation failed: {0}' -f $tool.Name) }
 }
 
-$testsPath = Join-Path $repositoryRoot 'tests'
 $ps7ResultPath = Join-Path $outputFull 'pester-ps7.xml'
 $ps51ResultPath = Join-Path $outputFull 'pester-ps51.xml'
 
@@ -104,6 +120,7 @@ $ps51Summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
 $receipt = [pscustomobject][ordered]@{
     schema_version=1; status='passed'; authority='nxb-v1-ci-hosted-v1'; head_sha=$currentHead;
     pester_version='5.7.1'; psscriptanalyzer_version='1.25.0'; python_version=$pythonVersionText.Trim();
+    pyyaml_version='6.0.3'; jsonschema_version='4.26.0'; test_repository_root_variables=$rootVariableNames.Count;
     analyzer_findings=0; python_files_compiled=$tools.Count;
     ps7_passed=[int]$ps7Result.PassedCount; ps7_total=[int]$ps7Result.TotalCount;
     ps51_passed=[int]$ps51Summary.passed; ps51_total=[int]$ps51Summary.total;
