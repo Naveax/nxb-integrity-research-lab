@@ -10,7 +10,7 @@
         "scripts/Invoke-NxbV1CiNativeValidation.ps1",
         "scripts/Invoke-NxbV1CiKnownErrorScan.ps1"
       ],
-      "regex": "(?im)^\\s*function\\s+New-NxbV1Ci"
+      "regex": "(?im)^\\s*function\\s+New-Nxb(?:V1)?Ci"
     },
     {
       "id": "NXB-ERR-015",
