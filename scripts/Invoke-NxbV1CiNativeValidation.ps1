@@ -176,7 +176,24 @@ $completed = $false
 
 try {
     $hostedAuthority = Join-Path $PSScriptRoot 'Invoke-NxbV1CiHostedValidation.ps1'
-    $hostedResult = & $hostedAuthority -ExpectedHead $expected -OutputDirectory $hostedRoot -PassThru
+    $hostedOutput = @(& $hostedAuthority -ExpectedHead $expected -OutputDirectory $hostedRoot -PassThru)
+    $hostedReceipts = @(
+        $hostedOutput |
+            Where-Object {
+                $null -ne $_ -and
+                $null -ne $_.PSObject.Properties['authority'] -and
+                [string]$_.authority -ceq 'nxb-v1-ci-hosted-v1'
+            }
+    )
+    if ($hostedReceipts.Count -ne 1) {
+        throw ('Native replay hosted receipt cardinality drift: expected=1 actual={0}' -f $hostedReceipts.Count)
+    }
+    $hostedResult = $hostedReceipts[0]
+    foreach ($requiredHostedField in @('status','head_sha','ps7_total','ps7_passed','ps7_not_run','ps51_total','ps51_passed','ps51_not_run')) {
+        if ($null -eq $hostedResult.PSObject.Properties[$requiredHostedField]) {
+            throw ('Native replay hosted receipt missing required field: {0}' -f $requiredHostedField)
+        }
+    }
     if ([string]$hostedResult.status -cne 'passed' -or [string]$hostedResult.head_sha -cne $expected) { throw 'Native replay of hosted CI authority did not return exact-head PASS.' }
     if ([int]$hostedResult.ps7_total -ne 893 -or [int]$hostedResult.ps7_passed -ne 893 -or [int]$hostedResult.ps7_not_run -ne 0) { throw 'Native hosted-replay PS7 closure drift.' }
     if ([int]$hostedResult.ps51_total -ne 893 -or [int]$hostedResult.ps51_passed -ne 886 -or [int]$hostedResult.ps51_not_run -ne 7) { throw 'Native hosted-replay PS5.1 partition drift.' }
