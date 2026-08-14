@@ -144,7 +144,7 @@ Describe 'NXB Xperf memory dumper bridge' {
                 -InputPath $inputPath `
                 -OutputDirectory $output |
                 Out-Null
-        } | Should -Throw '*size field is required*'
+        } | Should -Throw '*size field or BaseAddr/EndAddr range is required*'
     }
 
     It 'rejects simultaneous HardFault and PagefaultHard streams' {

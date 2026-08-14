@@ -60,8 +60,12 @@ Describe 'NXB real Xperf memory dumper header compatibility' {
             Should -Contain 'derived_end_minus_base'
         @($result.manifest.hard_fault_size_sources) |
             Should -Contain 'header_size_field'
+        [int]$result.manifest.mapped_page_fault_type_counts.DemandZeroFault |
+            Should -Be 1
+        @($result.manifest.covered_event_types) |
+            Should -Contain 'demand_zero_fault'
         @($result.manifest.known_unmapped_memory_event_names) |
-            Should -Contain 'PageFault'
+            Should -Not -Contain 'PageFault'
         [bool]$result.manifest.claims.hard_fault_bytes_exact |
             Should -BeFalse
     }

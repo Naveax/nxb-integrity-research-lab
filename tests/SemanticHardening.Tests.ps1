@@ -116,9 +116,10 @@ Describe 'NXB IRL-006 Part 2 semantic hardening contract' {
     It 'uses sequential bounded matched-WPT WPR collectors scenario continuity and measured dictionary-safe trace counters' {
         $context = Get-NxbSemanticHardeningTestContext
         [xml]$xml = Get-Content -LiteralPath $context.profile -Raw
-        $fileCollectors = @($xml.WindowsPerformanceRecorder.Profiles.SystemCollector,$xml.WindowsPerformanceRecorder.Profiles.EventCollector)
-        @($fileCollectors | Where-Object { $_.Id -match 'File$' }).Count | Should -Be 2
-        foreach ($collector in @($fileCollectors | Where-Object { $_.Id -match 'File$' })) {
+        $fileCollectors = @($xml.WindowsPerformanceRecorder.Profiles.SystemCollector) + @($xml.WindowsPerformanceRecorder.Profiles.EventCollector)
+        $fileCollectors = @($fileCollectors | Where-Object { $_.Id -match 'File$' })
+        $fileCollectors.Count | Should -Be 2
+        foreach ($collector in $fileCollectors) {
             [string]$collector.MaximumFileSize.FileMode | Should -BeExactly 'Sequential'
             [int]$collector.MaximumFileSize.Value | Should -Be 512
         }

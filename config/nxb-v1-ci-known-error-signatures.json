@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-ci-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-007",
+      "description": "CI helpers must not use state-changing New-* verbs without ShouldProcess.",
+      "include": [
+        "scripts/Invoke-NxbV1CiHostedValidation.ps1",
+        "scripts/Invoke-NxbV1CiNativeValidation.ps1",
+        "scripts/Invoke-NxbV1CiKnownErrorScan.ps1"
+      ],
+      "regex": "(?im)^\\s*function\\s+New-Nxb(?:V1)?Ci"
+    },
+    {
+      "id": "NXB-ERR-015",
+      "description": "CI source assertions must not interpolate PowerShell variables inside double-quoted Regex.Escape literals.",
+      "include": ["tests/V1Ci.Tests.ps1"],
+      "regex": "(?im)\\[regex\\]::Escape\\(\\s*\"[^\"\\r\\n]*\\$[A-Za-z_][A-Za-z0-9_]*[^\"\\r\\n]*\"\\s*\\)"
+    },
+    {
+      "id": "NXB-ERR-029",
+      "description": "CI YAML validation must not require parsed always() to equal one exact scalar representation.",
+      "include": ["tools/validate_v1_ci.py"],
+      "regex": "(?im)aggregate\\.get\\(\"if\"[^)]*\\)\\s*==\\s*[\"']always\\(\\)[\"']"
+    },
+    {
+      "id": "NXB-ERR-044",
+      "description": "Signed-release delegated result fields must be shape-checked through PSObject.Properties instead of direct property access.",
+      "include": [".github/workflows/nxb-v1-ci.yml"],
+      "regex": "(?im)\\$result\\.(?:production_signer_claimed|actual_production_release_signed|actual_release_signed)\\b"
+    },
+    {
+      "id": "NXB-ERR-047",
+      "description": "Every memory downstream replay test must remain explicitly partitioned out of Windows PowerShell 5.1.",
+      "include": ["tests/MemoryDownstreamReplay.Tests.ps1"],
+      "regex": "(?im)^\\s*It\\s+'[^']+'(?![^\\r\\n]*-Tag\\s+'PS7Only')[^\\r\\n]*\\{"
+    },
+    {
+      "id": "NXB-ERR-047",
+      "description": "The measured memory workload test must remain explicitly partitioned out of Windows PowerShell 5.1.",
+      "include": ["tests/MemoryOverheadCalibration.Tests.ps1"],
+      "regex": "(?im)^\\s*It\\s+'measures deterministic bounded memory workload checksums on Windows'(?![^\\r\\n]*-Tag\\s+'PS7Only')[^\\r\\n]*\\{"
+    }
+  ]
+}

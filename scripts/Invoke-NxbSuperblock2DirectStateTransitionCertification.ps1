@@ -159,6 +159,8 @@ finally {
     if ($null -eq $previousRoot) { Remove-Item Env:NXB_PLATFORM_L4_REPOSITORY_ROOT -ErrorAction SilentlyContinue }
     else { $env:NXB_PLATFORM_L4_REPOSITORY_ROOT = $previousRoot }
 }
+$ps7Summary = ('{0}/{1}' -f [int]$ps7.passed,[int]$ps7.total)
+$ps51Summary = ('{0}/{1}' -f [int]$ps51.passed,[int]$ps51.total)
 
 Write-Information -MessageData '[2/6] Bind canonical SUPERBLOCK 2 L3 native evidence' -InformationAction Continue
 $l3Full = [IO.Path]::GetFullPath($L3ReviewZipPath)
@@ -193,8 +195,8 @@ $receipt = [pscustomobject][ordered]@{
     status = 'passed'
     head_sha = $ExpectedHead.ToLowerInvariant()
     static_validation = [pscustomobject][ordered]@{
-        ps7_tests = '20/20'
-        ps51_tests = '20/20'
+        ps7_tests = $ps7Summary
+        ps51_tests = $ps51Summary
         psscriptanalyzer_findings = [int]$findings.Count
         python_syntax = 'passed'
     }
@@ -239,8 +241,8 @@ $reviewZipSha = (Get-FileHash -LiteralPath $reviewZipPath -Algorithm SHA256).Has
 $result = [pscustomobject][ordered]@{
     status = 'passed'
     head_sha = $ExpectedHead.ToLowerInvariant()
-    ps7_tests = '20/20'
-    ps51_tests = '20/20'
+    ps7_tests = $ps7Summary
+    ps51_tests = $ps51Summary
     psscriptanalyzer_findings = [int]$findings.Count
     pnp_repeats = 2
     pnp_execution_validated = [bool]$observation.pnp.execution_validated

@@ -177,7 +177,6 @@ if ([string]$l2Receipt.status -cne 'passed') { throw 'L2 predecessor receipt is 
 if ([string]$l2Receipt.head_sha -cne $ExpectedL2RuntimeHead) { throw 'L2 runtime head mismatch.' }
 if ([string]$l2Receipt.predecessor.binding_fingerprint_sha256 -cne $ExpectedBindingFingerprint) { throw 'L2 binding fingerprint mismatch.' }
 if ([string]$l2Receipt.predecessor.provider_metadata_fingerprint_sha256 -cne $ExpectedProviderMetadataFingerprint) { throw 'L2 metadata fingerprint mismatch.' }
-
 Write-Information -MessageData '[3/7] Collect + independently validate transition-surface discovery A/B' -InformationAction Continue
 $discoveryAPath = Join-Path $reviewRoot 'transition-surface-discovery-a.json'
 $discoveryBPath = Join-Path $reviewRoot 'transition-surface-discovery-b.json'
@@ -199,7 +198,7 @@ Write-Information -MessageData '[5/7] Deterministic differential analysis + repl
 $analysisPath = Join-Path $reviewRoot 'transition-surface-analysis.json'
 $analysisReplayPath = Join-Path $localRoot 'transition-surface-analysis-replay.json'
 $analysisA = Invoke-NxbL3PythonTool -PythonPath $pythonCommand.Source -ToolPath $analysisToolPath -InputPath $observationPath -OutputPath $analysisPath -Label 'L3 differential analysis A'
-$analysisB = Invoke-NxbL3PythonTool -PythonPath $pythonCommand.Source -ToolPath $analysisToolPath -InputPath $observationPath -OutputPath $analysisReplayPath -Label 'L3 differential analysis B'
+$null = Invoke-NxbL3PythonTool -PythonPath $pythonCommand.Source -ToolPath $analysisToolPath -InputPath $observationPath -OutputPath $analysisReplayPath -Label 'L3 differential analysis B'
 $analysisSha = (Get-FileHash -LiteralPath $analysisPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $analysisReplaySha = (Get-FileHash -LiteralPath $analysisReplayPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($analysisSha -cne $analysisReplaySha) { throw 'L3 analysis replay mismatch.' }

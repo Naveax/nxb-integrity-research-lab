@@ -155,7 +155,7 @@ if ($findings.Count -gt 0) {
     )
 }
 
-$profile = & $validatorPath -PassThru
+$storageProfile = & $validatorPath -PassThru
 
 $pwshPath = (Get-Command pwsh.exe -ErrorAction Stop).Source
 $windowsPowerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -190,7 +190,7 @@ if ($LASTEXITCODE -ne 0 -or $postDirty.Count -gt 0) {
 $result = [pscustomobject]@{
     status = 'passed'
     head_sha = $currentHead
-    profile = $profile
+    profile = $storageProfile
     powershell7 = $ps7
     windows_powershell_51 = $ps51
     native_wpr_profile_parse = 'passed'

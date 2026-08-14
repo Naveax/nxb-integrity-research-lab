@@ -132,7 +132,7 @@ BeforeAll {
 }
 
 Describe 'NXB real memory downstream replay' {
-    It 'replays a captured normalized export to a byte-identical summary' {
+    It 'replays a captured normalized export to a byte-identical summary' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-pass')
         $output = Join-Path $TestDrive 'replay-pass'
 
@@ -151,7 +151,7 @@ Describe 'NXB real memory downstream replay' {
         $result.normalized_csv_included | Should -BeFalse
     }
 
-    It 'accepts receipt timing below canonical microsecond precision' {
+    It 'accepts receipt timing below canonical microsecond precision' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-100ns')
         $receipt = Get-Content -LiteralPath $capture.receipt -Raw |
             ConvertFrom-Json
@@ -172,7 +172,7 @@ Describe 'NXB real memory downstream replay' {
         $result.byte_identical_summary | Should -BeTrue
     }
 
-    It 'rejects a source capture head mismatch' {
+    It 'rejects a source capture head mismatch' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-head')
         $output = Join-Path $TestDrive 'replay-head'
 
@@ -185,7 +185,7 @@ Describe 'NXB real memory downstream replay' {
         } | Should -Throw '*Source capture head binding mismatch*'
     }
 
-    It 'rejects normalized CSV tampering before replay' {
+    It 'rejects normalized CSV tampering before replay' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-csv')
         Add-Content -LiteralPath $capture.csv -Value '#tamper' -Encoding Ascii
         $output = Join-Path $TestDrive 'replay-csv'
@@ -199,7 +199,7 @@ Describe 'NXB real memory downstream replay' {
         } | Should -Throw '*normalized_csv_sha256 does not match*'
     }
 
-    It 'rejects source summary adapter provenance drift' {
+    It 'rejects source summary adapter provenance drift' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-adapter')
         $document = Get-Content -LiteralPath $capture.summary -Raw |
             ConvertFrom-Json
@@ -216,7 +216,7 @@ Describe 'NXB real memory downstream replay' {
         } | Should -Throw
     }
 
-    It 'rejects source receipt trace timing drift' {
+    It 'rejects source receipt trace timing drift' -Tag 'PS7Only' {
         $capture = Get-TestMemoryCaptureFixture -Root (Join-Path $TestDrive 'capture-time')
         $receipt = Get-Content -LiteralPath $capture.receipt -Raw |
             ConvertFrom-Json
