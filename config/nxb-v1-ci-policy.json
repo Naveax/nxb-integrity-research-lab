@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-ci-v1",
+  "target_version": "1.0.0",
+  "predecessor_cli_head": "e665e8c27cb085853d23c8804ffaa97a19807eb9",
+  "certified_cli_pointer": "certified/nxb-v1-cli",
+  "workflow": {
+    "path": ".github/workflows/nxb-v1-ci.yml",
+    "permissions": {
+      "contents": "read"
+    },
+    "checkout_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "setup_python_sha": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "upload_artifact_sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "python_version": "3.12",
+    "pester_version": "5.7.1",
+    "psscriptanalyzer_version": "1.25.0",
+    "pyyaml_version": "6.0.3",
+    "jsonschema_version": "4.26.0"
+  },
+  "checks": {
+    "hosted_contract": "nxb-v1 / hosted-contract",
+    "signed_release_verify": "nxb-v1 / signed-release-verify",
+    "native_wpt": "nxb-v1 / native-wpt",
+    "release_candidate": "nxb-v1 / release-candidate"
+  },
+  "native_runner": {
+    "manual_dispatch_only": true,
+    "labels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "nxb-native",
+      "wpt"
+    ],
+    "requires_administrator": true,
+    "requires_wpr": true,
+    "requires_xperf": true
+  },
+  "safety": {
+    "pull_request_target_forbidden": true,
+    "workflow_secrets_forbidden": true,
+    "production_private_key_forbidden": true,
+    "continue_on_error_forbidden": true,
+    "auto_apply": false,
+    "production_release_updated": false,
+    "production_tag_created": false,
+    "production_merge_performed": false
+  }
+}

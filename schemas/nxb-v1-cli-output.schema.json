@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nxb-v1-cli-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","contract_id","command","status","exit_code","category","message","mutation_performed","data","errors"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "nxb-v1-cli-output-v1"},
+    "command": {"type": "string", "minLength": 1},
+    "status": {"enum": ["passed","failed"]},
+    "exit_code": {"type": "integer", "minimum": 0, "maximum": 10},
+    "category": {"enum": ["success","usage","config","trust_integrity","state_precondition","dependency_doctor","mutation_runtime","evidence_verification","certification","internal"]},
+    "message": {"type": "string"},
+    "mutation_performed": {"type": "boolean"},
+    "data": {"type": ["object","null"]},
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category","message"],
+        "properties": {
+          "category": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -187,8 +187,8 @@ if ([string]$build.status -cne 'passed') { throw 'Semantic fixture build gate di
 
 $wpr = (Get-Command wpr.exe -ErrorAction Stop).Source
 $xperf = (Get-Command xperf.exe -ErrorAction Stop).Source
-$profile = & $profileTest -PassThru
-$profileReference = "$($profile.path)!NxbSuperblock1MultiDomain.Verbose"
+$captureProfile = & $profileTest -PassThru
+$profileReference = "$($captureProfile.path)!NxbSuperblock1MultiDomain.Verbose"
 $etlPath = Join-Path $tracesRoot 'performance.etl'
 $stagingEtl = Join-Path ([IO.Path]::GetTempPath()) ("nxb-semantic-$([guid]::NewGuid().ToString('N')).etl")
 $dumperPath = Join-Path $rawRoot 'superblock1-semantic-xperf-dumper.txt'

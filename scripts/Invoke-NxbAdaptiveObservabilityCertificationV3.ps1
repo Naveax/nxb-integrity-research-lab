@@ -88,7 +88,9 @@ foreach ($scriptPath in $stateAnalyzerPaths) {
     [void][Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$parseErrors)
     if (@($parseErrors).Count -gt 0) { throw ('Adaptive V3 parser failed: {0}`n{1}' -f $scriptPath,(@($parseErrors | ForEach-Object { $_.Message }) -join "`n")) }
 }
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+if (-not (Get-Module -Name PSScriptAnalyzer)) {
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+}
 $stateFindings = @(foreach ($scriptPath in $stateAnalyzerPaths) { Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error })
 if ($stateFindings.Count -gt 0) { throw ('Adaptive V3 PSScriptAnalyzer findings: {0}`n{1}' -f $stateFindings.Count,(@($stateFindings | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join "`n")) }
 

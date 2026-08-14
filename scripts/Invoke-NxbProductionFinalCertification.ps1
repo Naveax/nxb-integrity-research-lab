@@ -145,7 +145,9 @@ foreach ($scriptPath in $authorityPaths) {
         throw ('Production final parser failed: {0}{1}{2}' -f $scriptPath,[Environment]::NewLine,(@($parseErrors | ForEach-Object { $_.Message }) -join [Environment]::NewLine))
     }
 }
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+if (-not (Get-Module -Name PSScriptAnalyzer)) {
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+}
 $analyzerFinding = @(foreach ($scriptPath in $authorityPaths) { Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error })
 if ($analyzerFinding.Count -gt 0) {
     throw ('Production final PSScriptAnalyzer findings: {0}{1}{2}' -f $analyzerFinding.Count,[Environment]::NewLine,(@($analyzerFinding | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join [Environment]::NewLine))

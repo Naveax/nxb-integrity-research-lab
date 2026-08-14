@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-cli-known-error-signatures-v1",
+  "rules": [
+    {
+      "id": "NXB-ERR-004",
+      "description": "CLI package and evidence ordering must remain ordinal and culture independent.",
+      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1"],
+      "regex": "(?im)Sort-Object\\b[^\\r\\n]*(?:path|relative|entry|file)"
+    },
+    {
+      "id": "NXB-ERR-006",
+      "description": "CLI authority must not assign PowerShell automatic pipeline variable $input.",
+      "include": ["scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1","scripts/Invoke-NxbV1CliKnownErrorScan.ps1","scripts/nxb.ps1"],
+      "regex": "(?im)^\\s*\\$input\\s*="
+    },
+    {
+      "id": "NXB-ERR-007",
+      "description": "CLI helpers must not use state-changing New-* verbs without ShouldProcess.",
+      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1"],
+      "regex": "(?im)^\\s*function\\s+New-NxbV1Cli"
+    },
+    {
+      "id": "NXB-ERR-018",
+      "description": "Avoid parser-risk inline if expressions in CLI evidence objects for Windows PowerShell 5.1.",
+      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1"],
+      "regex": "(?im)=\\s*\\(if\\s*\\("
+    },
+    {
+      "id": "NXB-ERR-037",
+      "description": "Never assign readonly PowerShell platform automatic variables in CLI authority source.",
+      "include": ["scripts/nxb.ps1","scripts/NxbV1Cli.Common.ps1","scripts/Invoke-NxbV1CliCertification.ps1","tests/V1Cli.Tests.ps1"],
+      "regex": "(?im)^\\s*\\$(?:IsWindows|IsLinux|IsMacOS|IsCoreCLR)\\s*="
+    }
+  ]
+}

@@ -42,7 +42,9 @@ foreach ($requiredPath in @($childPath,$scannerPath,$signaturePath,$pnpPath,$pow
 Write-Information -InformationAction Continue -MessageData '=== NXB IRL-006 PART 2 + PART 3 + PART 4 + PART 5 SIGNED CLOSURE CERTIFICATION V2 ==='
 Write-Information -InformationAction Continue -MessageData '[top 1/3] ERR-030/ERR-031/ERR-032/ERR-033/ERR-034 exact-tree gate + wrapper/semantic/transport analyzer'
 
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+if (-not (Get-Module -Name PSScriptAnalyzer)) {
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+}
 $analyzerFinding = @(
     Invoke-ScriptAnalyzer -Path $PSCommandPath -Severity Warning,Error
     Invoke-ScriptAnalyzer -Path $powerPath -Severity Warning,Error

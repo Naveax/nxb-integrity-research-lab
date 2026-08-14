@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-cli-v1",
+  "target_version": "1.0.0",
+  "predecessor_update_head": "27507531154099ab28a05cfe8e4e900d72f22e7b",
+  "certified_update_pointer": "certified/nxb-v1-update",
+  "commands": [
+    "status",
+    "hash",
+    "inspect-manifest",
+    "stage-update",
+    "certify-final",
+    "version",
+    "doctor",
+    "config-validate",
+    "evidence-verify",
+    "update-check",
+    "update-stage",
+    "update-apply",
+    "update-rollback"
+  ],
+  "legacy_commands": ["status","hash","inspect-manifest","stage-update","certify-final"],
+  "mutation_commands": ["stage-update","update-stage","update-apply","update-rollback"],
+  "output": {
+    "contract_id": "nxb-v1-cli-output-v1",
+    "json_is_single_document": true,
+    "handled_json_errors_use_stdout": true,
+    "handled_human_errors_use_stderr": true,
+    "human_success_uses_stdout": true
+  },
+  "exit_codes": {
+    "success": 0,
+    "usage": 2,
+    "config": 3,
+    "trust_integrity": 4,
+    "state_precondition": 5,
+    "dependency_doctor": 6,
+    "mutation_runtime": 7,
+    "evidence_verification": 8,
+    "certification": 9,
+    "internal": 10
+  },
+  "safety": {
+    "auto_apply": false,
+    "hidden_mutation": false,
+    "explicit_mutation_confirmation": true,
+    "dry_run_supported": true,
+    "non_interactive_supported": true,
+    "production_release_updated_by_certification": false
+  },
+  "delegation": {
+    "doctor": "scripts/Test-NxbV1InstallerHost.ps1",
+    "evidence_verify": "scripts/Test-EvidenceBundle.ps1",
+    "signed_update": "scripts/Invoke-NxbV1Updater.ps1",
+    "final_certification": "scripts/Invoke-NxbProductionFinalCertificationV2.ps1"
+  }
+}

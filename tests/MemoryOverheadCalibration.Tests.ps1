@@ -97,7 +97,7 @@ Describe 'NXB paired memory overhead calibration' {
         $script:CalibrationText | Should -Not -Match 'Copy-Item[^\r\n]*memory-overhead\.etl'
     }
 
-    It 'measures deterministic bounded memory workload checksums on Windows' -Skip:($env:OS -cne 'Windows_NT') {
+    It 'measures deterministic bounded memory workload checksums on Windows' -Tag 'PS7Only' -Skip:($env:OS -cne 'Windows_NT') {
         $first = Join-Path $TestDrive 'measured-first'
         $second = Join-Path $TestDrive 'measured-second'
         Get-MemoryCalibrationTestExperimentFixture -Path $first -Id 'memory-test-first'

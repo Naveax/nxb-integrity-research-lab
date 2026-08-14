@@ -63,7 +63,13 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery contract' {
     It 'uses an explicit cross-runtime fingerprint contract' {
         $root = Get-NxbL3TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-NxbTransitionSurfaceDiscovery.ps1') -Raw
-        foreach ($needle in @("fingerprint_contract = 'ordinal_tsv_v1'","'binding' + \"`t\"","'metadata' + \"`t\"","'P' + \"`t\"","'S' + \"`t\"")) {
+        foreach ($needle in @(
+            'fingerprint_contract = ''ordinal_tsv_v1''',
+            '''binding'' + "`t"',
+            '''metadata'' + "`t"',
+            '''P'' + "`t"',
+            '''S'' + "`t"'
+        )) {
             $source | Should -Match ([regex]::Escape($needle))
         }
     }
@@ -87,9 +93,9 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery contract' {
     It 'selects only discovered available surfaces for replay' {
         $root = Get-NxbL3TestRoot
         $source = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbPlatformSurfaceDiscoveryReplay.ps1') -Raw
-        $source | Should -Match ([regex]::Escape("$_.status -ceq 'available'"))
-        $source | Should -Match ([regex]::Escape("@($_.families) -contains 'pnp'"))
-        $source | Should -Match ([regex]::Escape("@($_.families) -contains 'power'"))
+        $source | Should -Match ([regex]::Escape('$_.status -ceq ''available'''))
+        $source | Should -Match ([regex]::Escape('@($_.families) -contains ''pnp'''))
+        $source | Should -Match ([regex]::Escape('@($_.families) -contains ''power'''))
     }
 
     It 'caps replay surfaces per family' {
@@ -196,16 +202,17 @@ Describe 'SUPERBLOCK 2 L3 transition surface discovery contract' {
     It 'requires deterministic differential replay' {
         $root = Get-NxbL3TestRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertification.ps1') -Raw
-        $cert | Should -Match ([regex]::Escape('transition-surface-analysis-a.json'))
-        $cert | Should -Match ([regex]::Escape('transition-surface-analysis-b.json'))
+        $cert | Should -Match ([regex]::Escape('transition-surface-analysis.json'))
+        $cert | Should -Match ([regex]::Escape('transition-surface-analysis-replay.json'))
         $cert | Should -Match ([regex]::Escape('analysis replay mismatch'))
     }
 
     It 'keeps review evidence bounded and free of raw trace exports' {
         $root = Get-NxbL3TestRoot
         $cert = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-NxbSuperblock2TransitionSurfaceDiscoveryCertification.ps1') -Raw
-        foreach ($needle in @('.etl','.evtx','.xml','.jsonl','Forbidden L3 review artifact')) {
-            $cert | Should -Match ([regex]::Escape($needle))
-        }
+        $cert | Should -Match ([regex]::Escape('(?i)\.(etl|evtx|xml|jsonl|exe|obj|pdb)$'))
+        $cert | Should -Match ([regex]::Escape('(?i)"(message|xml|payload|properties|event_data|user_data|raw_event)"\s*:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact:'))
+        $cert | Should -Match ([regex]::Escape('Forbidden L3 review artifact content:'))
     }
 }
