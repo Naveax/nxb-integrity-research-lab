@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-successor-v1",
+  "phase": "pre-version-transition",
+  "predecessor": {
+    "version": "1.0.0",
+    "head": "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f",
+    "tree": "34779176d9e15cd4d700d46132785c0b25f19604",
+    "tag": "v1.0.0",
+    "github_release_id": 370629171,
+    "package_sha256": "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78",
+    "final_closure_sha256": "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355",
+    "production_signer_fingerprint": "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373",
+    "historical_certified_pointer": "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
+  },
+  "successor": {
+    "target_version": "1.0.1",
+    "candidate_version": "1.0.1-candidate",
+    "branch": "release/nxb-v1.0.1-prep",
+    "release_class": "patch"
+  },
+  "historical": {
+    "production_final_policy": "config/nxb-production-finalization-policy.json",
+    "production_final_candidate_version": "1.0.0-candidate",
+    "preserve_v1_0_0_tag": true,
+    "preserve_v1_0_0_release_assets": true,
+    "preserve_v1_0_0_receipts": true,
+    "preserve_historical_certified_pointer": true
+  },
+  "pre_transition": {
+    "expected_existing_target_version": "1.0.0",
+    "target_version_policy_paths": [
+      "config/nxb-v1-cli-policy.json",
+      "config/nxb-v1-installer-policy.json",
+      "config/nxb-v1-update-policy.json",
+      "config/nxb-v1-production-signing-policy.json",
+      "config/nxb-v1-ci-policy.json",
+      "config/nxb-v1-release-integration-policy.json"
+    ]
+  },
+  "bootstrap": {
+    "required_documents": [
+      "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
+      "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md"
+    ],
+    "allowed_changed_paths": [
+      "docs/NXB-V1.0.1-",
+      "config/nxb-v1-successor-policy.json",
+      "tools/validate_v1_successor.py",
+      "tests/V1Successor.Tests.ps1"
+    ],
+    "forbidden_artifact_suffixes": [
+      ".etl",
+      ".etl.tmp",
+      ".pfx",
+      ".p12",
+      ".pem",
+      ".key",
+      ".zip"
+    ],
+    "forbidden_private_key_marker_ids": [
+      "pkcs8",
+      "rsa",
+      "ec",
+      "openssh"
+    ]
+  },
+  "safety": {
+    "require_predecessor_ancestor": true,
+    "allow_history_rewrite": false,
+    "allow_v1_0_0_tag_mutation": false,
+    "allow_v1_0_0_release_asset_mutation": false,
+    "allow_production_private_key_export": false,
+    "auto_apply_updates": false,
+    "require_explicit_future_promotion": true
+  }
+}
