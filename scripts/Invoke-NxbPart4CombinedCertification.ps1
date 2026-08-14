@@ -36,7 +36,9 @@ if ($LASTEXITCODE -ne 0 -or $currentHead -cne $ExpectedHead.ToLowerInvariant()) 
 $dirty = @(& $git -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) { throw 'Combined certification requires a clean exact-head worktree.' }
 
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+if (-not (Get-Module -Name PSScriptAnalyzer)) {
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+}
 $selfAnalyzer = @(Invoke-ScriptAnalyzer -Path $PSCommandPath -Severity Warning,Error)
 if ($selfAnalyzer.Count -gt 0) {
     $detail = @($selfAnalyzer | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join [Environment]::NewLine

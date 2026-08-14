@@ -110,7 +110,9 @@ foreach ($scriptPath in $analyzerPath) {
         throw ('Semantic authority parser failed: {0}`n{1}' -f $scriptPath,(@($parseErrors | ForEach-Object { $_.Message }) -join "`n"))
     }
 }
-Import-Module PSScriptAnalyzer -ErrorAction Stop
+if (-not (Get-Module -Name PSScriptAnalyzer)) {
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+}
 $analyzerFinding = @(foreach ($scriptPath in $analyzerPath) { Invoke-ScriptAnalyzer -Path $scriptPath -Severity Warning,Error })
 if ($analyzerFinding.Count -gt 0) {
     throw ('Semantic authority PSScriptAnalyzer findings: {0}`n{1}' -f $analyzerFinding.Count,(@($analyzerFinding | ForEach-Object { '{0}:{1} {2} {3}' -f $_.ScriptName,$_.Line,$_.RuleName,$_.Message }) -join "`n"))
