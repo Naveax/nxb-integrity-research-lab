@@ -97,7 +97,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $workflowSource | Should -Match ([regex]::Escape('${{ runner.temp }}/nxb-v1-native-validation'))
         $nativeSource | Should -Match ([regex]::Escape('Invoke-NxbV1CiHostedValidation.ps1'))
         $nativeSource | Should -Match ([regex]::Escape('$hostedOutput = @(& $hostedAuthority'))
-        $nativeSource | Should -Match ([regex]::Escape("$_.PSObject.Properties['authority']"))
+        $nativeSource | Should -Match ([regex]::Escape('$_.PSObject.Properties[''authority'']'))
         $nativeSource | Should -Match ([regex]::Escape('Native replay hosted receipt cardinality drift'))
         $nativeSource | Should -Match ([regex]::Escape('Native replay hosted receipt missing required field'))
         $nativeSource | Should -Match ([regex]::Escape('Invoke-CollectorOverheadCalibration.ps1'))
