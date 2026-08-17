@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "nxb-v1-successor-v1",
-  "phase": "pre-version-transition",
+  "phase": "version-transition",
   "predecessor": {
     "version": "1.0.0",
     "head": "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f",
@@ -26,17 +26,6 @@
     "preserve_v1_0_0_release_assets": true,
     "preserve_v1_0_0_receipts": true,
     "preserve_historical_certified_pointer": true
-  },
-  "pre_transition": {
-    "expected_existing_target_version": "1.0.0",
-    "target_version_policy_paths": [
-      "config/nxb-v1-cli-policy.json",
-      "config/nxb-v1-installer-policy.json",
-      "config/nxb-v1-update-policy.json",
-      "config/nxb-v1-production-signing-policy.json",
-      "config/nxb-v1-ci-policy.json",
-      "config/nxb-v1-release-integration-policy.json"
-    ]
   },
   "bootstrap": {
     "required_documents": [
@@ -73,5 +62,47 @@
     "allow_production_private_key_export": false,
     "auto_apply_updates": false,
     "require_explicit_future_promotion": true
+  },
+  "version_transition": {
+    "component_order": [
+      "cli",
+      "installer",
+      "update",
+      "production_signing",
+      "ci",
+      "release_integration"
+    ],
+    "components": {
+      "cli": {
+        "status": "migrated",
+        "policy_path": "config/nxb-v1-cli-policy.json",
+        "expected_target_version": "1.0.1"
+      },
+      "installer": {
+        "status": "pending",
+        "policy_path": "config/nxb-v1-installer-policy.json",
+        "expected_target_version": "1.0.0"
+      },
+      "update": {
+        "status": "pending",
+        "policy_path": "config/nxb-v1-update-policy.json",
+        "expected_target_version": "1.0.0"
+      },
+      "production_signing": {
+        "status": "pending",
+        "policy_path": "config/nxb-v1-production-signing-policy.json",
+        "expected_target_version": "1.0.0"
+      },
+      "ci": {
+        "status": "pending",
+        "policy_path": "config/nxb-v1-ci-policy.json",
+        "expected_target_version": "1.0.0"
+      },
+      "release_integration": {
+        "status": "pending",
+        "policy_path": "config/nxb-v1-release-integration-policy.json",
+        "expected_target_version": "1.0.0"
+      }
+    }
   }
 }

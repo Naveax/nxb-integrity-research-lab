@@ -17,23 +17,36 @@ HISTORICAL_CERTIFIED_POINTER = "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
 FINAL_CLOSURE_SHA256 = "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355"
 PACKAGE_SHA256 = "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78"
 SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"
-TARGET_POLICY_PATHS = [
-    "config/nxb-v1-cli-policy.json",
-    "config/nxb-v1-installer-policy.json",
-    "config/nxb-v1-update-policy.json",
-    "config/nxb-v1-production-signing-policy.json",
-    "config/nxb-v1-ci-policy.json",
-    "config/nxb-v1-release-integration-policy.json",
-]
+
+COMPONENTS = {
+    "cli": ("config/nxb-v1-cli-policy.json", "migrated", "1.0.1"),
+    "installer": ("config/nxb-v1-installer-policy.json", "pending", "1.0.0"),
+    "update": ("config/nxb-v1-update-policy.json", "pending", "1.0.0"),
+    "production_signing": ("config/nxb-v1-production-signing-policy.json", "pending", "1.0.0"),
+    "ci": ("config/nxb-v1-ci-policy.json", "pending", "1.0.0"),
+    "release_integration": ("config/nxb-v1-release-integration-policy.json", "pending", "1.0.0"),
+}
+COMPONENT_ORDER = list(COMPONENTS)
 REQUIRED_DOCUMENTS = [
     "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
     "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md",
 ]
-ALLOWED_BOOTSTRAP_PATHS = [
-    "docs/NXB-V1.0.1-",
+ALLOWED_PATHS = {
+    "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
+    "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md",
     "config/nxb-v1-successor-policy.json",
     "tools/validate_v1_successor.py",
     "tests/V1Successor.Tests.ps1",
+    "config/nxb-v1-cli-policy.json",
+    "tools/validate_v1_cli.py",
+    "tests/V1Cli.Tests.ps1",
+}
+FORBIDDEN_SUFFIXES = (".etl", ".etl.tmp", ".pfx", ".p12", ".pem", ".key", ".zip")
+PRIVATE_MARKERS = [
+    "-----BEGIN " + "PRIVATE KEY-----",
+    "-----BEGIN RSA " + "PRIVATE KEY-----",
+    "-----BEGIN EC " + "PRIVATE KEY-----",
+    "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
 ]
 
 
@@ -50,36 +63,43 @@ def sha256_file(path):
 
 
 def run_git(root, *args, check=True):
-    proc = subprocess.run(
+    p = subprocess.run(
         ["git", *args],
         cwd=str(root),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    if check and proc.returncode != 0:
-        raise RuntimeError(
-            "git {} failed ({}): {}".format(" ".join(args), proc.returncode, proc.stderr.strip())
-        )
-    return proc
+    if check and p.returncode != 0:
+        raise RuntimeError("git {} failed ({}): {}".format(" ".join(args), p.returncode, p.stderr.strip()))
+    return p
 
 
 def lower_hex(value, length):
     return isinstance(value, str) and len(value) == length and re.fullmatch(r"[0-9a-f]+", value) is not None
 
 
+def component_map(policy):
+    vt = policy.get("version_transition", {})
+    rows = vt.get("components", {}) if isinstance(vt, dict) else {}
+    result = {}
+    for name in COMPONENT_ORDER:
+        row = rows.get(name, {}) if isinstance(rows, dict) else {}
+        result[name] = (row.get("policy_path"), row.get("status"), row.get("expected_target_version"))
+    return result
+
+
 def validate_policy(policy):
     predecessor = policy.get("predecessor", {})
     successor = policy.get("successor", {})
     historical = policy.get("historical", {})
-    pre_transition = policy.get("pre_transition", {})
-    bootstrap = policy.get("bootstrap", {})
+    vt = policy.get("version_transition", {})
     safety = policy.get("safety", {})
     return all(
         [
             policy.get("schema_version") == 1,
             policy.get("contract_id") == "nxb-v1-successor-v1",
-            policy.get("phase") == "pre-version-transition",
+            policy.get("phase") == "version-transition",
             predecessor.get("version") == "1.0.0",
             predecessor.get("head") == PREDECESSOR_HEAD,
             predecessor.get("tree") == PREDECESSOR_TREE,
@@ -99,10 +119,8 @@ def validate_policy(policy):
             historical.get("preserve_v1_0_0_release_assets") is True,
             historical.get("preserve_v1_0_0_receipts") is True,
             historical.get("preserve_historical_certified_pointer") is True,
-            pre_transition.get("expected_existing_target_version") == "1.0.0",
-            pre_transition.get("target_version_policy_paths") == TARGET_POLICY_PATHS,
-            bootstrap.get("required_documents") == REQUIRED_DOCUMENTS,
-            bootstrap.get("allowed_changed_paths") == ALLOWED_BOOTSTRAP_PATHS,
+            vt.get("component_order") == COMPONENT_ORDER,
+            component_map(policy) == COMPONENTS,
             safety.get("require_predecessor_ancestor") is True,
             safety.get("allow_history_rewrite") is False,
             safety.get("allow_v1_0_0_tag_mutation") is False,
@@ -114,118 +132,90 @@ def validate_policy(policy):
     )
 
 
-def bootstrap_path_allowed(path):
-    normalized = path.replace("\\", "/")
-    for allowed in ALLOWED_BOOTSTRAP_PATHS:
-        if allowed.endswith("-") or allowed.endswith("/"):
-            if normalized.startswith(allowed):
-                return True
-        elif normalized == allowed:
-            return True
-    return False
-
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repository-root", required=True)
-    parser.add_argument("--expected-head")
-    args = parser.parse_args()
-
-    root = pathlib.Path(args.repository_root).resolve()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repository-root", required=True)
+    ap.add_argument("--expected-head")
+    a = ap.parse_args()
+    root = pathlib.Path(a.repository_root).resolve()
     policy_path = root / "config" / "nxb-v1-successor-policy.json"
     final_policy_path = root / "config" / "nxb-production-finalization-policy.json"
-
+    policy = load_json(policy_path)
     failures = []
     checks = {}
 
-    policy = load_json(policy_path)
     checks["policy_contract"] = validate_policy(policy)
     if not checks["policy_contract"]:
         failures.append("policy_contract")
 
-    checks["predecessor_head_format"] = lower_hex(PREDECESSOR_HEAD, 40)
-    checks["predecessor_tree_format"] = lower_hex(PREDECESSOR_TREE, 40)
-    checks["closure_hash_format"] = lower_hex(FINAL_CLOSURE_SHA256, 64)
-    checks["package_hash_format"] = lower_hex(PACKAGE_SHA256, 64)
-    checks["signer_fingerprint_format"] = lower_hex(SIGNER_FINGERPRINT, 64)
-    for name in (
-        "predecessor_head_format",
-        "predecessor_tree_format",
-        "closure_hash_format",
-        "package_hash_format",
-        "signer_fingerprint_format",
-    ):
+    for name, value, length in [
+        ("predecessor_head_format", PREDECESSOR_HEAD, 40),
+        ("predecessor_tree_format", PREDECESSOR_TREE, 40),
+        ("closure_hash_format", FINAL_CLOSURE_SHA256, 64),
+        ("package_hash_format", PACKAGE_SHA256, 64),
+        ("signer_fingerprint_format", SIGNER_FINGERPRINT, 64),
+    ]:
+        checks[name] = lower_hex(value, length)
         if not checks[name]:
             failures.append(name)
 
     final_policy = load_json(final_policy_path)
-    checks["historical_candidate_preserved"] = (
-        final_policy.get("part10", {}).get("release_version") == HISTORICAL_CANDIDATE_VERSION
-    )
+    checks["historical_candidate_preserved"] = final_policy.get("part10", {}).get("release_version") == HISTORICAL_CANDIDATE_VERSION
     if not checks["historical_candidate_preserved"]:
         failures.append("historical_candidate_preserved")
 
     target_versions = {}
-    for relative in TARGET_POLICY_PATHS:
-        doc = load_json(root / relative)
-        target_versions[relative] = doc.get("target_version")
-    checks["pre_transition_target_versions_preserved"] = all(
-        value == "1.0.0" for value in target_versions.values()
-    )
-    if not checks["pre_transition_target_versions_preserved"]:
-        failures.append("pre_transition_target_versions_preserved")
+    for name, (relative, status, expected) in COMPONENTS.items():
+        actual = load_json(root / relative).get("target_version")
+        target_versions[name] = actual
+        checks["component_" + name] = actual == expected
+        if not checks["component_" + name]:
+            failures.append("component_" + name)
 
-    missing_documents = [relative for relative in REQUIRED_DOCUMENTS if not (root / relative).is_file()]
-    checks["required_documents_present"] = not missing_documents
-    if missing_documents:
+    checks["cli_only_migrated"] = target_versions.get("cli") == "1.0.1" and all(
+        target_versions[n] == "1.0.0" for n in COMPONENT_ORDER if n != "cli"
+    )
+    if not checks["cli_only_migrated"]:
+        failures.append("cli_only_migrated")
+
+    missing = [x for x in REQUIRED_DOCUMENTS if not (root / x).is_file()]
+    checks["required_documents_present"] = not missing
+    if missing:
         failures.append("required_documents_present")
 
     head = run_git(root, "rev-parse", "HEAD").stdout.strip().lower()
     checks["head_format"] = lower_hex(head, 40)
     if not checks["head_format"]:
         failures.append("head_format")
-    if args.expected_head:
-        checks["expected_head"] = head == args.expected_head.lower()
+    if a.expected_head:
+        checks["expected_head"] = head == a.expected_head.lower()
         if not checks["expected_head"]:
             failures.append("expected_head")
 
-    predecessor_tree = run_git(root, "rev-parse", PREDECESSOR_HEAD + "^{tree}").stdout.strip().lower()
-    checks["predecessor_tree_exact"] = predecessor_tree == PREDECESSOR_TREE
+    tree = run_git(root, "rev-parse", PREDECESSOR_HEAD + "^{tree}").stdout.strip().lower()
+    checks["predecessor_tree_exact"] = tree == PREDECESSOR_TREE
     if not checks["predecessor_tree_exact"]:
         failures.append("predecessor_tree_exact")
 
-    ancestor = run_git(root, "merge-base", "--is-ancestor", PREDECESSOR_HEAD, head, check=False)
-    checks["predecessor_is_ancestor"] = ancestor.returncode == 0
+    anc = run_git(root, "merge-base", "--is-ancestor", PREDECESSOR_HEAD, head, check=False)
+    checks["predecessor_is_ancestor"] = anc.returncode == 0
     if not checks["predecessor_is_ancestor"]:
         failures.append("predecessor_is_ancestor")
 
-    diff = run_git(
-        root,
-        "diff",
-        "--name-only",
-        "--diff-filter=ACMRTUXB",
-        PREDECESSOR_HEAD + "..." + head,
-    )
-    changed_paths = sorted({line.strip().replace("\\", "/") for line in diff.stdout.splitlines() if line.strip()})
-    disallowed_paths = [path for path in changed_paths if not bootstrap_path_allowed(path)]
-    checks["bootstrap_paths_allowed"] = not disallowed_paths
-    if disallowed_paths:
-        failures.append("bootstrap_paths_allowed")
+    diff = run_git(root, "diff", "--name-only", "--diff-filter=ACMRTUXB", PREDECESSOR_HEAD + "..." + head)
+    changed = sorted({line.strip().replace("\\", "/") for line in diff.stdout.splitlines() if line.strip()})
+    disallowed = [x for x in changed if x not in ALLOWED_PATHS]
+    checks["transition_paths_allowed"] = not disallowed
+    if disallowed:
+        failures.append("transition_paths_allowed")
 
-    forbidden_suffixes = tuple(policy.get("bootstrap", {}).get("forbidden_artifact_suffixes", []))
-    forbidden_artifacts = [path for path in changed_paths if path.lower().endswith(tuple(s.lower() for s in forbidden_suffixes))]
-    checks["generated_artifacts_absent"] = not forbidden_artifacts
-    if forbidden_artifacts:
+    forbidden = [x for x in changed if x.lower().endswith(FORBIDDEN_SUFFIXES)]
+    checks["generated_artifacts_absent"] = not forbidden
+    if forbidden:
         failures.append("generated_artifacts_absent")
 
-    private_markers = [
-        "-----BEGIN " + "PRIVATE KEY-----",
-        "-----BEGIN RSA " + "PRIVATE KEY-----",
-        "-----BEGIN EC " + "PRIVATE KEY-----",
-        "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
-    ]
-    private_key_hits = []
-    for relative in changed_paths:
+    private_hits = []
+    for relative in changed:
         path = root / relative
         if not path.is_file():
             continue
@@ -233,31 +223,19 @@ def main():
             text = path.read_text(encoding="utf-8-sig")
         except (UnicodeDecodeError, OSError):
             continue
-        if any(marker in text for marker in private_markers):
-            private_key_hits.append(relative)
-    checks["private_key_material_absent"] = not private_key_hits
-    if private_key_hits:
+        if any(marker in text for marker in PRIVATE_MARKERS):
+            private_hits.append(relative)
+    checks["private_key_material_absent"] = not private_hits
+    if private_hits:
         failures.append("private_key_material_absent")
 
     negatives = []
-    mutated = copy.deepcopy(policy)
-    mutated["predecessor"]["head"] = "0" * 40
-    negatives.append(not validate_policy(mutated))
-    mutated = copy.deepcopy(policy)
-    mutated["successor"]["target_version"] = "1.1.0"
-    negatives.append(not validate_policy(mutated))
-    mutated = copy.deepcopy(policy)
-    mutated["phase"] = "released"
-    negatives.append(not validate_policy(mutated))
-    mutated = copy.deepcopy(policy)
-    mutated["historical"]["production_final_candidate_version"] = CANDIDATE_VERSION
-    negatives.append(not validate_policy(mutated))
-    mutated = copy.deepcopy(policy)
-    mutated["safety"]["allow_history_rewrite"] = True
-    negatives.append(not validate_policy(mutated))
-    mutated = copy.deepcopy(policy)
-    mutated["pre_transition"]["expected_existing_target_version"] = TARGET_VERSION
-    negatives.append(not validate_policy(mutated))
+    m = copy.deepcopy(policy); m["predecessor"]["head"] = "0" * 40; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["phase"] = "released"; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["version_transition"]["components"]["cli"]["status"] = "pending"; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["version_transition"]["components"]["installer"]["expected_target_version"] = "1.0.1"; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["historical"]["production_final_candidate_version"] = CANDIDATE_VERSION; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["safety"]["allow_history_rewrite"] = True; negatives.append(not validate_policy(m))
     checks["negative_controls"] = all(negatives) and len(negatives) == 6
     if not checks["negative_controls"]:
         failures.append("negative_controls")
@@ -265,21 +243,29 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v1",
+        "authority": "nxb-v1-successor-independent-v2",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
         "head_sha": head,
         "target_version": TARGET_VERSION,
         "candidate_version": CANDIDATE_VERSION,
+        "components": {
+            name: {
+                "policy_path": COMPONENTS[name][0],
+                "status": COMPONENTS[name][1],
+                "expected_target_version": COMPONENTS[name][2],
+                "actual_target_version": target_versions.get(name),
+            }
+            for name in COMPONENT_ORDER
+        },
         "checks": checks,
-        "target_versions": target_versions,
-        "changed_paths": changed_paths,
-        "disallowed_paths": disallowed_paths,
-        "forbidden_artifacts": forbidden_artifacts,
-        "private_key_hits": private_key_hits,
-        "missing_documents": missing_documents,
-        "negative_controls_validated": sum(bool(value) for value in negatives),
+        "changed_paths": changed,
+        "disallowed_paths": disallowed,
+        "forbidden_artifacts": forbidden,
+        "private_key_hits": private_hits,
+        "missing_documents": missing,
+        "negative_controls_validated": sum(bool(x) for x in negatives),
         "negative_control_count": 6,
         "failures": sorted(set(failures)),
         "source_sha256": {

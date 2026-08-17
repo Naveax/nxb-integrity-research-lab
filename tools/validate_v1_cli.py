@@ -36,7 +36,7 @@ def validate_policy(policy):
     return (
         policy.get("schema_version") == 1
         and policy.get("contract_id") == "nxb-v1-cli-v1"
-        and policy.get("target_version") == "1.0.0"
+        and policy.get("target_version") == "1.0.1"
         and policy.get("predecessor_update_head") == EXPECTED_HEAD
     )
 

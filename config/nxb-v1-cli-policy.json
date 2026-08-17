@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "nxb-v1-cli-v1",
-  "target_version": "1.0.0",
+  "target_version": "1.0.1",
   "predecessor_update_head": "27507531154099ab28a05cfe8e4e900d72f22e7b",
   "certified_update_pointer": "certified/nxb-v1-update",
   "commands": [
