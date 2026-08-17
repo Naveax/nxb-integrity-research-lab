@@ -109,7 +109,7 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
         and policy.get("contract_id") == "nxb-v1-installer-v1"
         and policy.get("predecessor_production_signing_head") == "91be58af59d0703de0159fea9d11935805e16022"
         and policy.get("certified_implementation_head") == "a10535b294c4d7ba8a4c3683154609087bf50c4b"
-        and policy.get("target_version") == "1.0.0"
+        and policy.get("target_version") == "1.0.1"
     )
     checks.append(
         policy.get("data_policy", {}).get("data_root_is_separate") is True

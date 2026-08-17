@@ -21,6 +21,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$p.successor.target_version | Should -BeExactly '1.0.1'
         [string]$p.successor.candidate_version | Should -BeExactly '1.0.1-candidate'
         [string]$p.version_transition.components.cli.status | Should -BeExactly 'migrated'
+        [string]$p.version_transition.components.installer.status | Should -BeExactly 'migrated'
     }
 
     It 'preserves the v1.0.0 Production Final candidate authority' {
@@ -28,7 +29,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$f.part10.release_version | Should -BeExactly '1.0.0-candidate'
     }
 
-    It 'migrates only the CLI target version in the first component transition' {
+    It 'migrates CLI and installer target versions while later components remain pending' {
         $p = Get-Content -LiteralPath $script:PolicyPath -Raw | ConvertFrom-Json
         foreach ($name in @('cli','installer','update','production_signing','ci','release_integration')) {
             $row = $p.version_transition.components.$name
@@ -36,8 +37,12 @@ Describe 'NXB v1.0.1 successor version transition' {
             $doc = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
             [string]$doc.target_version | Should -BeExactly ([string]$row.expected_target_version)
         }
-        [string]$p.version_transition.components.cli.expected_target_version | Should -BeExactly '1.0.1'
-        foreach ($name in @('installer','update','production_signing','ci','release_integration')) {
+        foreach ($name in @('cli','installer')) {
+            $row = $p.version_transition.components.$name
+            [string]$row.status | Should -BeExactly 'migrated'
+            [string]$row.expected_target_version | Should -BeExactly '1.0.1'
+        }
+        foreach ($name in @('update','production_signing','ci','release_integration')) {
             $row = $p.version_transition.components.$name
             [string]$row.status | Should -BeExactly 'pending'
             [string]$row.expected_target_version | Should -BeExactly '1.0.0'
@@ -64,7 +69,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v2'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v3'
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0
