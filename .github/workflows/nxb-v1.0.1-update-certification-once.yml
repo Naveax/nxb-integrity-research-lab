@@ -1,0 +1,72 @@
+name: NXB v1.0.1 exact-head update certification once
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-update-version-repair
+
+permissions:
+  contents: read
+
+jobs:
+  update-certification:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      EXPECTED_HEAD: 7c818f8ed8bee28950b4431de685f3d72e0453a6
+    steps:
+      - name: Checkout exact repair head without external actions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'nxb-update-cert-repo'
+          git clone --no-tags --filter=blob:none "https://github.com/$env:GITHUB_REPOSITORY.git" $root
+          if ($LASTEXITCODE -ne 0) { throw 'Repository clone failed.' }
+          git -C $root fetch --no-tags origin $env:EXPECTED_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Exact repair head fetch failed.' }
+          git -C $root checkout --detach $env:EXPECTED_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Exact repair head checkout failed.' }
+          $actual=(git -C $root rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($actual -cne $env:EXPECTED_HEAD) { throw "Exact-head drift: $actual" }
+          if (-not [string]::IsNullOrWhiteSpace((git -C $root status --porcelain=v1 --untracked-files=all | Out-String))) { throw 'Certification checkout is not clean.' }
+          "NXB_CERT_REPO=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install pinned certification dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          if ($null -eq (Get-Module -ListAvailable Pester | Where-Object Version -eq ([version]'5.7.1') | Select-Object -First 1)) {
+            Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          }
+          if ($null -eq (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1)) {
+            Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
+          }
+          $ps51ModuleRoot=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
+          $ps51Pester=Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
+          if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
+            Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
+          }
+          python -m pip install --disable-pip-version-check PyYAML==6.0.3 jsonschema==4.26.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Python dependency install failed.' }
+
+      - name: Run exact-head signed staged update certification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Set-StrictMode -Version Latest
+          $output=Join-Path $env:RUNNER_TEMP 'nxb-v1-update-certification'
+          $result=& "$env:NXB_CERT_REPO\scripts\Invoke-NxbV1UpdateCertification.ps1" -ExpectedHead $env:EXPECTED_HEAD -OutputDirectory $output -PassThru
+          if ([string]$result.status -cne 'passed') { throw 'Update certification did not return PASS.' }
+          if ([string]$result.update_head -cne $env:EXPECTED_HEAD) { throw 'Update certification head drift.' }
+          if ([string]$result.ps7 -cne '24/24' -or [string]$result.ps51 -cne '24/24') { throw 'Update certification Pester cardinality drift.' }
+          if ([int]$result.independent_requirements -ne 16 -or [int]$result.independent_negative_controls -ne 12) { throw 'Update independent replay cardinality drift.' }
+          if (-not [bool]$result.trust_anchor_passed -or -not [bool]$result.stage_passed -or -not [bool]$result.apply_passed -or -not [bool]$result.failure_rollback_passed -or -not [bool]$result.manual_rollback_passed) { throw 'Update lifecycle truth drift.' }
+          if ([bool]$result.auto_apply_performed -or [bool]$result.machine_install_performed -or [bool]$result.production_release_updated) { throw 'Update certification crossed a production boundary.' }
+          Write-Output ('UpdateCertReceiptSHA256=' + [string]$result.receipt_sha256)
+          Write-Output ('UpdateCertReviewZIPSHA256=' + [string]$result.review_zip_sha256)
+          Write-Output ('UpdateCertLifecycleSHA256=' + [string]$result.lifecycle_sha256)
+          Write-Output 'production_private_key_used=false'
+          Write-Output 'production_release_updated=false'
+          Write-Output 'production_tag_created=false'
