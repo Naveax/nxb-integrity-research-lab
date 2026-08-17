@@ -17,6 +17,7 @@ HISTORICAL_CERTIFIED_POINTER = "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
 FINAL_CLOSURE_SHA256 = "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355"
 PACKAGE_SHA256 = "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78"
 SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"
+PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
 
 COMPONENTS = {
     "cli": ("config/nxb-v1-cli-policy.json", "migrated", "1.0.1"),
@@ -41,6 +42,13 @@ ALLOWED_PATHS = {
     "tools/validate_v1_cli.py",
     "tests/V1Cli.Tests.ps1",
     "config/nxb-v1-installer-policy.json",
+    "schemas/nxb-v1-package-manifest.schema.json",
+    "schemas/nxb-v1-install-state.schema.json",
+    "schemas/nxb-v1-installer-operation-receipt.schema.json",
+    "scripts/NxbV1Installer.Common.ps1",
+    "scripts/NxbV1Installer.State.ps1",
+    "scripts/Export-NxbV1PackageManifest.ps1",
+    "scripts/Invoke-NxbV1Installer.ps1",
     "tools/validate_v1_installer.py",
     "tests/V1Installer.Tests.ps1",
     "config/nxb-v1-update-policy.json",
@@ -161,6 +169,7 @@ def main():
     root = pathlib.Path(a.repository_root).resolve()
     policy_path = root / "config" / "nxb-v1-successor-policy.json"
     final_policy_path = root / "config" / "nxb-production-finalization-policy.json"
+    package_schema_path = root / "schemas" / "nxb-v1-package-manifest.schema.json"
     policy = load_json(policy_path)
     failures = []
     checks = {}
@@ -185,6 +194,11 @@ def main():
     if not checks["historical_candidate_preserved"]:
         failures.append("historical_candidate_preserved")
 
+    package_schema = load_json(package_schema_path)
+    checks["package_release_versions"] = package_schema.get("properties", {}).get("release_version", {}).get("enum") == PACKAGE_RELEASE_VERSIONS
+    if not checks["package_release_versions"]:
+        failures.append("package_release_versions")
+
     target_versions = {}
     for name, (relative, status, expected) in COMPONENTS.items():
         actual = load_json(root / relative).get("target_version")
@@ -193,9 +207,7 @@ def main():
         if not checks["component_" + name]:
             failures.append("component_" + name)
 
-    checks["all_components_migrated"] = all(
-        target_versions.get(name) == "1.0.1" for name in COMPONENT_ORDER
-    )
+    checks["all_components_migrated"] = all(target_versions.get(name) == "1.0.1" for name in COMPONENT_ORDER)
     if not checks["all_components_migrated"]:
         failures.append("all_components_migrated")
 
@@ -264,7 +276,7 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v8",
+        "authority": "nxb-v1-successor-independent-v9",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
@@ -293,6 +305,7 @@ def main():
             "policy": sha256_file(policy_path),
             "validator": sha256_file(pathlib.Path(__file__).resolve()),
             "production_final_policy": sha256_file(final_policy_path),
+            "package_manifest_schema": sha256_file(package_schema_path),
         },
     }
     print(json.dumps(result, separators=(",", ":"), sort_keys=True))
