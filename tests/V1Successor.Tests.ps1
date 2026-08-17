@@ -20,11 +20,9 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$p.predecessor.tree | Should -BeExactly $script:PredecessorTree
         [string]$p.successor.target_version | Should -BeExactly '1.0.1'
         [string]$p.successor.candidate_version | Should -BeExactly '1.0.1-candidate'
-        [string]$p.version_transition.components.cli.status | Should -BeExactly 'migrated'
-        [string]$p.version_transition.components.installer.status | Should -BeExactly 'migrated'
-        [string]$p.version_transition.components.update.status | Should -BeExactly 'migrated'
-        [string]$p.version_transition.components.production_signing.status | Should -BeExactly 'migrated'
-        [string]$p.version_transition.components.ci.status | Should -BeExactly 'migrated'
+        foreach ($name in @('cli','installer','update','production_signing','ci','release_integration')) {
+            [string]$p.version_transition.components.$name.status | Should -BeExactly 'migrated'
+        }
     }
 
     It 'preserves the v1.0.0 Production Final candidate authority' {
@@ -32,22 +30,20 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$f.part10.release_version | Should -BeExactly '1.0.0-candidate'
     }
 
-    It 'migrates CLI installer update production signing and CI target versions while release integration remains pending' {
+    It 'migrates every release-facing component target version to v1.0.1' {
         $p = Get-Content -LiteralPath $script:PolicyPath -Raw | ConvertFrom-Json
         foreach ($name in @('cli','installer','update','production_signing','ci','release_integration')) {
             $row = $p.version_transition.components.$name
             $path = Join-Path $script:RepositoryRoot ([string]$row.policy_path).Replace('/',[IO.Path]::DirectorySeparatorChar)
             $doc = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-            [string]$doc.target_version | Should -BeExactly ([string]$row.expected_target_version)
-        }
-        foreach ($name in @('cli','installer','update','production_signing','ci')) {
-            $row = $p.version_transition.components.$name
+            [string]$doc.target_version | Should -BeExactly '1.0.1'
             [string]$row.status | Should -BeExactly 'migrated'
             [string]$row.expected_target_version | Should -BeExactly '1.0.1'
         }
-        $release = $p.version_transition.components.release_integration
-        [string]$release.status | Should -BeExactly 'pending'
-        [string]$release.expected_target_version | Should -BeExactly '1.0.0'
+        $releasePolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v1-release-integration-policy.json'
+        $releasePolicy = Get-Content -LiteralPath $releasePolicyPath -Raw | ConvertFrom-Json
+        [string]$releasePolicy.candidate_version | Should -BeExactly '1.0.1-candidate'
+        [string]$releasePolicy.release_branch | Should -BeExactly 'release/nxb-v1.0.1-prep'
     }
 
     It 'keeps successor ancestry rooted at the exact production predecessor' {
@@ -70,7 +66,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v6'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v7'
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0

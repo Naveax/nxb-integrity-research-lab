@@ -37,7 +37,7 @@ Describe 'NXB v1 release integration contract' {
         [int]$policy.schema_version | Should -Be 1
         [string]$policy.contract_id | Should -BeExactly 'nxb-v1-release-integration-v1'
         [string]$policy.main_branch | Should -BeExactly 'main'
-        [string]$policy.release_branch | Should -BeExactly 'release/nxb-v1.0.0-prep'
+        [string]$policy.release_branch | Should -BeExactly 'release/nxb-v1.0.1-prep'
     }
 
     It 'binds the successor release layer to the certified implementation and version boundary' {
@@ -45,8 +45,8 @@ Describe 'NXB v1 release integration contract' {
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         [string]$policy.certified_implementation_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
         [string]$policy.certified_main_ancestor | Should -BeExactly 'b55fed4e4c960f8fea73b959f29dd57649c6bd65'
-        [string]$policy.candidate_version | Should -BeExactly '1.0.0-candidate'
-        [string]$policy.target_version | Should -BeExactly '1.0.0'
+        [string]$policy.candidate_version | Should -BeExactly '1.0.1-candidate'
+        [string]$policy.target_version | Should -BeExactly '1.0.1'
     }
 
     It 'allows only explicit additive successor surfaces after certification' {
@@ -112,6 +112,8 @@ Describe 'NXB v1 release integration contract' {
         @($schema.required) | Should -Contain 'checks'
         @($schema.required) | Should -Contain 'failure_count'
         [string]$schema.properties.authority.const | Should -BeExactly 'nxb-v1-release-integration-preflight-v1'
+        [string]$schema.properties.candidate_version.const | Should -BeExactly '1.0.1-candidate'
+        [string]$schema.properties.target_version.const | Should -BeExactly '1.0.1'
     }
 
     It 'uses the inherited safe native-process preference guard around git calls' {

@@ -3,10 +3,10 @@
   "contract_id": "nxb-v1-release-integration-v1",
   "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
   "certified_main_ancestor": "b55fed4e4c960f8fea73b959f29dd57649c6bd65",
-  "candidate_version": "1.0.0-candidate",
-  "target_version": "1.0.0",
+  "candidate_version": "1.0.1-candidate",
+  "target_version": "1.0.1",
   "main_branch": "main",
-  "release_branch": "release/nxb-v1.0.0-prep",
+  "release_branch": "release/nxb-v1.0.1-prep",
   "integration": {
     "require_clean_worktree": true,
     "require_main_ancestor_of_release_head": true,

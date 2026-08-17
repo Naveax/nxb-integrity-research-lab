@@ -92,8 +92,8 @@ $certifiedHead = [string]$policy.certified_implementation_head
 $certifiedMainAncestor = [string]$policy.certified_main_ancestor
 if (-not (Test-NxbV1LowerHex -Text $certifiedHead -Length 40)) { throw 'certified_implementation_head must be 40 lowercase hex.' }
 if (-not (Test-NxbV1LowerHex -Text $certifiedMainAncestor -Length 40)) { throw 'certified_main_ancestor must be 40 lowercase hex.' }
-if ([string]$policy.candidate_version -cne '1.0.0-candidate') { throw 'candidate_version contract drift.' }
-if ([string]$policy.target_version -cne '1.0.0') { throw 'target_version contract drift.' }
+if ([string]$policy.candidate_version -cne '1.0.1-candidate') { throw 'candidate_version contract drift.' }
+if ([string]$policy.target_version -cne '1.0.1') { throw 'target_version contract drift.' }
 
 $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
 if ($null -eq $gitCommand) { $gitCommand = Get-Command git -ErrorAction Stop }
