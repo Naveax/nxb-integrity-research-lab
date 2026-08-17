@@ -11,7 +11,7 @@
     "authority": {"const": "nxb-v1-installer-operation-v1"},
     "action": {"enum": ["Stage","Install","Repair","Uninstall"]},
     "install_mode": {"enum": ["Portable","PerUser","PerMachine"]},
-    "release_version": {"const": "1.0.0"},
+    "release_version": {"enum": ["1.0.0", "1.0.1"]},
     "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "install_root": {"type": "string", "minLength": 1},
     "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
