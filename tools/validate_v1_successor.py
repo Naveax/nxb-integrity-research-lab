@@ -53,6 +53,7 @@ ALLOWED_PATHS = {
     "tools/validate_v1_production_signing.py",
     "tests/V1ProductionSigning.Tests.ps1",
     "config/nxb-v1-ci-policy.json",
+    "scripts/Invoke-NxbV1CiNativeValidation.ps1",
     "tools/validate_v1_ci.py",
     "tests/V1Ci.Tests.ps1",
     "config/nxb-v1-release-integration-policy.json",
@@ -263,7 +264,7 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v7",
+        "authority": "nxb-v1-successor-independent-v8",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,

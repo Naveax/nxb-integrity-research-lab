@@ -189,14 +189,26 @@ try {
         throw ('Native replay hosted receipt cardinality drift: expected=1 actual={0}' -f $hostedReceipts.Count)
     }
     $hostedResult = $hostedReceipts[0]
-    foreach ($requiredHostedField in @('status','head_sha','ps7_total','ps7_passed','ps7_not_run','ps51_total','ps51_passed','ps51_not_run')) {
+    foreach ($requiredHostedField in @('status','head_sha','ps7_total','ps7_passed','ps7_not_run','ps51_total','ps51_passed','ps51_not_run','ps51_excluded_tag','ps51_expected_excluded')) {
         if ($null -eq $hostedResult.PSObject.Properties[$requiredHostedField]) {
             throw ('Native replay hosted receipt missing required field: {0}' -f $requiredHostedField)
         }
     }
     if ([string]$hostedResult.status -cne 'passed' -or [string]$hostedResult.head_sha -cne $expected) { throw 'Native replay of hosted CI authority did not return exact-head PASS.' }
-    if ([int]$hostedResult.ps7_total -ne 893 -or [int]$hostedResult.ps7_passed -ne 893 -or [int]$hostedResult.ps7_not_run -ne 0) { throw 'Native hosted-replay PS7 closure drift.' }
-    if ([int]$hostedResult.ps51_total -ne 893 -or [int]$hostedResult.ps51_passed -ne 886 -or [int]$hostedResult.ps51_not_run -ne 7) { throw 'Native hosted-replay PS5.1 partition drift.' }
+
+    $ps7Total = [int]$hostedResult.ps7_total
+    $ps7Passed = [int]$hostedResult.ps7_passed
+    $ps7NotRun = [int]$hostedResult.ps7_not_run
+    $ps51Total = [int]$hostedResult.ps51_total
+    $ps51Passed = [int]$hostedResult.ps51_passed
+    $ps51NotRun = [int]$hostedResult.ps51_not_run
+    $ps51ExcludedTag = [string]$hostedResult.ps51_excluded_tag
+    $expectedPs51Excluded = [int]$hostedResult.ps51_expected_excluded
+    if ($ps7Total -le 0 -or $ps7Passed -ne $ps7Total -or $ps7NotRun -ne 0) { throw 'Native hosted-replay PS7 closure drift.' }
+    if ($ps51ExcludedTag -cne 'PS7Only' -or $expectedPs51Excluded -ne 7) { throw 'Native hosted-replay PS5.1 exclusion contract drift.' }
+    if ($ps51Total -ne $ps7Total -or $ps51Passed -ne ($ps51Total - $expectedPs51Excluded) -or $ps51NotRun -ne $expectedPs51Excluded) { throw 'Native hosted-replay PS5.1 partition drift.' }
+    $ps7Summary = ('{0}/{1}' -f $ps7Passed,$ps7Total)
+    $ps51Summary = ('{0}/{1}' -f $ps51Passed,$ps51Total)
 
     $captureProfilePath = Join-Path $repositoryRoot 'profiles\Nxb.MinimalCpuScheduler.wprp'
     $profileOutput = @(& $wprPath -profiles $captureProfilePath 2>&1)
@@ -243,11 +255,11 @@ try {
         predecessor_cli_head = 'e665e8c27cb085853d23c8804ffaa97a19807eb9'
         hosted_authority = 'nxb-v1-ci-hosted-v1'
         hosted_receipt_sha256 = Get-NxbCiNativeSha256 -Path $hostedReceiptPath
-        ps7 = '893/893'
-        ps7_not_run = 0
-        ps51 = '886/893'
-        ps51_not_run = 7
-        ps51_excluded_tag = 'PS7Only'
+        ps7 = $ps7Summary
+        ps7_not_run = $ps7NotRun
+        ps51 = $ps51Summary
+        ps51_not_run = $ps51NotRun
+        ps51_excluded_tag = $ps51ExcludedTag
         native_profile_parser = $true
         native_calibration_valid = $true
         native_calibration_sha256 = Get-NxbCiNativeSha256 -Path $nativeCalibrationPath
@@ -284,9 +296,9 @@ try {
             status = 'passed'
             authority = 'nxb-v1-ci-native-v1'
             head_sha = $expected
-            ps7 = '893/893'
-            ps51 = '886/893'
-            ps51_not_run = 7
+            ps7 = $ps7Summary
+            ps51 = $ps51Summary
+            ps51_not_run = $ps51NotRun
             native_calibration_valid = $true
             receipt_path = $receiptPath
             receipt_sha256 = Get-NxbCiNativeSha256 -Path $receiptPath

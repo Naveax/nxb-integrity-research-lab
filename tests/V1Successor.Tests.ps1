@@ -66,7 +66,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v7'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v8'
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0

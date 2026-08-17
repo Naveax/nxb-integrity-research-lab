@@ -135,6 +135,13 @@ def main():
         and "Invoke-NxbV1CiHostedValidation.ps1" in native_text
         and "Invoke-CollectorOverheadCalibration.ps1" in native_text
         and "nxb-v1-ci-native-v1" in native_text
+        and "ps51_expected_excluded" in native_text
+        and "$ps7Passed -ne $ps7Total" in native_text
+        and "$ps51ExcludedTag -cne 'PS7Only'" in native_text
+        and "$ps51Total -ne $ps7Total" in native_text
+        and "$ps51Passed -ne ($ps51Total - $expectedPs51Excluded)" in native_text
+        and "'893/893'" not in native_text
+        and "'886/893'" not in native_text
         and "review_entries = 7" in native_text
         and "production_release_updated = $false" in native_text
         and "Upload native validation evidence" in workflow_text
@@ -221,6 +228,7 @@ def main():
         "ci_known_error_rules": len(known_error_config.get("rules", [])),
         "native_authority": "nxb-v1-ci-native-v1",
         "native_review_entries": 7,
+        "native_cardinality_binding": "hosted-relational",
         "native_evidence_retained": "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text,
         "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
