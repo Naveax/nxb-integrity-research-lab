@@ -1,0 +1,43 @@
+name: NXB v1.0.1 one-shot native dispatch
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact successor head and dispatch native gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: release/nxb-v1.0.1-prep
+          TARGET_HEAD: b0ce9b2a3ee2916dfd5067e5ef459df2106172b7
+        run: |
+          set -euo pipefail
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+          ref_json="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/git/ref/heads/${TARGET_BRANCH}")"
+          actual="$(python -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])' <<<"${ref_json}")"
+          if [[ "${actual}" != "${TARGET_HEAD}" ]]; then
+            echo "Exact successor head drift: expected=${TARGET_HEAD} actual=${actual}" >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/actions/workflows/nxb-v1-ci.yml/dispatches" \
+            -d '{"ref":"release/nxb-v1.0.1-prep","inputs":{"run_native":"true"}}'
+          echo "Dispatched NXB v1 CI native gate for ${TARGET_HEAD}."
