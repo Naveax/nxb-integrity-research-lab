@@ -1,0 +1,51 @@
+name: NXB v1.0.1 one-shot native runner label bridge
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-native-labels:
+    runs-on: [self-hosted, Windows, X64, psmatrix-hyperv]
+    timeout-minutes: 10
+    steps:
+      - name: Add bounded NXB native labels using existing local gh authority
+        shell: pwsh
+        env:
+          TARGET_HEAD: b0ce9b2a3ee2916dfd5067e5ef459df2106172b7
+          TARGET_BRANCH: release/nxb-v1.0.1-prep
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $gh = Get-Command gh.exe -ErrorAction SilentlyContinue
+          if ($null -eq $gh) { $gh = Get-Command gh -ErrorAction Stop }
+          & $gh.Source auth status
+          if ($LASTEXITCODE -ne 0) { throw 'Existing local gh authentication is unavailable.' }
+
+          $ref = (& $gh.Source api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/$env:TARGET_BRANCH" | ConvertFrom-Json)
+          if ([string]$ref.object.sha -cne $env:TARGET_HEAD) {
+            throw ('Exact successor head drift: expected={0} actual={1}' -f $env:TARGET_HEAD,[string]$ref.object.sha)
+          }
+
+          $runners = (& $gh.Source api "repos/$env:GITHUB_REPOSITORY/actions/runners?per_page=100" | ConvertFrom-Json)
+          $matches = @($runners.runners | Where-Object { [string]$_.name -ceq $env:RUNNER_NAME })
+          if ($matches.Count -ne 1) { throw ('Runner identity cardinality drift for {0}: {1}' -f $env:RUNNER_NAME,$matches.Count) }
+          $runner = $matches[0]
+          if ([string]$runner.os -cne 'Windows') { throw ('Runner OS drift: {0}' -f [string]$runner.os) }
+
+          $body = @{ labels = @('nxb-native','wpt') } | ConvertTo-Json -Compress
+          $body | & $gh.Source api -X POST "repos/$env:GITHUB_REPOSITORY/actions/runners/$([int]$runner.id)/labels" --input - | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to add bounded NXB native runner labels.' }
+
+          $verify = (& $gh.Source api "repos/$env:GITHUB_REPOSITORY/actions/runners/$([int]$runner.id)" | ConvertFrom-Json)
+          $names = @($verify.labels | ForEach-Object { [string]$_.name })
+          foreach ($required in @('self-hosted','Windows','X64','nxb-native','wpt')) {
+            if ($names -cnotcontains $required) { throw ('Required runner label missing after bridge: {0}' -f $required) }
+          }
+          Write-Output ('RunnerBridge=' + [string]$verify.name)
+          Write-Output ('RunnerId=' + [string]$verify.id)
+          Write-Output ('Labels=' + (($names | Sort-Object) -join ','))
