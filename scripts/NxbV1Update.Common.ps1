@@ -77,7 +77,7 @@ function Test-NxbV1UpdateDescriptorObject {
     try {
         if ([int]$Descriptor.schema_version -ne 1 -or [string]$Descriptor.contract_id -cne 'nxb-v1-update-descriptor-v1') { return $false }
         if (@('stable','beta') -cnotcontains [string]$Descriptor.channel) { return $false }
-        if ([string]$Descriptor.release_version -cne '1.0.0' -or [int]$Descriptor.release_sequence -lt 1) { return $false }
+        if (@('1.0.0','1.0.1') -cnotcontains [string]$Descriptor.release_version -or [int]$Descriptor.release_sequence -lt 1) { return $false }
         if (-not (Test-NxbV1InstallerLowerHex -Text ([string]$Descriptor.release_head) -Length 40)) { return $false }
         if ([string]$Descriptor.certified_implementation_head -cne 'a10535b294c4d7ba8a4c3683154609087bf50c4b') { return $false }
         if (-not (Test-NxbV1InstallerLowerHex -Text ([string]$Descriptor.package_manifest_sha256) -Length 64)) { return $false }
@@ -130,6 +130,7 @@ function Test-NxbV1UpdateBundle {
         foreach ($revokedObject in @($Trust.revoked_release_heads)) { if ([string]$revokedObject -ceq [string]$Descriptor.release_head) { return $false } }
         if ([string]$Descriptor.release_head -cne [string]$verificationEnvelope.release_head -or [string]$Manifest.source_head -cne [string]$verificationEnvelope.release_head) { return $false }
         if ([string]$Descriptor.certified_implementation_head -cne [string]$verificationEnvelope.certified_implementation_head) { return $false }
+        if ([string]$Descriptor.release_version -cne [string]$Manifest.release_version -or [string]$Descriptor.release_version -cne [string]$verificationEnvelope.release_version) { return $false }
         $manifestSha = Get-NxbV1UpdateSha256 -Path $ManifestPath
         $descriptorSha = Get-NxbV1UpdateSha256 -Path $DescriptorPath
         if ([string]$Descriptor.package_manifest_sha256 -cne $manifestSha -or [string]$verificationEnvelope.package_manifest_sha256 -cne $manifestSha) { return $false }
