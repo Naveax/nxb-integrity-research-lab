@@ -25,8 +25,8 @@
     "certified_implementation_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "release_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "main_head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "candidate_version": { "const": "1.0.0-candidate" },
-    "target_version": { "const": "1.0.0" },
+    "candidate_version": { "const": "1.0.1-candidate" },
+    "target_version": { "const": "1.0.1" },
     "checks": {
       "type": "object",
       "additionalProperties": { "type": "boolean" },

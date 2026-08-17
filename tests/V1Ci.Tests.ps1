@@ -32,6 +32,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
     It 'binds CI to the native-certified CLI predecessor' {
         $p = Get-Content -LiteralPath (Get-NxbV1CiTestContext).policy -Raw | ConvertFrom-Json
         [string]$p.contract_id | Should -BeExactly 'nxb-v1-ci-v1'
+        [string]$p.target_version | Should -BeExactly '1.0.1'
         [string]$p.predecessor_cli_head | Should -BeExactly 'e665e8c27cb085853d23c8804ffaa97a19807eb9'
         [string]$p.certified_cli_pointer | Should -BeExactly 'certified/nxb-v1-cli'
     }
@@ -100,6 +101,13 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $nativeSource | Should -Match ([regex]::Escape('$_.PSObject.Properties[''authority'']'))
         $nativeSource | Should -Match ([regex]::Escape('Native replay hosted receipt cardinality drift'))
         $nativeSource | Should -Match ([regex]::Escape('Native replay hosted receipt missing required field'))
+        $nativeSource | Should -Match ([regex]::Escape("'ps51_excluded_tag','ps51_expected_excluded'"))
+        $nativeSource | Should -Match ([regex]::Escape('$ps7Passed -ne $ps7Total'))
+        $nativeSource | Should -Match ([regex]::Escape('$ps51ExcludedTag -cne ''PS7Only'''))
+        $nativeSource | Should -Match ([regex]::Escape('$ps51Total -ne $ps7Total'))
+        $nativeSource | Should -Match ([regex]::Escape('$ps51Passed -ne ($ps51Total - $expectedPs51Excluded)'))
+        $nativeSource | Should -Not -Match ([regex]::Escape("'893/893'"))
+        $nativeSource | Should -Not -Match ([regex]::Escape("'886/893'"))
         $nativeSource | Should -Match ([regex]::Escape('Invoke-CollectorOverheadCalibration.ps1'))
         $nativeSource | Should -Match ([regex]::Escape("authority = 'nxb-v1-ci-native-v1'"))
         $nativeSource | Should -Match ([regex]::Escape('review_entries = 7'))

@@ -37,6 +37,7 @@ $policyPath = Join-Path $repositoryRoot 'config\nxb-v1-production-signing-policy
 if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) { throw 'NXB v1 production signing policy is missing.' }
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 if ([string]$policy.contract_id -cne 'nxb-v1-production-signing-v1' -or [int]$policy.schema_version -ne 1) { throw 'NXB v1 production signing policy identity drift.' }
+if ([string]$policy.target_version -cne '1.0.1') { throw 'NXB v1 production signing target_version drift.' }
 
 $packageFull = [IO.Path]::GetFullPath($PackageManifestPath)
 $notesFull = [IO.Path]::GetFullPath($ReleaseNotesPath)
@@ -80,12 +81,14 @@ try {
 
     $envelope = ConvertTo-NxbV1SignedReleaseEnvelope `
         -Signer $signer `
+        -ReleaseVersion ([string]$policy.target_version) `
         -ReleaseHead $ReleaseHead `
         -CertifiedImplementationHead $CertifiedImplementationHead `
         -PackageManifestSha256 $packageSha `
         -ReleaseNotesSha256 $notesSha `
         -Artifacts @($artifactRows)
     if (-not (Test-NxbV1SignedReleaseEnvelope -Envelope $envelope)) { throw 'Release signature self-verification failed.' }
+    if ([string]$envelope.release_version -cne [string]$policy.target_version) { throw 'Release signature version binding drift.' }
 
     if ((Get-NxbV1ReleaseSigningFileSha256 -Path $packageFull) -cne $packageSha) { throw 'Package manifest changed during signing.' }
     if ((Get-NxbV1ReleaseSigningFileSha256 -Path $notesFull) -cne $notesSha) { throw 'Release notes changed during signing.' }

@@ -4,7 +4,7 @@
   "predecessor_production_signing_head": "91be58af59d0703de0159fea9d11935805e16022",
   "release_integration_head": "9371399bab4fbb921ad94198aa148c597c7b6261",
   "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
-  "target_version": "1.0.0",
+  "target_version": "1.0.1",
   "package_manifest_contract": "nxb-v1-package-manifest-v1",
   "install_state_contract": "nxb-v1-install-state-v1",
   "receipt_contract": "nxb-v1-installer-operation-receipt-v1",

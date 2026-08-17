@@ -80,7 +80,7 @@ Describe 'NXB v1 production CLI contract' {
     It 'returns stable version metadata without claiming production release' {
         $c=Get-NxbV1CliTestContext
         $result=& $c.cli -Command version
-        [string]$result.version | Should -BeExactly '1.0.0'
+        [string]$result.version | Should -BeExactly '1.0.1'
         [string]$result.release_state | Should -BeExactly 'candidate'
         [bool]$result.production_release | Should -BeFalse
         [string]$result.certified_update_head | Should -BeExactly '27507531154099ab28a05cfe8e4e900d72f22e7b'

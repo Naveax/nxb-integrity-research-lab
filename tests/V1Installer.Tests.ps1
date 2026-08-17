@@ -36,7 +36,7 @@ Describe 'NXB v1 installer contract' {
         [string]$p.predecessor_production_signing_head | Should -BeExactly '91be58af59d0703de0159fea9d11935805e16022'
         [string]$p.release_integration_head | Should -BeExactly '9371399bab4fbb921ad94198aa148c597c7b6261'
         [string]$p.certified_implementation_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
-        [string]$p.target_version | Should -BeExactly '1.0.0'
+        [string]$p.target_version | Should -BeExactly '1.0.1'
     }
 
     It 'defines a strict package manifest schema' {

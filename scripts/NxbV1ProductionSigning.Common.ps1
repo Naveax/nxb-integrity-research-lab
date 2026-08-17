@@ -42,7 +42,8 @@ function Get-NxbV1ReleaseCanonicalMaterial {
     param([Parameter(Mandatory)][object]$Envelope)
     if ([string]$Envelope.canonical_contract_id -cne 'nxb-v1-release-signature-canonical-v1') { throw 'Release signature canonical contract drift.' }
     if ([int]$Envelope.schema_version -ne 1) { throw 'Release signature schema_version must be 1.' }
-    if ([string]$Envelope.release_version -cne '1.0.0') { throw 'Release signature release_version must be 1.0.0.' }
+    $releaseVersion = [string]$Envelope.release_version
+    if (@('1.0.0','1.0.1') -cnotcontains $releaseVersion) { throw 'Release signature release_version is not an admitted v1 version.' }
     if (-not (Test-NxbV1SigningLowerHex -Text ([string]$Envelope.release_head) -Length 40)) { throw 'release_head must be 40 lowercase hex.' }
     if (-not (Test-NxbV1SigningLowerHex -Text ([string]$Envelope.certified_implementation_head) -Length 40)) { throw 'certified_implementation_head must be 40 lowercase hex.' }
     if (-not (Test-NxbV1SigningLowerHex -Text ([string]$Envelope.package_manifest_sha256) -Length 64)) { throw 'package_manifest_sha256 must be 64 lowercase hex.' }
@@ -134,10 +135,11 @@ function ConvertTo-NxbV1SignedReleaseEnvelope {
     param(
         [Parameter(Mandatory)][object]$Signer,[Parameter(Mandatory)][string]$ReleaseHead,[Parameter(Mandatory)][string]$CertifiedImplementationHead,
         [Parameter(Mandatory)][string]$PackageManifestSha256,[Parameter(Mandatory)][string]$ReleaseNotesSha256,[Parameter(Mandatory)][object[]]$Artifacts,
+        [Parameter()][ValidateSet('1.0.0','1.0.1')][string]$ReleaseVersion = '1.0.0',
         [Parameter()][string]$CreatedUtc = ([DateTime]::UtcNow.ToString('o'))
     )
     $envelope = [pscustomobject][ordered]@{
-        schema_version=1; status='signed'; canonical_contract_id='nxb-v1-release-signature-canonical-v1'; release_version='1.0.0';
+        schema_version=1; status='signed'; canonical_contract_id='nxb-v1-release-signature-canonical-v1'; release_version=$ReleaseVersion;
         release_head=$ReleaseHead.ToLowerInvariant(); certified_implementation_head=$CertifiedImplementationHead.ToLowerInvariant();
         package_manifest_sha256=$PackageManifestSha256.ToLowerInvariant(); release_notes_sha256=$ReleaseNotesSha256.ToLowerInvariant(); artifacts=@($Artifacts);
         signer_mode=[string]$Signer.mode; signer_key_id=[string]$Signer.key_id; signing_algorithm='RSA-PKCS1-SHA256'; key_size_bits=[int]$Signer.key_size_bits;

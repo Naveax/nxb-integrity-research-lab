@@ -3,7 +3,7 @@
   "contract_id": "nxb-v1-production-signing-v1",
   "predecessor_release_integration_head": "9371399bab4fbb921ad94198aa148c597c7b6261",
   "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
-  "target_version": "1.0.0",
+  "target_version": "1.0.1",
   "algorithm": "RSA-PKCS1-SHA256",
   "minimum_rsa_bits": 3072,
   "canonical_contract_id": "nxb-v1-release-signature-canonical-v1",

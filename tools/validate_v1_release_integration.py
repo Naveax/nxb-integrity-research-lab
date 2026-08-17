@@ -28,7 +28,7 @@ def validate(policy: Dict[str, Any], receipt: Dict[str, Any], expected_certified
     checks["policy_contract"] = policy.get("schema_version") == 1 and policy.get("contract_id") == CONTRACT
     checks["certified_head_binding"] = policy.get("certified_implementation_head") == expected_certified and receipt.get("certified_implementation_head") == expected_certified
     checks["release_head_binding"] = bool(HEX40.fullmatch(expected_release)) and receipt.get("release_head") == expected_release
-    checks["version_boundary"] = policy.get("candidate_version") == "1.0.0-candidate" and policy.get("target_version") == "1.0.0" and receipt.get("candidate_version") == "1.0.0-candidate" and receipt.get("target_version") == "1.0.0"
+    checks["version_boundary"] = policy.get("candidate_version") == "1.0.1-candidate" and policy.get("target_version") == "1.0.1" and receipt.get("candidate_version") == "1.0.1-candidate" and receipt.get("target_version") == "1.0.1"
 
     receipt_checks = receipt.get("checks") if isinstance(receipt.get("checks"), dict) else {}
     required_receipt_checks = [
@@ -113,7 +113,7 @@ def negative_controls(policy: Dict[str, Any], receipt: Dict[str, Any], expected_
     results["private_key_material"] = "preflight_checks" in errors and "zero_failure_receipt" in errors
 
     mutated = copy.deepcopy(receipt)
-    mutated["target_version"] = "1.0.1"
+    mutated["target_version"] = "1.0.0"
     errors, _ = validate(policy, mutated, expected_certified, expected_release)
     results["version_drift"] = "version_boundary" in errors
 
