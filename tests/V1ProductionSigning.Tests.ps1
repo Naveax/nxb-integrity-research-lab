@@ -33,7 +33,7 @@ Describe 'NXB v1 production signing contract' {
         [string]$p.contract_id | Should -BeExactly 'nxb-v1-production-signing-v1'
         [string]$p.predecessor_release_integration_head | Should -BeExactly '9371399bab4fbb921ad94198aa148c597c7b6261'
         [string]$p.certified_implementation_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
-        [string]$p.target_version | Should -BeExactly '1.0.0'
+        [string]$p.target_version | Should -BeExactly '1.0.1'
     }
 
     It 'locks signing to RSA PKCS1 SHA256 with at least 3072 bits' {
@@ -69,6 +69,8 @@ Describe 'NXB v1 production signing contract' {
         [bool]$s.additionalProperties | Should -BeFalse
         @($s.required).Count | Should -Be 19
         [string]$s.properties.canonical_contract_id.const | Should -BeExactly 'nxb-v1-release-signature-canonical-v1'
+        @($s.properties.release_version.enum) | Should -Contain '1.0.0'
+        @($s.properties.release_version.enum) | Should -Contain '1.0.1'
         [string]$s.properties.signing_algorithm.const | Should -BeExactly 'RSA-PKCS1-SHA256'
         [int]$s.properties.key_size_bits.minimum | Should -Be 3072
         [int]$s.properties.artifacts.maxItems | Should -Be 256
@@ -89,6 +91,7 @@ Describe 'NXB v1 production signing contract' {
     It 'constructs canonical material with fixed field ordering and ordinal artifact ordering' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).common -Raw
         $source | Should -Match ([regex]::Escape('[Array]::Sort($paths,[StringComparer]::Ordinal)'))
+        $source | Should -Match ([regex]::Escape("[ValidateSet('1.0.0','1.0.1')]"))
         foreach ($token in @('nxb-v1-release-signature-canonical-v1','schema_version=1','release_version={0}','release_head={0}','certified_implementation_head={0}','package_manifest_sha256={0}','release_notes_sha256={0}','artifact_count={0}','signer_mode={0}','signer_key_id={0}','public_fingerprint={0}','artifact={0}|{1}|{2}')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
@@ -111,6 +114,8 @@ Describe 'NXB v1 production signing contract' {
         $source | Should -Match ([regex]::Escape("[ValidateSet('CertificationEphemeral','ProductionWindowsCertificateStore')]"))
         $source | Should -Match ([regex]::Escape("[ValidateSet('CurrentUser','LocalMachine')]"))
         $source | Should -Match ([regex]::Escape("[ValidateSet('My')]"))
+        $source | Should -Match ([regex]::Escape("if ([string]`$policy.target_version -cne '1.0.1')"))
+        $source | Should -Match ([regex]::Escape('-ReleaseVersion ([string]$policy.target_version)'))
     }
 
     It 'hashes real package notes and artifact files and performs a post-signing TOCTOU recheck' {
@@ -136,6 +141,7 @@ Describe 'NXB v1 production signing contract' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).validator -Raw
         $source | Should -Match ([regex]::Escape('requirement_count": 12'.Replace('\','')))
         $source | Should -Match ([regex]::Escape('negative_count": 8'.Replace('\','')))
+        $source | Should -Match ([regex]::Escape('== "1.0.1"'))
         foreach ($token in @('tampered_release_head','tampered_package_manifest_sha256','tampered_artifact_sha256','tampered_signer_fingerprint','malformed_signature','weak_key_metadata','wrong_signer_key_id','duplicate_artifact_path','pow(signature_int, exponent, modulus)','hmac.compare_digest')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 

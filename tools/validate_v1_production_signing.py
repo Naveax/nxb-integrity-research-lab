@@ -46,7 +46,7 @@ def canonical_material(envelope: Dict[str, Any]) -> str:
         raise ValueError("canonical_contract_id")
     if envelope.get("schema_version") != 1:
         raise ValueError("schema_version")
-    if envelope.get("release_version") != "1.0.0":
+    if envelope.get("release_version") != "1.0.1":
         raise ValueError("release_version")
     if not is_lower_hex(envelope.get("release_head"), 40):
         raise ValueError("release_head")
@@ -157,7 +157,7 @@ def validate(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_
     requirements = {
         "policy_identity": policy.get("contract_id") == "nxb-v1-production-signing-v1" and policy.get("schema_version") == 1,
         "head_binding": envelope.get("release_head") == expected_release_head and envelope.get("certified_implementation_head") == expected_certified_head,
-        "version_binding": envelope.get("release_version") == policy.get("target_version") == "1.0.0",
+        "version_binding": envelope.get("release_version") == policy.get("target_version") == "1.0.1",
         "artifact_contract": isinstance(envelope.get("artifacts"), list) and 1 <= len(envelope["artifacts"]) <= int(policy.get("release_manifest", {}).get("maximum_artifacts", 0)),
         "algorithm_and_key_size": envelope.get("signing_algorithm") == policy.get("algorithm") and int(envelope.get("key_size_bits", 0)) >= int(policy.get("minimum_rsa_bits", 0)),
         "public_fingerprint": hmac.compare_digest(str(public_key.get("fingerprint", "")), computed_fingerprint),

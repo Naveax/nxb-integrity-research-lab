@@ -22,7 +22,7 @@ COMPONENTS = {
     "cli": ("config/nxb-v1-cli-policy.json", "migrated", "1.0.1"),
     "installer": ("config/nxb-v1-installer-policy.json", "migrated", "1.0.1"),
     "update": ("config/nxb-v1-update-policy.json", "migrated", "1.0.1"),
-    "production_signing": ("config/nxb-v1-production-signing-policy.json", "pending", "1.0.0"),
+    "production_signing": ("config/nxb-v1-production-signing-policy.json", "migrated", "1.0.1"),
     "ci": ("config/nxb-v1-ci-policy.json", "pending", "1.0.0"),
     "release_integration": ("config/nxb-v1-release-integration-policy.json", "pending", "1.0.0"),
 }
@@ -46,6 +46,12 @@ ALLOWED_PATHS = {
     "config/nxb-v1-update-policy.json",
     "tools/validate_v1_update.py",
     "tests/V1Update.Tests.ps1",
+    "config/nxb-v1-production-signing-policy.json",
+    "schemas/nxb-v1-release-signature-envelope.schema.json",
+    "scripts/NxbV1ProductionSigning.Common.ps1",
+    "scripts/Invoke-NxbV1ReleaseManifestSigning.ps1",
+    "tools/validate_v1_production_signing.py",
+    "tests/V1ProductionSigning.Tests.ps1",
 }
 FORBIDDEN_SUFFIXES = (".etl", ".etl.tmp", ".pfx", ".p12", ".pem", ".key", ".zip")
 PRIVATE_MARKERS = [
@@ -178,14 +184,15 @@ def main():
         if not checks["component_" + name]:
             failures.append("component_" + name)
 
-    checks["cli_installer_update_migrated"] = (
+    checks["cli_installer_update_signing_migrated"] = (
         target_versions.get("cli") == "1.0.1"
         and target_versions.get("installer") == "1.0.1"
         and target_versions.get("update") == "1.0.1"
-        and all(target_versions[n] == "1.0.0" for n in COMPONENT_ORDER if n not in {"cli", "installer", "update"})
+        and target_versions.get("production_signing") == "1.0.1"
+        and all(target_versions[n] == "1.0.0" for n in COMPONENT_ORDER if n not in {"cli", "installer", "update", "production_signing"})
     )
-    if not checks["cli_installer_update_migrated"]:
-        failures.append("cli_installer_update_migrated")
+    if not checks["cli_installer_update_signing_migrated"]:
+        failures.append("cli_installer_update_signing_migrated")
 
     missing = [x for x in REQUIRED_DOCUMENTS if not (root / x).is_file()]
     checks["required_documents_present"] = not missing
@@ -241,8 +248,8 @@ def main():
     negatives = []
     m = copy.deepcopy(policy); m["predecessor"]["head"] = "0" * 40; negatives.append(not validate_policy(m))
     m = copy.deepcopy(policy); m["phase"] = "released"; negatives.append(not validate_policy(m))
-    m = copy.deepcopy(policy); m["version_transition"]["components"]["update"]["status"] = "pending"; negatives.append(not validate_policy(m))
-    m = copy.deepcopy(policy); m["version_transition"]["components"]["production_signing"]["expected_target_version"] = "1.0.1"; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["version_transition"]["components"]["production_signing"]["status"] = "pending"; negatives.append(not validate_policy(m))
+    m = copy.deepcopy(policy); m["version_transition"]["components"]["ci"]["expected_target_version"] = "1.0.1"; negatives.append(not validate_policy(m))
     m = copy.deepcopy(policy); m["historical"]["production_final_candidate_version"] = CANDIDATE_VERSION; negatives.append(not validate_policy(m))
     m = copy.deepcopy(policy); m["safety"]["allow_history_rewrite"] = True; negatives.append(not validate_policy(m))
     checks["negative_controls"] = all(negatives) and len(negatives) == 6
@@ -252,7 +259,7 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v4",
+        "authority": "nxb-v1-successor-independent-v5",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,

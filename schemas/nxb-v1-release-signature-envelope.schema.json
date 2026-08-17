@@ -29,7 +29,7 @@
     "schema_version": {"const": 1},
     "status": {"const": "signed"},
     "canonical_contract_id": {"const": "nxb-v1-release-signature-canonical-v1"},
-    "release_version": {"const": "1.0.0"},
+    "release_version": {"enum": ["1.0.0", "1.0.1"]},
     "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "certified_implementation_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "package_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
