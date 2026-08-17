@@ -1,0 +1,261 @@
+name: NXB v1.0.1 update version repair once
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-update-version-repair
+
+permissions:
+  contents: write
+
+jobs:
+  patch-update-version-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_BRANCH: release/nxb-v1.0.1-update-version-repair
+      EXPECTED_BASE: c99a4d83fd8e66e0e941986e043e275173149a64
+    steps:
+      - name: Apply bounded fail-closed repair
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init repo
+          cd repo
+          git remote add origin "${remote}"
+          git fetch --no-tags --depth=1 origin "refs/heads/${TARGET_BRANCH}"
+          actual="$(git rev-parse FETCH_HEAD)"
+          if [[ "${actual}" != "${EXPECTED_BASE}" ]]; then
+            echo "Repair branch drift: expected=${EXPECTED_BASE} actual=${actual}" >&2
+            exit 1
+          fi
+          git checkout -b repair FETCH_HEAD
+          git config user.name "Naveax"
+          git config user.email "79841922+Naveax@users.noreply.github.com"
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_exact(path, old, new, expected=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8-sig')
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'{path}: expected {expected} occurrences, found {count}: {old[:120]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+
+          # 1) Preserve historical v1.0.0 descriptors while admitting v1.0.1.
+          replace_exact(
+              'schemas/nxb-v1-update-descriptor.schema.json',
+              '"release_version": {"const": "1.0.0"},',
+              '"release_version": {"enum": ["1.0.0", "1.0.1"]},',
+          )
+
+          # 2) Runtime must admit the bounded set and bind descriptor == manifest == envelope.
+          replace_exact(
+              'scripts/NxbV1Update.Common.ps1',
+              "if ([string]$Descriptor.release_version -cne '1.0.0' -or [int]$Descriptor.release_sequence -lt 1) { return $false }",
+              "if (@('1.0.0','1.0.1') -cnotcontains [string]$Descriptor.release_version -or [int]$Descriptor.release_sequence -lt 1) { return $false }",
+          )
+          replace_exact(
+              'scripts/NxbV1Update.Common.ps1',
+              "        if ([string]$Descriptor.certified_implementation_head -cne [string]$verificationEnvelope.certified_implementation_head) { return $false }\n        $manifestSha = Get-NxbV1UpdateSha256 -Path $ManifestPath",
+              "        if ([string]$Descriptor.certified_implementation_head -cne [string]$verificationEnvelope.certified_implementation_head) { return $false }\n        if ([string]$Descriptor.release_version -cne [string]$Manifest.release_version -or [string]$Descriptor.release_version -cne [string]$verificationEnvelope.release_version) { return $false }\n        $manifestSha = Get-NxbV1UpdateSha256 -Path $ManifestPath",
+          )
+
+          # 3) Certification fixture now uses the actual update target version end-to-end.
+          replace_exact(
+              'scripts/Invoke-NxbV1UpdateCertification.ps1',
+              "if ([string]$policy.contract_id -cne 'nxb-v1-update-v1' -or [string]$policy.predecessor_installer_head -cne 'efdeb275c25a7df1326d7effdddb4af8d83ef81d') { throw 'Update policy identity/predecessor drift.' }",
+              "if ([string]$policy.contract_id -cne 'nxb-v1-update-v1' -or [string]$policy.predecessor_installer_head -cne 'efdeb275c25a7df1326d7effdddb4af8d83ef81d' -or [string]$policy.target_version -cne '1.0.1') { throw 'Update policy identity/predecessor/target drift.' }",
+          )
+          replace_exact(
+              'scripts/Invoke-NxbV1UpdateCertification.ps1',
+              "release_version='1.0.0'; release_sequence=1;",
+              "release_version=[string]$policy.target_version; release_sequence=1;",
+          )
+          replace_exact(
+              'scripts/Invoke-NxbV1UpdateCertification.ps1',
+              '-ReleaseNotesSha256 $emptyNotesSha -Artifacts @($artifactRows)',
+              '-ReleaseNotesSha256 $emptyNotesSha -Artifacts @($artifactRows) -ReleaseVersion ([string]$policy.target_version)',
+          )
+
+          # 4) Independent replay admits only v1.0.0/v1.0.1, but current certification must equal policy target 1.0.1.
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "RELEASE_INTEGRATION = '9371399bab4fbb921ad94198aa148c597c7b6261'\n",
+              "RELEASE_INTEGRATION = '9371399bab4fbb921ad94198aa148c597c7b6261'\nADMITTED_RELEASE_VERSIONS = {'1.0.0', '1.0.1'}\n",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "if envelope.get('schema_version') != 1 or envelope.get('status') != 'signed' or envelope.get('release_version') != '1.0.0':",
+              "if envelope.get('schema_version') != 1 or envelope.get('status') != 'signed' or envelope.get('release_version') not in ADMITTED_RELEASE_VERSIONS:",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "if manifest.get('schema_version') != 1 or manifest.get('contract_id') != 'nxb-v1-package-manifest-v1' or manifest.get('release_version') != '1.0.0':",
+              "if manifest.get('schema_version') != 1 or manifest.get('contract_id') != 'nxb-v1-package-manifest-v1' or manifest.get('release_version') not in ADMITTED_RELEASE_VERSIONS:",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "desc.get('release_version') == '1.0.0'",
+              "desc.get('release_version') in ADMITTED_RELEASE_VERSIONS",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "    if desc['release_head'] != env['release_head'] or manifest['source_head'] != env['release_head'] or desc['certified_implementation_head'] != env['certified_implementation_head']: return False\n    if desc['package_manifest_sha256'] != msha or env['package_manifest_sha256'] != msha: return False",
+              "    if desc['release_head'] != env['release_head'] or manifest['source_head'] != env['release_head'] or desc['certified_implementation_head'] != env['certified_implementation_head']: return False\n    if desc['release_version'] != manifest['release_version'] or desc['release_version'] != env['release_version']: return False\n    if desc['package_manifest_sha256'] != msha or env['package_manifest_sha256'] != msha: return False",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "    req['descriptor_contract']=valid_descriptor(desc) and desc.get('release_head')==a.expected_head\n    req['rsa_signature']=verify_envelope(env)",
+              "    req['descriptor_contract']=valid_descriptor(desc) and desc.get('release_head')==a.expected_head and desc.get('release_version')==policy.get('target_version')\n    req['rsa_signature']=verify_envelope(env) and env.get('release_version')==policy.get('target_version')",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "    req['manifest_contract']=valid_manifest(manifest)",
+              "    req['manifest_contract']=valid_manifest(manifest) and manifest.get('release_version')==policy.get('target_version')",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "    badm=copy.deepcopy(manifest); badm['files'][0]['sha256']='0'*64; neg['tampered_package_hash']=not valid_manifest(badm) or not package_matches(a.package_root,badm)",
+              "    badm=copy.deepcopy(manifest); badm['files'][0]['sha256']='0'*64\n    badm_version=copy.deepcopy(manifest); badm_version['release_version']='1.0.0' if manifest.get('release_version')=='1.0.1' else '1.0.1'\n    neg['tampered_package_hash']=(not valid_manifest(badm) or not package_matches(a.package_root,badm)) and not bundle_valid(badm_version,a.manifest,a.package_root,desc,a.descriptor,env,trust,0)",
+          )
+          replace_exact(
+              'tools/validate_v1_update.py',
+              "'schema_version':1,'authority':'nxb-v1-update-independent-v1'",
+              "'schema_version':1,'authority':'nxb-v1-update-independent-v2'",
+          )
+
+          # 5) Strengthen existing update tests without changing the 24-test cardinality.
+          replace_exact(
+              'tests/V1Update.Tests.ps1',
+              "        [int]$s.properties.release_sequence.minimum | Should -Be 1\n        @($s.properties.channel.enum) | Should -Contain 'stable'",
+              "        [int]$s.properties.release_sequence.minimum | Should -Be 1\n        @($s.properties.release_version.enum).Count | Should -Be 2\n        @($s.properties.release_version.enum) | Should -Contain '1.0.0'\n        @($s.properties.release_version.enum) | Should -Contain '1.0.1'\n        @($s.properties.channel.enum) | Should -Contain 'stable'",
+          )
+          replace_exact(
+              'tests/V1Update.Tests.ps1',
+              "foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap'))",
+              "foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap','Descriptor.release_version -cne [string]$Manifest.release_version','Descriptor.release_version -cne [string]$verificationEnvelope.release_version'))",
+          )
+          replace_exact(
+              'tests/V1Update.Tests.ps1',
+              "'$emptyNotesSha=Get-NxbV1UpdateCertSha256 $emptyNotesPath'))",
+              "'$emptyNotesSha=Get-NxbV1UpdateCertSha256 $emptyNotesPath','release_version=[string]$policy.target_version','-ReleaseVersion ([string]$policy.target_version)'))",
+          )
+          replace_exact(
+              'tests/V1Update.Tests.ps1',
+              "'missing_manual_rollback','update_state','highest_seen_release_sequence'))",
+              "'missing_manual_rollback','update_state','highest_seen_release_sequence','ADMITTED_RELEASE_VERSIONS','badm_version','nxb-v1-update-independent-v2'))",
+          )
+
+          # 6) Admit the newly changed update runtime/schema paths in successor authority and bind their version enum.
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              'PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]\n',
+              'PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]\nUPDATE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]\n',
+          )
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              '    "config/nxb-v1-update-policy.json",\n    "tools/validate_v1_update.py",',
+              '    "config/nxb-v1-update-policy.json",\n    "schemas/nxb-v1-update-descriptor.schema.json",\n    "scripts/NxbV1Update.Common.ps1",\n    "scripts/Invoke-NxbV1UpdateCertification.ps1",\n    "tools/validate_v1_update.py",',
+          )
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              '    package_schema_path = root / "schemas" / "nxb-v1-package-manifest.schema.json"\n',
+              '    package_schema_path = root / "schemas" / "nxb-v1-package-manifest.schema.json"\n    update_descriptor_schema_path = root / "schemas" / "nxb-v1-update-descriptor.schema.json"\n',
+          )
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              '    if not checks["package_release_versions"]:\n        failures.append("package_release_versions")\n\n    target_versions = {}',
+              '    if not checks["package_release_versions"]:\n        failures.append("package_release_versions")\n\n    update_descriptor_schema = load_json(update_descriptor_schema_path)\n    checks["update_release_versions"] = update_descriptor_schema.get("properties", {}).get("release_version", {}).get("enum") == UPDATE_RELEASE_VERSIONS\n    if not checks["update_release_versions"]:\n        failures.append("update_release_versions")\n\n    target_versions = {}',
+          )
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              '"authority": "nxb-v1-successor-independent-v9"',
+              '"authority": "nxb-v1-successor-independent-v10"',
+          )
+          replace_exact(
+              'tools/validate_v1_successor.py',
+              '            "package_manifest_schema": sha256_file(package_schema_path),\n',
+              '            "package_manifest_schema": sha256_file(package_schema_path),\n            "update_descriptor_schema": sha256_file(update_descriptor_schema_path),\n',
+          )
+
+          # 7) Strengthen successor test in-place; keep six It blocks.
+          replace_exact(
+              'tests/V1Successor.Tests.ps1',
+              "        $script:PackageSchemaPath = Join-Path $script:RepositoryRoot 'schemas\\nxb-v1-package-manifest.schema.json'\n",
+              "        $script:PackageSchemaPath = Join-Path $script:RepositoryRoot 'schemas\\nxb-v1-package-manifest.schema.json'\n        $script:UpdateDescriptorSchemaPath = Join-Path $script:RepositoryRoot 'schemas\\nxb-v1-update-descriptor.schema.json'\n",
+          )
+          replace_exact(
+              'tests/V1Successor.Tests.ps1',
+              "        @($schema.properties.release_version.enum) | Should -Contain '1.0.1'\n    }",
+              "        @($schema.properties.release_version.enum) | Should -Contain '1.0.1'\n        $updateSchema = Get-Content -LiteralPath $script:UpdateDescriptorSchemaPath -Raw | ConvertFrom-Json\n        @($updateSchema.properties.release_version.enum).Count | Should -Be 2\n        @($updateSchema.properties.release_version.enum) | Should -Contain '1.0.0'\n        @($updateSchema.properties.release_version.enum) | Should -Contain '1.0.1'\n    }",
+          )
+          replace_exact(
+              'tests/V1Successor.Tests.ps1',
+              "[string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v9'",
+              "[string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v10'",
+          )
+          replace_exact(
+              'tests/V1Successor.Tests.ps1',
+              "        [bool]$result.checks.package_release_versions | Should -BeTrue\n",
+              "        [bool]$result.checks.package_release_versions | Should -BeTrue\n        [bool]$result.checks.update_release_versions | Should -BeTrue\n",
+          )
+
+          update_tests = Path('tests/V1Update.Tests.ps1').read_text(encoding='utf-8')
+          successor_tests = Path('tests/V1Successor.Tests.ps1').read_text(encoding='utf-8')
+          if len(re.findall(r"(?m)^\s*It\s+'", update_tests)) != 24:
+              raise SystemExit('V1Update.Tests.ps1 It cardinality changed')
+          if len(re.findall(r"(?m)^\s*It\s+'", successor_tests)) != 6:
+              raise SystemExit('V1Successor.Tests.ps1 It cardinality changed')
+          PY
+
+          python -m py_compile tools/validate_v1_update.py tools/validate_v1_successor.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for p in ['schemas/nxb-v1-update-descriptor.schema.json']:
+              json.loads(Path(p).read_text(encoding='utf-8'))
+          schema=json.loads(Path('schemas/nxb-v1-update-descriptor.schema.json').read_text(encoding='utf-8'))
+          assert schema['properties']['release_version']['enum'] == ['1.0.0','1.0.1']
+          common=Path('scripts/NxbV1Update.Common.ps1').read_text(encoding='utf-8')
+          assert "Descriptor.release_version -cne [string]$Manifest.release_version" in common
+          assert "Descriptor.release_version -cne [string]$verificationEnvelope.release_version" in common
+          cert=Path('scripts/Invoke-NxbV1UpdateCertification.ps1').read_text(encoding='utf-8')
+          assert "release_version=[string]$policy.target_version" in cert
+          assert "-ReleaseVersion ([string]$policy.target_version)" in cert
+          PY
+          git diff --check
+
+          expected_files=$'schemas/nxb-v1-update-descriptor.schema.json\nscripts/Invoke-NxbV1UpdateCertification.ps1\nscripts/NxbV1Update.Common.ps1\ntests/V1Successor.Tests.ps1\ntests/V1Update.Tests.ps1\ntools/validate_v1_successor.py\ntools/validate_v1_update.py'
+          actual_files="$(git diff --name-only | sort)"
+          if [[ "${actual_files}" != "${expected_files}" ]]; then
+            echo "Changed-file surface drift" >&2
+            printf 'Expected:\n%s\nActual:\n%s\n' "${expected_files}" "${actual_files}" >&2
+            exit 1
+          fi
+
+          git add -- \
+            schemas/nxb-v1-update-descriptor.schema.json \
+            scripts/Invoke-NxbV1UpdateCertification.ps1 \
+            scripts/NxbV1Update.Common.ps1 \
+            tests/V1Successor.Tests.ps1 \
+            tests/V1Update.Tests.ps1 \
+            tools/validate_v1_successor.py \
+            tools/validate_v1_update.py
+          git commit -m "Repair v1.0.1 update release-version binding"
+          new_head="$(git rev-parse HEAD)"
+          python tools/validate_v1_successor.py --repository-root . --expected-head "${new_head}"
+
+          remote_before="$(git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          if [[ "${remote_before}" != "${EXPECTED_BASE}" ]]; then
+            echo "Remote repair branch moved before push: expected=${EXPECTED_BASE} actual=${remote_before}" >&2
+            exit 1
+          fi
+          git push --porcelain origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          echo "PATCHED_HEAD=${new_head}"
