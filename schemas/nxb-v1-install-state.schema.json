@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"const": 1},
     "contract_id": {"const": "nxb-v1-install-state-v1"},
-    "release_version": {"const": "1.0.0"},
+    "release_version": {"enum": ["1.0.0", "1.0.1"]},
     "source_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "install_mode": {"enum": ["Portable","PerUser","PerMachine"]},
     "install_root": {"type": "string", "minLength": 1},
