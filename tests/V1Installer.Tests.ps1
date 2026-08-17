@@ -43,6 +43,7 @@ Describe 'NXB v1 installer contract' {
         $s=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).package_schema -Raw | ConvertFrom-Json
         [bool]$s.additionalProperties | Should -BeFalse
         [string]$s.properties.contract_id.const | Should -BeExactly 'nxb-v1-package-manifest-v1'
+        @($s.properties.release_version.enum) | Should -Be @('1.0.0','1.0.1')
         [int]$s.properties.files.maxItems | Should -Be 2048
         [bool]$s.properties.files.items.additionalProperties | Should -BeFalse
     }
@@ -51,6 +52,7 @@ Describe 'NXB v1 installer contract' {
         $s=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).state_schema -Raw | ConvertFrom-Json
         [bool]$s.additionalProperties | Should -BeFalse
         [string]$s.properties.contract_id.const | Should -BeExactly 'nxb-v1-install-state-v1'
+        @($s.properties.release_version.enum) | Should -Be @('1.0.0','1.0.1')
         @($s.properties.install_mode.enum) | Should -Contain 'Portable'
         @($s.properties.install_mode.enum) | Should -Contain 'PerMachine'
     }
@@ -58,6 +60,7 @@ Describe 'NXB v1 installer contract' {
     It 'defines a strict operation receipt that never claims data or evidence removal' {
         $s=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).operation_schema -Raw | ConvertFrom-Json
         [bool]$s.additionalProperties | Should -BeFalse
+        @($s.properties.release_version.enum) | Should -Be @('1.0.0','1.0.1')
         [bool]$s.properties.data_removed.const | Should -BeFalse
         [bool]$s.properties.evidence_removed.const | Should -BeFalse
         @($s.properties.action.enum).Count | Should -Be 4
@@ -88,6 +91,9 @@ Describe 'NXB v1 installer contract' {
         . $c.common
         foreach ($bad in @('../x','C:/x','/x','a\b','a|b',"a`nb")) { Test-NxbV1InstallerRelativePath -Path $bad | Should -BeFalse }
         Test-NxbV1InstallerRelativePath -Path 'bin/nxb.ps1' | Should -BeTrue
+        Test-NxbV1InstallerReleaseVersion -ReleaseVersion '1.0.0' | Should -BeTrue
+        Test-NxbV1InstallerReleaseVersion -ReleaseVersion '1.0.1' | Should -BeTrue
+        Test-NxbV1InstallerReleaseVersion -ReleaseVersion '1.0.2' | Should -BeFalse
     }
 
     It 'rejects filesystem Windows system repository and reparse install roots' {
@@ -103,18 +109,20 @@ Describe 'NXB v1 installer contract' {
 
     It 'binds every manifest row to byte count and SHA256 and rejects duplicates' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).common -Raw
-        foreach ($token in @('$rowMap.ContainsKey($relative)','Get-NxbV1InstallerSha256 -Path $full','Package exceeds maximum byte budget.','Package exceeds maximum file count.')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$rowMap.ContainsKey($relative)','Get-NxbV1InstallerSha256 -Path $full','Package exceeds maximum byte budget.','Package exceeds maximum file count.','release_version=$ReleaseVersion')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'requires managed state identity before repair or uninstall' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).state -Raw
-        foreach ($token in @('Managed install state is missing.','nxb-v1-install-state-v1','package_manifest_sha256','Test-NxbV1InstalledRootAgainstManifest')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('Managed install state is missing.','nxb-v1-install-state-v1','package_manifest_sha256','Test-NxbV1InstalledRootAgainstManifest','release_version=$releaseVersion')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'exports a manifest only after independent package-byte verification' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).exporter -Raw
         $source | Should -Match ([regex]::Escape('Package manifest output must be outside PackageRoot.'))
         $source | Should -Match ([regex]::Escape('$outputFull.StartsWith($packagePrefix,[StringComparison]::OrdinalIgnoreCase)'))
+        $source | Should -Match ([regex]::Escape('$releaseVersion = [string]$policy.target_version'))
+        $source | Should -Match ([regex]::Escape('-ReleaseVersion $releaseVersion'))
         $source | Should -Match ([regex]::Escape('Test-NxbV1PackageManifestObject'))
         $source | Should -Match ([regex]::Escape('Test-NxbV1PackageAgainstManifest'))
         $source | Should -Match ([regex]::Escape('[Text.UTF8Encoding]::new($false)'))
@@ -153,13 +161,14 @@ Describe 'NXB v1 installer contract' {
     It 'uninstalls only an intact managed package and preserves external data evidence' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).operator -Raw
         $source | Should -Match ([regex]::Escape('Uninstall requires an intact managed package; run Repair first.'))
+        $source | Should -Match ([regex]::Escape('release_version=[string]$manifest.release_version'))
         $source | Should -Match ([regex]::Escape('data_removed=$false'))
         $source | Should -Match ([regex]::Escape('evidence_removed=$false'))
     }
 
     It 'gives the independent validator fourteen requirements and ten negative controls' {
         $source=Get-Content -LiteralPath (Get-NxbV1InstallerTestContext).validator -Raw
-        foreach ($token in @('"requirement_count": 14','"negative_count": 10','--data-sentinel','--evidence-sentinel','duplicate_manifest_path','traversal_manifest_path','unsorted_manifest','tampered_file_hash','wrong_total_bytes','stale_source_head','missing_corruption_detection','machine_install_claim','uninstall_data_removal','receipt_manifest_mismatch')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('"requirement_count": 14','"negative_count": 10','ADMITTED_RELEASE_VERSIONS = {"1.0.0", "1.0.1"}','expected_release_version = policy.get("target_version")','--data-sentinel','--evidence-sentinel','duplicate_manifest_path','traversal_manifest_path','unsorted_manifest','tampered_file_hash','wrong_total_bytes','stale_source_head','missing_corruption_detection','machine_install_claim','uninstall_data_removal','receipt_manifest_mismatch')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'carries four installer successor known-error rules without changing predecessors' {
