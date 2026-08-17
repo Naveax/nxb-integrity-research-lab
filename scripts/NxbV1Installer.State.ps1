@@ -13,7 +13,7 @@ function Get-NxbV1InstallerStateObject {
     $statePath = Get-NxbV1InstallerStatePath -InstallRoot $InstallRoot
     if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'Managed install state is missing.' }
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    if ([int]$state.schema_version -ne 1 -or [string]$state.contract_id -cne 'nxb-v1-install-state-v1' -or [string]$state.release_version -cne '1.0.0') { throw 'Managed install state identity drift.' }
+    if ([int]$state.schema_version -ne 1 -or [string]$state.contract_id -cne 'nxb-v1-install-state-v1' -or -not (Test-NxbV1InstallerReleaseVersion -ReleaseVersion ([string]$state.release_version))) { throw 'Managed install state identity drift.' }
     if (-not (Test-NxbV1InstallerLowerHex -Text ([string]$state.source_head) -Length 40)) { throw 'Managed install state source head is invalid.' }
     if (-not (Test-NxbV1InstallerLowerHex -Text ([string]$state.package_manifest_sha256) -Length 64)) { throw 'Managed install state manifest hash is invalid.' }
     return $state
@@ -57,10 +57,12 @@ function Get-NxbV1InstallerStateDocument {
         [Parameter(Mandatory)][string]$ManifestSha256,
         [Parameter()][string]$InstalledUtc = ([DateTime]::UtcNow.ToString('o'))
     )
+    $releaseVersion = [string]$Manifest.release_version
+    if (-not (Test-NxbV1InstallerReleaseVersion -ReleaseVersion $releaseVersion)) { throw 'Package release version is not admitted by install state.' }
     return [pscustomobject][ordered]@{
         schema_version=1
         contract_id='nxb-v1-install-state-v1'
-        release_version='1.0.0'
+        release_version=$releaseVersion
         source_head=[string]$Manifest.source_head
         install_mode=$InstallMode
         install_root=[IO.Path]::GetFullPath($InstallRoot)
