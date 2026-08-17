@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "nxb-v1-ci-v1",
-  "target_version": "1.0.0",
+  "target_version": "1.0.1",
   "predecessor_cli_head": "e665e8c27cb085853d23c8804ffaa97a19807eb9",
   "certified_cli_pointer": "certified/nxb-v1-cli",
   "workflow": {

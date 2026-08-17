@@ -32,6 +32,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
     It 'binds CI to the native-certified CLI predecessor' {
         $p = Get-Content -LiteralPath (Get-NxbV1CiTestContext).policy -Raw | ConvertFrom-Json
         [string]$p.contract_id | Should -BeExactly 'nxb-v1-ci-v1'
+        [string]$p.target_version | Should -BeExactly '1.0.1'
         [string]$p.predecessor_cli_head | Should -BeExactly 'e665e8c27cb085853d23c8804ffaa97a19807eb9'
         [string]$p.certified_cli_pointer | Should -BeExactly 'certified/nxb-v1-cli'
     }
