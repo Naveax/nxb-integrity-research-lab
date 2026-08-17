@@ -204,7 +204,7 @@ def main():
     policy=load_json(a.policy); manifest=load_json(a.manifest); desc=load_json(a.descriptor); env=load_json(a.envelope); trust=load_json(a.trust); lifecycle=load_json(a.lifecycle); update_state=load_json(a.update_state)
     stage=load_json(a.stage_receipt); applyr=load_json(a.apply_receipt); rollback=load_json(a.rollback_receipt); initial_state=load_json(a.initial_install_state)
     req={}
-    req['policy_identity']=policy.get('contract_id')=='nxb-v1-update-v1' and policy.get('predecessor_installer_head')==INSTALLER and policy.get('production_signing_head')==SIGNING and policy.get('release_integration_head')==RELEASE_INTEGRATION and policy.get('certified_implementation_head')==CERTIFIED
+    req['policy_identity']=policy.get('contract_id')=='nxb-v1-update-v1' and policy.get('predecessor_installer_head')==INSTALLER and policy.get('production_signing_head')==SIGNING and policy.get('release_integration_head')==RELEASE_INTEGRATION and policy.get('certified_implementation_head')==CERTIFIED and policy.get('target_version')=='1.0.1'
     req['trust_contract']=valid_trust(trust)
     req['descriptor_contract']=valid_descriptor(desc) and desc.get('release_head')==a.expected_head
     req['rsa_signature']=verify_envelope(env)

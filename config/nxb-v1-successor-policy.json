@@ -84,9 +84,9 @@
         "expected_target_version": "1.0.1"
       },
       "update": {
-        "status": "pending",
+        "status": "migrated",
         "policy_path": "config/nxb-v1-update-policy.json",
-        "expected_target_version": "1.0.0"
+        "expected_target_version": "1.0.1"
       },
       "production_signing": {
         "status": "pending",
