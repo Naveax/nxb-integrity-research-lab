@@ -92,7 +92,7 @@ if ($Mode -ceq 'PerMachine') {
 $existingState = $null
 if ($requireExisting) {
     $existingState = Get-NxbV1InstallerStateObject -InstallRoot $installFull
-    if ([string]$existingState.install_root -cne $installFull -or [string]$existingState.install_mode -cne $Mode -or [string]$existingState.source_head -cne [string]$manifest.source_head -or [string]$existingState.package_manifest_sha256 -cne $manifestSha) { throw 'Managed install state does not match requested package/mode/root.' }
+    if ([string]$existingState.install_root -cne $installFull -or [string]$existingState.install_mode -cne $Mode -or [string]$existingState.release_version -cne [string]$manifest.release_version -or [string]$existingState.source_head -cne [string]$manifest.source_head -or [string]$existingState.package_manifest_sha256 -cne $manifestSha) { throw 'Managed install state does not match requested package/mode/root.' }
 }
 
 $rollbackUsed = $false
@@ -112,7 +112,7 @@ try {
         $stagingRoot = $null
         if (-not (Test-NxbV1InstalledRootAgainstManifest -InstallRoot $installFull -Manifest $manifest)) { throw 'Installed root failed post-move verification.' }
         $installedState = Get-NxbV1InstallerStateObject -InstallRoot $installFull
-        if ([string]$installedState.package_manifest_sha256 -cne $manifestSha) { throw 'Installed state manifest binding failed.' }
+        if ([string]$installedState.package_manifest_sha256 -cne $manifestSha -or [string]$installedState.release_version -cne [string]$manifest.release_version) { throw 'Installed state manifest binding failed.' }
     }
     elseif ($Action -ceq 'Repair') {
         $stagingRoot = $installFull + '.nxb-repair-' + [Guid]::NewGuid().ToString('N')
@@ -124,7 +124,7 @@ try {
             $stagingRoot = $null
             if (-not (Test-NxbV1InstalledRootAgainstManifest -InstallRoot $installFull -Manifest $manifest)) { throw 'Repaired root failed verification.' }
             $repairedState = Get-NxbV1InstallerStateObject -InstallRoot $installFull
-            if ([string]$repairedState.package_manifest_sha256 -cne $manifestSha) { throw 'Repaired state manifest binding failed.' }
+            if ([string]$repairedState.package_manifest_sha256 -cne $manifestSha -or [string]$repairedState.release_version -cne [string]$manifest.release_version) { throw 'Repaired state manifest binding failed.' }
         }
         catch {
             $rollbackUsed = $true
@@ -162,7 +162,7 @@ $receipt = [pscustomobject][ordered]@{
     authority='nxb-v1-installer-operation-v1'
     action=$Action
     install_mode=$Mode
-    release_version='1.0.0'
+    release_version=[string]$manifest.release_version
     source_head=[string]$manifest.source_head
     install_root=$installFull
     package_manifest_sha256=$manifestSha
@@ -175,4 +175,4 @@ $receipt = [pscustomobject][ordered]@{
 }
 [IO.File]::WriteAllText($receiptFull,(($receipt | ConvertTo-Json -Depth 6)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 if ($PassThru) { $receipt }
-if (-not $PassThru) { Write-Information ('NXB v1 installer {0} passed: mode={1} files={2} bytes={3} root={4}' -f $Action,$Mode,[int]$receipt.files_verified,[int64]$receipt.bytes_verified,$installFull) }
+if (-not $PassThru) { Write-Information ('NXB v1 installer {0} passed: mode={1} version={2} files={3} bytes={4} root={5}' -f $Action,$Mode,[string]$receipt.release_version,[int]$receipt.files_verified,[int64]$receipt.bytes_verified,$installFull) }

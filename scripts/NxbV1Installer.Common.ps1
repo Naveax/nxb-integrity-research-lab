@@ -13,6 +13,12 @@ function Test-NxbV1InstallerLowerHex {
     return ($Text.Length -eq $Length -and $Text -cmatch '^[0-9a-f]+$')
 }
 
+function Test-NxbV1InstallerReleaseVersion {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ReleaseVersion)
+    return ($ReleaseVersion -ceq '1.0.0' -or $ReleaseVersion -ceq '1.0.1')
+}
+
 function Test-NxbV1InstallerRelativePath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
@@ -82,6 +88,7 @@ function Get-NxbV1PackageManifest {
     param(
         [Parameter(Mandatory)][string]$PackageRoot,
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$SourceHead,
+        [Parameter()][ValidateSet('1.0.0','1.0.1')][string]$ReleaseVersion = '1.0.0',
         [Parameter()][int]$MaximumFiles = 2048,
         [Parameter()][int64]$MaximumBytes = 1073741824,
         [Parameter()][string]$CreatedUtc = ([DateTime]::UtcNow.ToString('o'))
@@ -115,7 +122,7 @@ function Get-NxbV1PackageManifest {
     return [pscustomobject][ordered]@{
         schema_version=1
         contract_id='nxb-v1-package-manifest-v1'
-        release_version='1.0.0'
+        release_version=$ReleaseVersion
         source_head=$SourceHead.ToLowerInvariant()
         created_utc=$CreatedUtc
         file_count=$ordered.Count
@@ -128,7 +135,7 @@ function Test-NxbV1PackageManifestObject {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object]$Manifest,[Parameter(Mandatory)][int]$MaximumFiles,[Parameter(Mandatory)][int64]$MaximumBytes)
     try {
-        if ([int]$Manifest.schema_version -ne 1 -or [string]$Manifest.contract_id -cne 'nxb-v1-package-manifest-v1' -or [string]$Manifest.release_version -cne '1.0.0') { return $false }
+        if ([int]$Manifest.schema_version -ne 1 -or [string]$Manifest.contract_id -cne 'nxb-v1-package-manifest-v1' -or -not (Test-NxbV1InstallerReleaseVersion -ReleaseVersion ([string]$Manifest.release_version))) { return $false }
         if (-not (Test-NxbV1InstallerLowerHex -Text ([string]$Manifest.source_head) -Length 40)) { return $false }
         $files = @($Manifest.files)
         if ($files.Count -lt 1 -or $files.Count -gt $MaximumFiles -or [int]$Manifest.file_count -ne $files.Count) { return $false }

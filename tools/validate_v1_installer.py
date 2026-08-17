@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 
 
+ADMITTED_RELEASE_VERSIONS = {"1.0.0", "1.0.1"}
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -33,9 +36,15 @@ def safe_relative(path):
     return all(32 <= ord(ch) <= 126 for ch in path)
 
 
-def validate_manifest(manifest, expected_head, max_files, max_bytes):
+def validate_manifest(manifest, expected_head, expected_release_version, max_files, max_bytes):
     failures = []
-    if manifest.get("schema_version") != 1 or manifest.get("contract_id") != "nxb-v1-package-manifest-v1" or manifest.get("release_version") != "1.0.0":
+    release_version = manifest.get("release_version")
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("contract_id") != "nxb-v1-package-manifest-v1"
+        or release_version not in ADMITTED_RELEASE_VERSIONS
+        or release_version != expected_release_version
+    ):
         failures.append("manifest_identity")
     if manifest.get("source_head") != expected_head or not is_lower_hex(manifest.get("source_head"), 40):
         failures.append("manifest_head")
@@ -77,14 +86,14 @@ def validate_package(package_root: Path, manifest):
     return actual == expected
 
 
-def validate_receipt(receipt, action, mode, expected_head, manifest_sha):
+def validate_receipt(receipt, action, mode, expected_head, expected_release_version, manifest_sha):
     return (
         receipt.get("schema_version") == 1
         and receipt.get("status") == "passed"
         and receipt.get("authority") == "nxb-v1-installer-operation-v1"
         and receipt.get("action") == action
         and receipt.get("install_mode") == mode
-        and receipt.get("release_version") == "1.0.0"
+        and receipt.get("release_version") == expected_release_version
         and receipt.get("source_head") == expected_head
         and receipt.get("package_manifest_sha256") == manifest_sha
         and isinstance(receipt.get("files_verified"), int)
@@ -101,6 +110,7 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
     failures = []
     max_files = int(policy.get("maximum_files", 0))
     max_bytes = int(policy.get("maximum_package_bytes", 0))
+    expected_release_version = policy.get("target_version")
     manifest_sha = sha256_file(receipt_paths["manifest"])
 
     checks = []
@@ -109,7 +119,7 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
         and policy.get("contract_id") == "nxb-v1-installer-v1"
         and policy.get("predecessor_production_signing_head") == "91be58af59d0703de0159fea9d11935805e16022"
         and policy.get("certified_implementation_head") == "a10535b294c4d7ba8a4c3683154609087bf50c4b"
-        and policy.get("target_version") == "1.0.1"
+        and expected_release_version == "1.0.1"
     )
     checks.append(
         policy.get("data_policy", {}).get("data_root_is_separate") is True
@@ -118,7 +128,7 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
         and policy.get("operation_policy", {}).get("repair_atomic_replace_with_rollback") is True
         and policy.get("operation_policy", {}).get("post_copy_hash_verification") is True
     )
-    checks.append(len(validate_manifest(manifest, expected_head, max_files, max_bytes)) == 0)
+    checks.append(len(validate_manifest(manifest, expected_head, expected_release_version, max_files, max_bytes)) == 0)
     checks.append([row["path"] for row in manifest["files"]] == sorted([row["path"] for row in manifest["files"]]))
     checks.append(validate_package(package_root, manifest))
     checks.append(
@@ -127,11 +137,11 @@ def evaluate(policy, manifest, package_root, host, lifecycle, receipts, receipt_
         and host.get("powershell_core") is True
         and host.get("python_available") is True
     )
-    checks.append(validate_receipt(receipts["stage"], "Stage", "Portable", expected_head, manifest_sha))
-    checks.append(validate_receipt(receipts["install"], "Install", "PerUser", expected_head, manifest_sha))
+    checks.append(validate_receipt(receipts["stage"], "Stage", "Portable", expected_head, expected_release_version, manifest_sha))
+    checks.append(validate_receipt(receipts["install"], "Install", "PerUser", expected_head, expected_release_version, manifest_sha))
     checks.append(lifecycle.get("corruption_detected") is True)
-    checks.append(validate_receipt(receipts["repair"], "Repair", "PerUser", expected_head, manifest_sha) and lifecycle.get("repair_restored_bytes") is True)
-    checks.append(validate_receipt(receipts["uninstall"], "Uninstall", "PerUser", expected_head, manifest_sha) and lifecycle.get("install_root_absent_after_uninstall") is True)
+    checks.append(validate_receipt(receipts["repair"], "Repair", "PerUser", expected_head, expected_release_version, manifest_sha) and lifecycle.get("repair_restored_bytes") is True)
+    checks.append(validate_receipt(receipts["uninstall"], "Uninstall", "PerUser", expected_head, expected_release_version, manifest_sha) and lifecycle.get("install_root_absent_after_uninstall") is True)
     checks.append(
         lifecycle.get("receipt_hashes", {}).get("stage") == sha256_file(receipt_paths["stage"])
         and lifecycle.get("receipt_hashes", {}).get("install") == sha256_file(receipt_paths["install"])
@@ -259,8 +269,9 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-installer-independent-v1",
+        "authority": "nxb-v1-installer-independent-v2",
         "installer_head": args.expected_head,
+        "release_version": policy.get("target_version"),
         "requirement_count": 14,
         "requirements_validated": 14 - len(requirements_failures),
         "requirements_failures": requirements_failures,

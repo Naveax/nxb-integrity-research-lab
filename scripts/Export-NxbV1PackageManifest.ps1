@@ -14,6 +14,8 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $policyPath = Join-Path -Path $repositoryRoot -ChildPath 'config\nxb-v1-installer-policy.json'
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 if ([string]$policy.contract_id -cne 'nxb-v1-installer-v1' -or [int]$policy.schema_version -ne 1) { throw 'NXB v1 installer policy identity drift.' }
+$releaseVersion = [string]$policy.target_version
+if (-not (Test-NxbV1InstallerReleaseVersion -ReleaseVersion $releaseVersion)) { throw 'NXB v1 installer target version is not admitted by the package contract.' }
 
 $packageFull = [IO.Path]::GetFullPath($PackageRoot)
 $outputFull = [IO.Path]::GetFullPath($OutputPath)
@@ -30,12 +32,14 @@ if (-not (Test-NxbV1InstallerPathChainNoReparse -Path $outputParent)) { throw 'P
 $manifest = Get-NxbV1PackageManifest `
     -PackageRoot $packageFull `
     -SourceHead $SourceHead `
+    -ReleaseVersion $releaseVersion `
     -MaximumFiles ([int]$policy.maximum_files) `
     -MaximumBytes ([int64]$policy.maximum_package_bytes)
 if (-not (Test-NxbV1PackageManifestObject -Manifest $manifest -MaximumFiles ([int]$policy.maximum_files) -MaximumBytes ([int64]$policy.maximum_package_bytes))) { throw 'Generated package manifest failed its own strict contract.' }
+if ([string]$manifest.release_version -cne $releaseVersion) { throw 'Generated package manifest release version drift.' }
 if (-not (Test-NxbV1PackageAgainstManifest -PackageRoot $packageFull -Manifest $manifest)) { throw 'Generated package manifest does not bind the package bytes.' }
 
 $json = ($manifest | ConvertTo-Json -Depth 10) + [Environment]::NewLine
 [IO.File]::WriteAllText($outputFull,$json,[Text.UTF8Encoding]::new($false))
 if ($PassThru) { $manifest }
-if (-not $PassThru) { Write-Information ('NXB v1 package manifest exported: files={0} bytes={1} output={2}' -f [int]$manifest.file_count,[int64]$manifest.total_bytes,$outputFull) }
+if (-not $PassThru) { Write-Information ('NXB v1 package manifest exported: version={0} files={1} bytes={2} output={3}' -f [string]$manifest.release_version,[int]$manifest.file_count,[int64]$manifest.total_bytes,$outputFull) }
