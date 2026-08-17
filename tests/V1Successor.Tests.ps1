@@ -7,6 +7,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $script:PolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v1-successor-policy.json'
         $script:FinalPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-production-finalization-policy.json'
         $script:ValidatorPath = Join-Path $script:RepositoryRoot 'tools\validate_v1_successor.py'
+        $script:PackageSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v1-package-manifest.schema.json'
         $script:PredecessorHead = 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f'
         $script:PredecessorTree = '34779176d9e15cd4d700d46132785c0b25f19604'
     }
@@ -46,6 +47,13 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$releasePolicy.release_branch | Should -BeExactly 'release/nxb-v1.0.1-prep'
     }
 
+    It 'keeps historical v1.0.0 package compatibility while admitting v1.0.1 package identity' {
+        $schema = Get-Content -LiteralPath $script:PackageSchemaPath -Raw | ConvertFrom-Json
+        @($schema.properties.release_version.enum).Count | Should -Be 2
+        @($schema.properties.release_version.enum) | Should -Contain '1.0.0'
+        @($schema.properties.release_version.enum) | Should -Contain '1.0.1'
+    }
+
     It 'keeps successor ancestry rooted at the exact production predecessor' {
         $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
         if ($null -eq $gitCommand) { $gitCommand = Get-Command git -ErrorAction Stop }
@@ -66,7 +74,8 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v8'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v9'
+        [bool]$result.checks.package_release_versions | Should -BeTrue
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0
