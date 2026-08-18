@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "contract_id": "nxb-v1-production-release-v1",
+  "repository": "Naveax/nxb-integrity-research-lab",
+  "origin": "https://github.com/Naveax/nxb-integrity-research-lab.git",
+  "target_version": "1.0.1",
+  "tag": "v1.0.1",
+  "release_sequence": 2,
+  "channel": "stable",
+  "branches": {
+    "main": "main",
+    "release": "release/nxb-v1.0.1-prep",
+    "historical_certified": "release/nxb-v1.0.0-ci"
+  },
+  "predecessor": {
+    "version": "1.0.0",
+    "head": "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f",
+    "tree": "34779176d9e15cd4d700d46132785c0b25f19604",
+    "tag": "v1.0.0",
+    "github_release_id": 370629171,
+    "package_sha256": "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78",
+    "final_closure_sha256": "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355",
+    "production_signer_fingerprint": "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373",
+    "historical_certified_pointer": "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
+  },
+  "implementation": {
+    "certified_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b"
+  },
+  "ci": {
+    "workflow_name": "NXB v1 CI",
+    "workflow_path": ".github/workflows/nxb-v1-ci.yml",
+    "required_event": "workflow_dispatch",
+    "required_jobs": [
+      "nxb-v1 / signed-release-verify",
+      "nxb-v1 / hosted-contract",
+      "nxb-v1 / native-wpt",
+      "nxb-v1 / release-candidate"
+    ],
+    "hosted_artifact_prefix": "nxb-v1-hosted-validation-",
+    "native_artifact_prefix": "nxb-v1-native-validation-",
+    "ps7_passed": 899,
+    "ps7_total": 899,
+    "ps7_not_run": 0,
+    "ps51_passed": 892,
+    "ps51_total": 899,
+    "ps51_not_run": 7,
+    "ps51_excluded_tag": "PS7Only",
+    "native_review_entries": 7,
+    "native_repetition_count": 1,
+    "native_warmup_count": 0,
+    "versions": {
+      "pester": "5.7.1",
+      "psscriptanalyzer": "1.25.0",
+      "pyyaml": "6.0.3",
+      "jsonschema": "4.26.0"
+    },
+    "native_runner_labels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "nxb-native",
+      "wpt"
+    ]
+  },
+  "package": {
+    "zip_name": "nxb-v1.0.1.zip",
+    "manifest_name": "package-manifest.json",
+    "release_notes_name": "release-notes.txt",
+    "public_evidence_zip_name": "nxb-v1.0.1-public-evidence.zip"
+  },
+  "release_assets": [
+    "nxb-v1.0.1.zip",
+    "package-manifest.json",
+    "release-notes.txt",
+    "signature-envelope.json",
+    "update-descriptor.json",
+    "update-trust.json",
+    "production-readiness-receipt.json",
+    "nxb-v1.0.1-public-evidence.zip",
+    "production-key-rotation-policy.txt",
+    "production-revocation-policy.txt"
+  ],
+  "final_asset": "production-final-closure-receipt.json",
+  "safety": {
+    "require_merge_commit": true,
+    "require_certified_head_direct_parent": true,
+    "require_merge_tree_identity": true,
+    "require_release_branch_equals_main": true,
+    "require_historical_certified_pointer_unchanged": true,
+    "require_predecessor_tag_unchanged": true,
+    "require_predecessor_release_unchanged": true,
+    "require_predecessor_signer_fingerprint": true,
+    "allow_signer_rotation": false,
+    "allow_production_private_key_export": false,
+    "allow_auto_apply": false,
+    "allow_v1_0_0_mutation": false
+  }
+}
