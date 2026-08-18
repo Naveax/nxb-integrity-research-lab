@@ -106,14 +106,14 @@ function Get-NxbRemoteHead {
     return $Matches.sha.ToLowerInvariant()
 }
 
-function Get-NxbTrackedPaths {
+function Get-NxbTrackedPath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$RepositoryRoot)
     $raw = Invoke-NxbGit -WorkingDirectory $RepositoryRoot -ArgumentList @('ls-files')
     return @($raw -split '\r?\n' | ForEach-Object { ([string]$_).Replace('\','/').Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 }
 
-function Get-NxbLiteralTrackedDependencies {
+function Get-NxbLiteralTrackedDependency {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$RepositoryRoot,
@@ -145,7 +145,7 @@ function Get-NxbLiteralTrackedDependencies {
                 $prefix = $repoFull.TrimEnd($trimChars) + [IO.Path]::DirectorySeparatorChar
                 if ($candidateFull.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { $candidates.Add($candidateFull.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,[char]'/')) }
             }
-            catch {}
+            catch { Write-Verbose ('Literal dependency candidate skipped: {0}' -f $_.Exception.Message) }
         }
         foreach ($candidateObject in $candidates) {
             $candidate = [string]$candidateObject
@@ -164,7 +164,7 @@ function Copy-NxbRuntimeClosurePackage {
         [Parameter(Mandatory)][string]$ReceiptPath
     )
     Assert-Nxb (-not (Test-Path -LiteralPath $Destination)) 'Package destination must be absent.'
-    $tracked = @(Get-NxbTrackedPaths -RepositoryRoot $RepositoryRoot)
+    $tracked = @(Get-NxbTrackedPath -RepositoryRoot $RepositoryRoot)
     Assert-Nxb ($tracked.Count -gt 0) 'git ls-files returned no tracked files.'
     $trackedMap = @{}
     foreach ($path in $tracked) { $trackedMap[$path] = $true }
@@ -186,7 +186,7 @@ function Copy-NxbRuntimeClosurePackage {
         Assert-Nxb ($iterations -le 64) 'Runtime dependency closure did not converge.'
         $added = 0
         foreach ($relative in @($selected | Sort-Object)) {
-            foreach ($dependency in @(Get-NxbLiteralTrackedDependencies -RepositoryRoot $RepositoryRoot -RelativePath ([string]$relative) -TrackedMap $trackedMap)) {
+            foreach ($dependency in @(Get-NxbLiteralTrackedDependency -RepositoryRoot $RepositoryRoot -RelativePath ([string]$relative) -TrackedMap $trackedMap)) {
                 if ($selected.Add([string]$dependency)) { $added++ }
             }
         }
@@ -244,7 +244,7 @@ function Export-NxbDeterministicZip {
     finally { $stream.Dispose() }
 }
 
-function Get-NxbProductionSignerCandidates {
+function Get-NxbProductionSignerCandidate {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$CommonPath)
     . $CommonPath
@@ -480,7 +480,7 @@ Assert-Nxb (@(Get-ChildItem -LiteralPath $reviewExtract -File -Recurse).Count -e
 foreach ($binding in $reviewBindings.GetEnumerator()) {
     $reviewPath = Join-Path $reviewExtract ([string]$binding.Key).Replace('/',[IO.Path]::DirectorySeparatorChar)
     $sourcePath = [string]$binding.Value
-    Assert-Nxb (Test-Path -LiteralPath $reviewPath -PathType Leaf -and Test-Path -LiteralPath $sourcePath -PathType Leaf) ('Native review binding file missing: {0}' -f [string]$binding.Key)
+    Assert-Nxb ((Test-Path -LiteralPath $reviewPath -PathType Leaf) -and (Test-Path -LiteralPath $sourcePath -PathType Leaf)) ('Native review binding file missing: {0}' -f [string]$binding.Key)
     Assert-Nxb ((Get-NxbSha256 -Path $reviewPath) -ceq (Get-NxbSha256 -Path $sourcePath)) ('Native review entry is not byte-identical: {0}' -f [string]$binding.Key)
 }
 $ciAuditPath = Join-Path $releaseRoot 'ci-authority-audit.json'
@@ -577,7 +577,7 @@ Export-NxbDeterministicZip -Root $packageRoot -Output $packageZip
 
 Write-Information '[10/18] Production signer fingerprint and protected-key gate'
 $signingCommon = Join-Path $repositoryRoot 'scripts\NxbV1ProductionSigning.Common.ps1'
-$candidates = @(Get-NxbProductionSignerCandidates -CommonPath $signingCommon | Where-Object { [string]$_.public_fingerprint -ceq [string]$policy.predecessor.production_signer_fingerprint })
+$candidates = @(Get-NxbProductionSignerCandidate -CommonPath $signingCommon | Where-Object { [string]$_.public_fingerprint -ceq [string]$policy.predecessor.production_signer_fingerprint })
 if (-not [string]::IsNullOrWhiteSpace($CertificateStoreLocation)) { $candidates = @($candidates | Where-Object { [string]$_.store_location -ceq $CertificateStoreLocation }) }
 if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     $normalizedThumbprint = $CertificateThumbprint.Replace(' ','').ToUpperInvariant()
