@@ -40,10 +40,10 @@ Describe 'NXB v1 release integration contract' {
         [string]$policy.release_branch | Should -BeExactly 'release/nxb-v1.0.1-prep'
     }
 
-    It 'binds the successor release layer to the certified implementation and version boundary' {
+    It 'binds the successor release layer to the frozen production predecessor and version boundary' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
-        [string]$policy.certified_implementation_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
+        [string]$policy.certified_implementation_head | Should -BeExactly 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f'
         [string]$policy.certified_main_ancestor | Should -BeExactly 'b55fed4e4c960f8fea73b959f29dd57649c6bd65'
         [string]$policy.candidate_version | Should -BeExactly '1.0.1-candidate'
         [string]$policy.target_version | Should -BeExactly '1.0.1'
@@ -53,12 +53,13 @@ Describe 'NXB v1 release integration contract' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         $prefixes = @($policy.integration.allowed_successor_paths | ForEach-Object { [string]$_ })
-        $prefixes.Count | Should -Be 8
+        $prefixes.Count | Should -Be 9
         $prefixes | Should -Contain '.github/workflows/nxb-v1-'
         $prefixes | Should -Contain 'config/nxb-v1-'
         $prefixes | Should -Contain 'docs/NXB-V1-'
         $prefixes | Should -Contain 'schemas/nxb-v1-'
         $prefixes | Should -Contain 'scripts/Invoke-NxbV1'
+        $prefixes | Should -Contain 'scripts/NxbV1'
         $prefixes | Should -Contain 'scripts/Test-NxbV1'
         $prefixes | Should -Contain 'tests/V1'
         $prefixes | Should -Contain 'tools/validate_v1_'
