@@ -1,0 +1,1 @@
+{"authority":"nxb-v1-native-dispatch-discovery-v1","event":"workflow_dispatch","head_branch":"release/nxb-v1.0.1-release-integration-boundary-repair","head_sha":"0233fdb1f05b5c8be41f6303758f16c34a17571a","run_attempt":1,"run_conclusion":null,"run_id":32143157125,"run_number":61,"run_status":"queued","schema_version":1,"status":"found","workflow_name":"NXB v1 CI"}
