@@ -2,25 +2,27 @@
 
 ## Purpose
 
-This successor authority certifies the release-signing pipeline without modifying the native-certified Parts 1-10 tree or pretending that a production release has already been signed.
+This successor authority certifies the release-signing pipeline without modifying the frozen predecessor or pretending that a production release has already been signed.
 
-Predecessor release-integration authority:
+Historical production-signing component predecessor:
 
 ```text
 9371399bab4fbb921ad94198aa148c597c7b6261
 ```
 
-Certified implementation authority:
+Historical Parts 1-10 implementation authority:
 
 ```text
 a10535b294c4d7ba8a4c3683154609087bf50c4b
 ```
 
-Target release version:
+Current successor target release version:
 
 ```text
-1.0.0
+1.0.1
 ```
+
+The signing schema deliberately continues to admit historical `1.0.0` envelopes for verification. New production signing through the current policy must emit `1.0.1`.
 
 ## Two signer modes
 
@@ -48,16 +50,18 @@ The only production signing mode.
 
 A production signer can be backed by a Windows software key container or hardware-backed provider as long as the private-key protection contract is satisfied. Key custody, enrollment, rotation, and revocation remain separate release-operational responsibilities.
 
+For the v1.0.1 successor, signer discovery is additionally constrained by the frozen v1.0.0 production public fingerprint recorded in `config/nxb-v1-successor-policy.json`. A different valid certificate is not silently accepted as a signer rotation.
+
 ## Canonical material
 
 The signature is over explicitly ordered UTF-8 material, not arbitrary JSON serialization.
 
-The contract begins with:
+The current successor contract begins with:
 
 ```text
 nxb-v1-release-signature-canonical-v1
 schema_version=1
-release_version=1.0.0
+release_version=1.0.1
 release_head=...
 certified_implementation_head=...
 package_manifest_sha256=...
@@ -161,4 +165,4 @@ fixture/packages/z-last.bin
 
 This signing layer does not merge branches, create tags, push refs, create a GitHub Release, install certificates, generate a production private key, export a private key, or mark the candidate as a completed production release.
 
-Production release signing happens only after integration, packaging, installer hashes, release notes, and the protected production signer are all available.
+Production release signing happens only after exact-head hosted/native authority, merge-tree identity, packaging, installer hashes, release notes, and the protected production signer are all available. The end-to-end v1.0.1 closure is tracked by Issue #42.
