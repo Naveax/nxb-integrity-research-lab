@@ -5,6 +5,9 @@ Describe 'NXB v1.0.1 successor version transition' {
     BeforeAll {
         $script:RepositoryRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
         $script:PolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v1-successor-policy.json'
+        $script:ProductionReleasePolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v1-production-release-policy.json'
+        $script:ProductionReleaseScriptPath = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbV1ProductionRelease.ps1'
+        $script:ProductionReleaseDocPath = Join-Path $script:RepositoryRoot 'docs\NXB-V1-PRODUCTION-RELEASE.md'
         $script:FinalPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-production-finalization-policy.json'
         $script:ValidatorPath = Join-Path $script:RepositoryRoot 'tools\validate_v1_successor.py'
         $script:PackageSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v1-package-manifest.schema.json'
@@ -32,7 +35,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$f.part10.release_version | Should -BeExactly '1.0.0-candidate'
     }
 
-    It 'migrates every release-facing component target version to v1.0.1' {
+    It 'migrates every release-facing component and binds the production release authority to v1.0.1' {
         $p = Get-Content -LiteralPath $script:PolicyPath -Raw | ConvertFrom-Json
         foreach ($name in @('cli','installer','update','production_signing','ci','release_integration')) {
             $row = $p.version_transition.components.$name
@@ -46,6 +49,20 @@ Describe 'NXB v1.0.1 successor version transition' {
         $releasePolicy = Get-Content -LiteralPath $releasePolicyPath -Raw | ConvertFrom-Json
         [string]$releasePolicy.candidate_version | Should -BeExactly '1.0.1-candidate'
         [string]$releasePolicy.release_branch | Should -BeExactly 'release/nxb-v1.0.1-prep'
+        foreach ($requiredPath in @($script:ProductionReleasePolicyPath,$script:ProductionReleaseScriptPath,$script:ProductionReleaseDocPath)) {
+            Test-Path -LiteralPath $requiredPath -PathType Leaf | Should -BeTrue
+        }
+        $production = Get-Content -LiteralPath $script:ProductionReleasePolicyPath -Raw | ConvertFrom-Json
+        [string]$production.contract_id | Should -BeExactly 'nxb-v1-production-release-v1'
+        [string]$production.target_version | Should -BeExactly '1.0.1'
+        [string]$production.tag | Should -BeExactly 'v1.0.1'
+        [int]$production.release_sequence | Should -Be 2
+        [string]$production.predecessor.head | Should -BeExactly $script:PredecessorHead
+        [string]$production.predecessor.production_signer_fingerprint | Should -BeExactly '1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373'
+        [bool]$production.safety.require_merge_tree_identity | Should -BeTrue
+        [bool]$production.safety.allow_signer_rotation | Should -BeFalse
+        [bool]$production.safety.allow_production_private_key_export | Should -BeFalse
+        [bool]$production.safety.allow_auto_apply | Should -BeFalse
     }
 
     It 'keeps historical v1.0.0 package compatibility while admitting v1.0.1 package identity' {
@@ -70,7 +87,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $LASTEXITCODE | Should -Be 0
     }
 
-    It 'passes the successor independent validator with six negative controls' {
+    It 'passes the successor independent validator with production authority and six negative controls' {
         $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
         if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
         $python = [string]$pythonCommand.Source
@@ -79,9 +96,12 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v10'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v11'
         [bool]$result.checks.package_release_versions | Should -BeTrue
         [bool]$result.checks.update_release_versions | Should -BeTrue
+        [bool]$result.checks.production_release_policy | Should -BeTrue
+        [bool]$result.checks.required_documents_present | Should -BeTrue
+        [bool]$result.checks.transition_paths_allowed | Should -BeTrue
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0
