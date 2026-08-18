@@ -119,6 +119,7 @@ $envelopeSchemaPath = Join-Path $repositoryRoot 'schemas\nxb-v1-release-signatur
 $receiptSchemaPath = Join-Path $repositoryRoot 'schemas\nxb-v1-production-signing-certification-receipt.schema.json'
 $commonPath = Join-Path $PSScriptRoot 'NxbV1ProductionSigning.Common.ps1'
 $operatorPath = Join-Path $PSScriptRoot 'Invoke-NxbV1ReleaseManifestSigning.ps1'
+$exporterPath = Join-Path $PSScriptRoot 'Export-NxbV1PackageManifest.ps1'
 $testPath = Join-Path $repositoryRoot 'tests\V1ProductionSigning.Tests.ps1'
 $validatorPath = Join-Path $repositoryRoot 'tools\validate_v1_production_signing.py'
 $releaseErrorPath = Join-Path $repositoryRoot 'config\nxb-v1-release-known-error-signatures.json'
@@ -128,7 +129,7 @@ $baseSignaturePath = Join-Path $repositoryRoot 'config\nxb-known-error-signature
 $productionScannerPath = Join-Path $PSScriptRoot 'Invoke-NxbProductionKnownErrorScan.ps1'
 $productionScannerConfigPath = Join-Path $repositoryRoot 'config\nxb-production-known-error-extension.json'
 $authorityPaths = @($PSCommandPath,$commonPath,$operatorPath,$testPath)
-foreach ($requiredPath in @($policyPath,$envelopeSchemaPath,$receiptSchemaPath,$commonPath,$operatorPath,$testPath,$validatorPath,$releaseErrorPath,$signingErrorPath,$baseScannerPath,$baseSignaturePath,$productionScannerPath,$productionScannerConfigPath)) {
+foreach ($requiredPath in @($policyPath,$envelopeSchemaPath,$receiptSchemaPath,$commonPath,$operatorPath,$exporterPath,$testPath,$validatorPath,$releaseErrorPath,$signingErrorPath,$baseScannerPath,$baseSignaturePath,$productionScannerPath,$productionScannerConfigPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw ('Production signing component missing: {0}' -f $requiredPath) }
 }
 
@@ -145,7 +146,7 @@ if ($analyzerFindings.Count -gt 0) { throw ('Production signing PSScriptAnalyzer
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 $envelopeSchema = Get-Content -LiteralPath $envelopeSchemaPath -Raw | ConvertFrom-Json
 $receiptSchema = Get-Content -LiteralPath $receiptSchemaPath -Raw | ConvertFrom-Json
-if ([string]$policy.contract_id -cne 'nxb-v1-production-signing-v1' -or [int]$policy.schema_version -ne 1) { throw 'Production signing policy identity drift.' }
+if ([string]$policy.contract_id -cne 'nxb-v1-production-signing-v1' -or [int]$policy.schema_version -ne 1 -or [string]$policy.target_version -cne '1.0.1') { throw 'Production signing policy identity/version drift.' }
 if ([bool]$envelopeSchema.additionalProperties -or [bool]$receiptSchema.additionalProperties) { throw 'Production signing schemas must reject unknown fields.' }
 $predecessor = [string]$policy.predecessor_release_integration_head
 $predecessorRun = Invoke-NxbV1SigningNative -Executable $git -ArgumentList @('-C',$repositoryRoot,'merge-base','--is-ancestor',$predecessor,$currentHead)
@@ -188,35 +189,45 @@ $ps7Summary = ('{0}/{1}' -f [int]$ps7Contract.passed,[int]$ps7Contract.total)
 $ps51Summary = ('{0}/{1}' -f [int]$ps51Contract.passed,[int]$ps51Contract.total)
 if ($ps7Summary -cne '18/18' -or $ps51Summary -cne '18/18') { throw ('Dual-runtime signing summary drift: PS7={0} PS5.1={1}' -f $ps7Summary,$ps51Summary) }
 
-Write-Information '[3/7] Build real-file certification fixture and sign through operator command'
+Write-Information '[3/7] Build real package fixture and sign through operator command'
 $fixtureRoot = Join-Path $workRoot 'fixture'
-$artifactRoot = Join-Path $fixtureRoot 'artifacts'
-[IO.Directory]::CreateDirectory((Join-Path $artifactRoot 'packages')) | Out-Null
-$packageManifestPath = Join-Path $fixtureRoot 'package-manifest.json'
-$releaseNotesPath = Join-Path $fixtureRoot 'release-notes.txt'
-$aArtifact = Join-Path $artifactRoot 'packages\a-first.bin'
-$zArtifact = Join-Path $artifactRoot 'packages\z-last.bin'
-[IO.File]::WriteAllText($packageManifestPath,"{`"schema_version`":1,`"release_version`":`"1.0.0`",`"fixture`":true}`n",[Text.UTF8Encoding]::new($false))
-[IO.File]::WriteAllText($releaseNotesPath,"NXB v1 production signing certification fixture`n",[Text.UTF8Encoding]::new($false))
+$packageRoot = Join-Path $fixtureRoot 'package'
+[IO.Directory]::CreateDirectory($packageRoot) | Out-Null
+$aArtifact = Join-Path $packageRoot 'a-first.bin'
+$zArtifact = Join-Path $packageRoot 'z-last.bin'
 [IO.File]::WriteAllBytes($aArtifact,[Text.UTF8Encoding]::new($false).GetBytes("NXB-A-FIRST`n"))
 [IO.File]::WriteAllBytes($zArtifact,[Text.UTF8Encoding]::new($false).GetBytes("NXB-Z-LAST`n"))
+$packageManifestPath = Join-Path $fixtureRoot 'package-manifest.json'
+& $exporterPath -PackageRoot $packageRoot -SourceHead $currentHead -OutputPath $packageManifestPath
+$fixtureManifest = Get-Content -LiteralPath $packageManifestPath -Raw | ConvertFrom-Json
+if ([string]$fixtureManifest.release_version -cne '1.0.1' -or [string]$fixtureManifest.source_head -cne $currentHead -or [int]$fixtureManifest.file_count -ne 2) { throw 'Production signing fixture package identity drift.' }
+$releaseNotesPath = Join-Path $fixtureRoot 'release-notes.txt'
+[IO.File]::WriteAllText($releaseNotesPath,"NXB v1.0.1 production signing certification fixture`n",[Text.UTF8Encoding]::new($false))
 $envelopePath = Join-Path $outputFull 'v1-production-signing-envelope.json'
-$envelopePipeline = @(& $operatorPath -SignerMode CertificationEphemeral -ReleaseHead $currentHead -CertifiedImplementationHead $certifiedImplementation -PackageManifestPath $packageManifestPath -ReleaseNotesPath $releaseNotesPath -ArtifactRoot $artifactRoot -ArtifactPath @('packages/z-last.bin','packages/a-first.bin') -OutputPath $envelopePath -PassThru)
+$envelopePipeline = @(& $operatorPath -SignerMode CertificationEphemeral -ReleaseHead $currentHead -CertifiedImplementationHead $certifiedImplementation -PackageManifestPath $packageManifestPath -ReleaseNotesPath $releaseNotesPath -ArtifactRoot $fixtureRoot -ArtifactPath @('package/z-last.bin','package/a-first.bin') -OutputPath $envelopePath -PassThru)
 $envelope = $null
 foreach ($item in $envelopePipeline) { if ($null -ne $item -and $null -ne $item.PSObject.Properties['signature_b64']) { $envelope=$item } }
 if ($null -eq $envelope) { throw 'Production signing operator returned no signed certification envelope.' }
-if ([string]$envelope.signer_mode -cne 'certification-ephemeral' -or [bool]$envelope.private_key_persisted -or [bool]$envelope.production_signer_claimed -or [int]$envelope.key_size_bits -lt 3072) { throw 'Certification signer boundary failed.' }
+if ([string]$envelope.release_version -cne '1.0.1' -or [string]$envelope.signer_mode -cne 'certification-ephemeral' -or [bool]$envelope.private_key_persisted -or [bool]$envelope.production_signer_claimed -or [int]$envelope.key_size_bits -lt 3072) { throw 'Certification signer/version boundary failed.' }
 if ([string]$envelope.package_manifest_sha256 -cne (Get-NxbV1SigningFileSha256 -Path $packageManifestPath)) { throw 'Envelope package manifest hash binding failed.' }
 if ([string]$envelope.release_notes_sha256 -cne (Get-NxbV1SigningFileSha256 -Path $releaseNotesPath)) { throw 'Envelope release notes hash binding failed.' }
+$artifactMap = @{}
+foreach ($artifact in @($envelope.artifacts)) { $artifactMap[[string]$artifact.path] = $artifact }
+foreach ($manifestFile in @($fixtureManifest.files)) {
+    $signedPath = 'package/' + [string]$manifestFile.path
+    if (-not $artifactMap.ContainsKey($signedPath)) { throw ('Certification envelope package coverage missing: {0}' -f $signedPath) }
+    $signedArtifact = $artifactMap[$signedPath]
+    if ([int64]$signedArtifact.bytes -ne [int64]$manifestFile.bytes -or [string]$signedArtifact.sha256 -cne [string]$manifestFile.sha256) { throw ('Certification envelope package binding drift: {0}' -f $signedPath) }
+}
 . $commonPath
 if (-not (Test-NxbV1SignedReleaseEnvelope -Envelope $envelope)) { throw 'Authority-level PowerShell signature replay failed.' }
 
 Write-Information '[4/7] Independent Python 12/12 + 8/8 RSA and adversarial replay'
 $independentPath = Join-Path $workRoot 'v1-production-signing-independent-validation.json'
-$independentRun = Invoke-NxbV1SigningNative -Executable $pythonPath -ArgumentList @($validatorPath,'--policy',$policyPath,'--envelope',$envelopePath,'--expected-release-head',$currentHead,'--expected-certified-head',$certifiedImplementation,'--output',$independentPath)
+$independentRun = Invoke-NxbV1SigningNative -Executable $pythonPath -ArgumentList @($validatorPath,'--policy',$policyPath,'--envelope',$envelopePath,'--expected-release-head',$currentHead,'--expected-certified-head',$certifiedImplementation,'--expected-signer-mode','certification-ephemeral','--output',$independentPath)
 if ($independentRun.exit_code -ne 0) { throw ('Production signing independent replay failed:{0}{1}' -f [Environment]::NewLine,$independentRun.output) }
 $independent = Get-Content -LiteralPath $independentPath -Raw | ConvertFrom-Json
-if ([string]$independent.status -cne 'passed' -or [int]$independent.requirements_validated -ne 12 -or [int]$independent.negative_controls_validated -ne 8 -or @($independent.failures).Count -ne 0) { throw 'Production signing independent replay is not 12/12 + 8/8.' }
+if ([string]$independent.status -cne 'passed' -or [string]$independent.authority -cne 'nxb-v1-production-signing-independent-v2' -or [string]$independent.expected_signer_mode -cne 'certification-ephemeral' -or [int]$independent.requirements_validated -ne 12 -or [int]$independent.negative_controls_validated -ne 8 -or @($independent.failures).Count -ne 0) { throw 'Production signing independent replay is not 12/12 + 8/8.' }
 
 Write-Information '[5/7] Build production signing certification receipt'
 $certificationReceiptPath = Join-Path $outputFull 'v1-production-signing-certification-receipt.json'
@@ -233,12 +244,12 @@ $certificationReceipt = [pscustomobject][ordered]@{
 }
 [IO.File]::WriteAllText($certificationReceiptPath,(($certificationReceipt | ConvertTo-Json -Depth 8)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 
-Write-Information '[6/7] Build bounded review ZIP with signed fixture bytes'
+Write-Information '[6/7] Build bounded review ZIP with signed package fixture bytes'
 [IO.Directory]::CreateDirectory($reviewRoot) | Out-Null
 $reviewFiles = [ordered]@{
     'base-known-error-scan.json'=$baseScanPath; 'production-known-error-scan.json'=$productionScanPath; 'release-known-error-scan.json'=$releaseScanPath; 'signing-known-error-scan.json'=$signingScanPath;
     'v1-production-signing-envelope.json'=$envelopePath; 'v1-production-signing-independent-validation.json'=$independentPath; 'v1-production-signing-certification-receipt.json'=$certificationReceiptPath;
-    'fixture/package-manifest.json'=$packageManifestPath; 'fixture/release-notes.txt'=$releaseNotesPath; 'fixture/packages/a-first.bin'=$aArtifact; 'fixture/packages/z-last.bin'=$zArtifact
+    'fixture/package-manifest.json'=$packageManifestPath; 'fixture/release-notes.txt'=$releaseNotesPath; 'fixture/package/a-first.bin'=$aArtifact; 'fixture/package/z-last.bin'=$zArtifact
 }
 foreach ($entry in $reviewFiles.GetEnumerator()) {
     $sourcePath=[string]($entry.Value); $entryName=[string]($entry.Key); $destinationPath=Join-Path -Path $reviewRoot -ChildPath $entryName.Replace('/',[IO.Path]::DirectorySeparatorChar)
@@ -247,23 +258,19 @@ foreach ($entry in $reviewFiles.GetEnumerator()) {
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($reviewRoot,$reviewZip,[IO.Compression.CompressionLevel]::Optimal,$false)
-
-Write-Information '[7/7] Final review membership and closure summary'
-$zip=[IO.Compression.ZipFile]::OpenRead($reviewZip)
-try { $entries=@($zip.Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object) }
-finally { $zip.Dispose() }
-$expectedEntries=@($reviewFiles.Keys | Sort-Object)
-if ($entries.Count -ne 11 -or ($entries -join "`n") -cne ($expectedEntries -join "`n")) { throw ('Production signing review ZIP content mismatch: {0}' -f ($entries -join ', ')) }
-$result=[pscustomobject][ordered]@{
-    schema_version=1; status='passed'; authority='nxb-v1-production-signing-certification-v1'; release_head=$currentHead; certified_implementation_head=$certifiedImplementation;
-    release_integration_predecessor_head=$predecessor; ps7=$ps7Summary; ps51=$ps51Summary; independent_requirements=12; independent_negative_controls=8;
-    base_known_error_rules=[int]$baseScan.rule_count; production_extension_rules=[int]$productionScan.extension_rule_count; production_schema_contracts=[int]$productionScan.schema_contract_count;
-    production_guard_contracts=[int]$productionScan.guard_contract_count; release_known_error_rules=[int]$releaseScan.rule_count; signing_known_error_rules=[int]$signingScan.rule_count;
-    known_error_findings=([int]$baseScan.finding_count+[int]$productionScan.finding_count+[int]$releaseScan.finding_count+[int]$signingScan.finding_count); analyzer_findings=$analyzerFindings.Count;
-    signing_algorithm='RSA-PKCS1-SHA256'; key_size_bits=[int]$envelope.key_size_bits; public_fingerprint=[string]$envelope.public_key.fingerprint;
-    production_signer_claimed=$false; actual_production_release_signed=$false; production_signing_pipeline_certified=$true;
-    receipt_path=$certificationReceiptPath; receipt_sha256=(Get-NxbV1SigningFileSha256 -Path $certificationReceiptPath); envelope_path=$envelopePath; envelope_sha256=(Get-NxbV1SigningFileSha256 -Path $envelopePath);
-    review_zip_path=$reviewZip; review_zip_sha256=(Get-NxbV1SigningFileSha256 -Path $reviewZip)
+$zip = [IO.Compression.ZipFile]::OpenRead($reviewZip)
+try {
+    if ($zip.Entries.Count -ne 11) { throw ('Production signing review ZIP entry-count drift: {0}' -f $zip.Entries.Count) }
 }
-Write-Information ('NXB v1 production signing certification passed: head={0} PS7={1} PS5.1={2} independent=12/12 negatives=8/8 RSA={3} release_rules=1 signing_rules=2 findings=0 production_signer=false actual_release_signed=false.' -f $currentHead,$ps7Summary,$ps51Summary,[int]$envelope.key_size_bits)
-if ($PassThru) { $result }
+finally { $zip.Dispose() }
+
+Write-Information '[7/7] Close certification result without crossing production boundary'
+$result = [pscustomobject][ordered]@{
+    status='passed'; authority='nxb-v1-production-signing-certification-v1'; head_sha=$currentHead;
+    ps7=$ps7Summary; ps51=$ps51Summary; independent_requirements=12; independent_negative_controls=8;
+    public_fingerprint=[string]$envelope.public_key.fingerprint; envelope_sha256=(Get-NxbV1SigningFileSha256 -Path $envelopePath);
+    certification_private_key_persisted=$false; production_signer_claimed=$false; actual_production_release_signed=$false;
+    production_signing_pipeline_certified=$true; review_entries=11; review_zip_sha256=(Get-NxbV1SigningFileSha256 -Path $reviewZip)
+}
+if ($PassThru) { return $result }
+Write-Information ('NXB v1 production signing certification passed: head={0} PS7={1} PS5.1={2} independent=12/12 negatives=8/8 production=false' -f $currentHead,$ps7Summary,$ps51Summary)
