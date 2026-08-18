@@ -49,6 +49,13 @@ if (-not (Test-Path -LiteralPath $artifactRootFull -PathType Container)) { throw
 if ((Get-Item -LiteralPath $artifactRootFull -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'ArtifactRoot must not be a reparse point.' }
 if ($ArtifactPath.Count -lt 1 -or $ArtifactPath.Count -gt [int]$policy.release_manifest.maximum_artifacts) { throw 'ArtifactPath count is outside the production signing policy.' }
 
+try { $packageDocument = Get-Content -LiteralPath $packageFull -Raw | ConvertFrom-Json }
+catch { throw ('Package manifest JSON is invalid: {0}' -f $_.Exception.Message) }
+if ([int]$packageDocument.schema_version -ne 1 -or [string]$packageDocument.contract_id -cne 'nxb-v1-package-manifest-v1') { throw 'Package manifest identity drift.' }
+if ([string]$packageDocument.release_version -cne [string]$policy.target_version) { throw 'Package manifest release version does not match production signing target version.' }
+if ([string]$packageDocument.source_head -cne $ReleaseHead.ToLowerInvariant()) { throw 'Package manifest source head does not match release head.' }
+if ([int]$packageDocument.file_count -lt 1 -or @($packageDocument.files).Count -ne [int]$packageDocument.file_count) { throw 'Package manifest file-count contract drift.' }
+
 $artifactRows = [Collections.Generic.List[object]]::new()
 $artifactSourceByPath = @{}
 $trimChars = [char[]]@([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
@@ -64,6 +71,17 @@ foreach ($relativeObject in $ArtifactPath) {
     $sha = Get-NxbV1ReleaseSigningFileSha256 -Path $sourceFull
     $artifactRows.Add([pscustomobject][ordered]@{ path=$relative; bytes=[int64]$item.Length; sha256=$sha })
     $artifactSourceByPath[$relative] = $sourceFull
+}
+
+foreach ($packageFile in @($packageDocument.files)) {
+    $manifestRelative = [string]$packageFile.path
+    if (-not (Test-NxbV1SigningArtifactPath -Path $manifestRelative)) { throw ('Unsafe package manifest path: {0}' -f $manifestRelative) }
+    $signedPackagePath = 'package/' + $manifestRelative
+    if (-not $artifactSourceByPath.ContainsKey($signedPackagePath)) { throw ('Signed artifact set is missing package manifest file: {0}' -f $signedPackagePath) }
+    $signedRow = @($artifactRows | Where-Object { [string]$_.path -ceq $signedPackagePath })[0]
+    if ([int64]$signedRow.bytes -ne [int64]$packageFile.bytes -or [string]$signedRow.sha256 -cne [string]$packageFile.sha256) {
+        throw ('Signed package artifact does not match package manifest bytes/hash: {0}' -f $signedPackagePath)
+    }
 }
 
 $packageSha = Get-NxbV1ReleaseSigningFileSha256 -Path $packageFull
