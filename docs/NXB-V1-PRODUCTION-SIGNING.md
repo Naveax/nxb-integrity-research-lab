@@ -52,6 +52,27 @@ A production signer can be backed by a Windows software key container or hardwar
 
 For the v1.0.1 successor, signer discovery is additionally constrained by the frozen v1.0.0 production public fingerprint recorded in `config/nxb-v1-successor-policy.json`. A different valid certificate is not silently accepted as a signer rotation.
 
+## Package identity binding
+
+The signing operator parses the real package manifest before any signature is produced. It requires:
+
+```text
+schema_version = 1
+contract_id     = nxb-v1-package-manifest-v1
+release_version = 1.0.1
+source_head     = release_head
+```
+
+The manifest must contain at least one file and its `file_count` must equal the actual file-row count.
+
+Every manifest row must also exist in the signed artifact set as:
+
+```text
+package/<manifest-relative-path>
+```
+
+The signed artifact byte count and SHA-256 must exactly match the package-manifest row. Hashing the manifest file alone is not considered sufficient release identity binding.
+
 ## Canonical material
 
 The signature is over explicitly ordered UTF-8 material, not arbitrary JSON serialization.
@@ -95,11 +116,29 @@ Artifact paths must be safe forward-slash relative paths, ASCII-only, unique, no
 
 It rejects reparse-point files and an ArtifactRoot that is itself a reparse point. After signing, it re-hashes package metadata and every artifact before writing the final signature envelope. A mid-signing mutation therefore fails instead of producing a misleading release envelope.
 
-## Independent verification
+## Independent verification v2
 
 `tools/validate_v1_production_signing.py` reconstructs the canonical material independently and verifies RSA-PKCS1-v1.5/SHA-256 with public modulus/exponent arithmetic. It does not trust PowerShell `VerifyData()` as the final independent authority.
 
-Eight adversarial controls are mandatory:
+The v2 independent authority has two explicit expected modes:
+
+```text
+certification-ephemeral
+production-windows-certificate-store
+```
+
+Certification mode requires an ephemeral key ID and forbids production signer claims or persisted private-key state.
+
+Production mode requires:
+
+- signer mode `production-windows-certificate-store`;
+- `production_signer_claimed=true`;
+- certificate-store key ID `win-cert:<StoreLocation>/My/<THUMBPRINT>`;
+- public-key fingerprint equal to the separately supplied expected production fingerprint.
+
+The production fingerprint is an external trust input. The envelope cannot make itself trusted merely by containing a self-consistent public key.
+
+Eight adversarial controls are mandatory in either expected mode:
 
 1. tampered release head,
 2. tampered package-manifest hash,
@@ -123,7 +162,9 @@ The repaired helper surface uses `Get-NxbV1CertificationSigner` and `ConvertTo-N
 
 ## Certification fixture
 
-The certification authority signs a bounded synthetic release fixture through the same operator-facing signing command used by production mode. The review ZIP includes the fixture package manifest, release notes, and both fixture artifacts so their signed hashes can be independently recalculated.
+The certification authority creates a real two-file package root and exports its manifest through `scripts/Export-NxbV1PackageManifest.ps1`. The fixture therefore uses the same `1.0.1` package identity and exact current source head that the operator is expected to sign.
+
+The certification authority then signs those package files through the same operator-facing command used by production mode and independently verifies the envelope in explicit `certification-ephemeral` mode.
 
 Expected certification closure:
 
@@ -157,12 +198,12 @@ v1-production-signing-independent-validation.json
 v1-production-signing-certification-receipt.json
 fixture/package-manifest.json
 fixture/release-notes.txt
-fixture/packages/a-first.bin
-fixture/packages/z-last.bin
+fixture/package/a-first.bin
+fixture/package/z-last.bin
 ```
 
 ## Deliberate non-capabilities
 
 This signing layer does not merge branches, create tags, push refs, create a GitHub Release, install certificates, generate a production private key, export a private key, or mark the candidate as a completed production release.
 
-Production release signing happens only after exact-head hosted/native authority, merge-tree identity, packaging, installer hashes, release notes, and the protected production signer are all available. The end-to-end v1.0.1 closure is tracked by Issue #42.
+Production release signing happens only after exact-head hosted/native authority, merge-tree identity, packaging, installer hashes, release notes, and the protected production signer are all available. The end-to-end v1.0.1 closure is tracked by Issue #42 and `docs/NXB-V1-PRODUCTION-RELEASE.md`.
