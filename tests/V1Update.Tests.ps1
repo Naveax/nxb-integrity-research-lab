@@ -46,6 +46,9 @@ Describe 'NXB v1 signed staged update contract' {
         [bool]$s.additionalProperties | Should -BeFalse
         [string]$s.properties.contract_id.const | Should -BeExactly 'nxb-v1-update-descriptor-v1'
         [int]$s.properties.release_sequence.minimum | Should -Be 1
+        @($s.properties.release_version.enum).Count | Should -Be 2
+        @($s.properties.release_version.enum) | Should -Contain '1.0.0'
+        @($s.properties.release_version.enum) | Should -Contain '1.0.1'
         @($s.properties.channel.enum) | Should -Contain 'stable'
     }
 
@@ -115,9 +118,9 @@ Describe 'NXB v1 signed staged update contract' {
     It 'binds signed descriptor manifest package and empty release notes to real fixture bytes' {
         $c=Get-NxbV1UpdateTestContext
         $source=Get-Content -LiteralPath $c.common -Raw
-        foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('update/update-descriptor.json','package/','package_manifest_sha256','Test-NxbV1PackageAgainstManifest','Get-NxbV1UpdateEnvelopeArtifactMap','Descriptor.release_version -cne [string]$Manifest.release_version','Descriptor.release_version -cne [string]$verificationEnvelope.release_version')) { $source | Should -Match ([regex]::Escape($token)) }
         $authoritySource=Get-Content -LiteralPath $c.authority -Raw
-        foreach ($token in @('$artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative','$artifactItem=Get-Item -LiteralPath $artifactPath','bytes=[int64]$artifactItem.Length','sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath)','$emptyNotesPath=Join-Path $fixtureRoot ''release-notes.md''','$emptyNotesSha=Get-NxbV1UpdateCertSha256 $emptyNotesPath')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @('$artifactPath=Join-Path -Path $targetPackageRoot -ChildPath $nativeRelative','$artifactItem=Get-Item -LiteralPath $artifactPath','bytes=[int64]$artifactItem.Length','sha256=(Get-NxbV1UpdateCertSha256 -Path $artifactPath)','$emptyNotesPath=Join-Path $fixtureRoot ''release-notes.md''','$emptyNotesSha=Get-NxbV1UpdateCertSha256 $emptyNotesPath','release_version=[string]$policy.target_version','-ReleaseVersion ([string]$policy.target_version)')) { $authoritySource | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'uses ordinal update tree canonicalization' {
@@ -179,7 +182,7 @@ Describe 'NXB v1 signed staged update contract' {
 
     It 'gives the independent validator sixteen requirements twelve negatives raw RSA and persisted anti-replay replay' {
         $source=Get-Content -LiteralPath (Get-NxbV1UpdateTestContext).validator -Raw
-        foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback','update_state','highest_seen_release_sequence')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @("'requirement_count':16","'negative_count':12",'pow(s, e, n)','wrong_signer','tampered_signature','revoked_head','sequence_replay','minimum_sequence','channel_mismatch','weak_key_metadata','duplicate_artifact','missing_descriptor_artifact','tampered_package_hash','auto_apply_claim','missing_manual_rollback','update_state','highest_seen_release_sequence','ADMITTED_RELEASE_VERSIONS','badm_version','nxb-v1-update-independent-v2')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
     It 'carries seven update successor rules without duplicating release ERR-036' {

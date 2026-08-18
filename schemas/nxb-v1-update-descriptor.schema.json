@@ -9,7 +9,7 @@
     "schema_version": {"const": 1},
     "contract_id": {"const": "nxb-v1-update-descriptor-v1"},
     "channel": {"enum": ["stable","beta"]},
-    "release_version": {"const": "1.0.0"},
+    "release_version": {"enum": ["1.0.0", "1.0.1"]},
     "release_sequence": {"type": "integer", "minimum": 1, "maximum": 2147483647},
     "release_head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "certified_implementation_head": {"const": "a10535b294c4d7ba8a4c3683154609087bf50c4b"},

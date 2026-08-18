@@ -9,6 +9,7 @@ CERTIFIED = 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
 INSTALLER = 'efdeb275c25a7df1326d7effdddb4af8d83ef81d'
 SIGNING = '91be58af59d0703de0159fea9d11935805e16022'
 RELEASE_INTEGRATION = '9371399bab4fbb921ad94198aa148c597c7b6261'
+ADMITTED_RELEASE_VERSIONS = {'1.0.0', '1.0.1'}
 
 
 def load_json(path):
@@ -83,7 +84,7 @@ def canonical_material(envelope):
 
 def verify_envelope(envelope):
     try:
-        if envelope.get('schema_version') != 1 or envelope.get('status') != 'signed' or envelope.get('release_version') != '1.0.0':
+        if envelope.get('schema_version') != 1 or envelope.get('status') != 'signed' or envelope.get('release_version') not in ADMITTED_RELEASE_VERSIONS:
             return False
         if not HEX40.fullmatch(str(envelope.get('release_head',''))) or envelope.get('certified_implementation_head') != CERTIFIED:
             return False
@@ -112,7 +113,7 @@ def verify_envelope(envelope):
 
 
 def valid_manifest(manifest):
-    if manifest.get('schema_version') != 1 or manifest.get('contract_id') != 'nxb-v1-package-manifest-v1' or manifest.get('release_version') != '1.0.0':
+    if manifest.get('schema_version') != 1 or manifest.get('contract_id') != 'nxb-v1-package-manifest-v1' or manifest.get('release_version') not in ADMITTED_RELEASE_VERSIONS:
         return False
     if not HEX40.fullmatch(str(manifest.get('source_head',''))): return False
     rows = manifest.get('files')
@@ -153,7 +154,7 @@ def valid_trust(trust):
 
 
 def valid_descriptor(desc):
-    return desc.get('schema_version') == 1 and desc.get('contract_id') == 'nxb-v1-update-descriptor-v1' and desc.get('channel') in ('stable','beta') and desc.get('release_version') == '1.0.0' and isinstance(desc.get('release_sequence'),int) and desc['release_sequence'] >= 1 and bool(HEX40.fullmatch(str(desc.get('release_head','')))) and desc.get('certified_implementation_head') == CERTIFIED and bool(HEX64.fullmatch(str(desc.get('package_manifest_sha256','')))) and isinstance(desc.get('created_utc'),str) and bool(desc['created_utc'])
+    return desc.get('schema_version') == 1 and desc.get('contract_id') == 'nxb-v1-update-descriptor-v1' and desc.get('channel') in ('stable','beta') and desc.get('release_version') in ADMITTED_RELEASE_VERSIONS and isinstance(desc.get('release_sequence'),int) and desc['release_sequence'] >= 1 and bool(HEX40.fullmatch(str(desc.get('release_head','')))) and desc.get('certified_implementation_head') == CERTIFIED and bool(HEX64.fullmatch(str(desc.get('package_manifest_sha256','')))) and isinstance(desc.get('created_utc'),str) and bool(desc['created_utc'])
 
 
 def artifact_map(envelope):
@@ -173,6 +174,7 @@ def bundle_valid(manifest, manifest_path, package_root, desc, desc_path, env, tr
     if desc['release_head'] in trust['revoked_release_heads']: return False
     msha=sha256_file(manifest_path); dsha=sha256_file(desc_path)
     if desc['release_head'] != env['release_head'] or manifest['source_head'] != env['release_head'] or desc['certified_implementation_head'] != env['certified_implementation_head']: return False
+    if desc['release_version'] != manifest['release_version'] or desc['release_version'] != env['release_version']: return False
     if desc['package_manifest_sha256'] != msha or env['package_manifest_sha256'] != msha: return False
     amap=artifact_map(env)
     drow=amap.get('update/update-descriptor.json')
@@ -206,10 +208,10 @@ def main():
     req={}
     req['policy_identity']=policy.get('contract_id')=='nxb-v1-update-v1' and policy.get('predecessor_installer_head')==INSTALLER and policy.get('production_signing_head')==SIGNING and policy.get('release_integration_head')==RELEASE_INTEGRATION and policy.get('certified_implementation_head')==CERTIFIED and policy.get('target_version')=='1.0.1'
     req['trust_contract']=valid_trust(trust)
-    req['descriptor_contract']=valid_descriptor(desc) and desc.get('release_head')==a.expected_head
-    req['rsa_signature']=verify_envelope(env)
+    req['descriptor_contract']=valid_descriptor(desc) and desc.get('release_head')==a.expected_head and desc.get('release_version')==policy.get('target_version')
+    req['rsa_signature']=verify_envelope(env) and env.get('release_version')==policy.get('target_version')
     req['pinned_signer']=env.get('public_key',{}).get('fingerprint')==trust.get('trusted_signer_fingerprint')
-    req['manifest_contract']=valid_manifest(manifest)
+    req['manifest_contract']=valid_manifest(manifest) and manifest.get('release_version')==policy.get('target_version')
     req['package_bytes']=package_matches(a.package_root,manifest)
     req['signed_bundle']=bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,env,trust,0)
     core_true=('trust_anchor_passed','stage_passed','apply_passed','post_apply_verified','rollback_snapshot_created','failure_rollback_passed','manual_rollback_passed','downgrade_rejected','sequence_replay_rejected','revoked_head_rejected','wrong_signer_rejected','tampered_descriptor_rejected','tampered_package_rejected','data_preserved','evidence_preserved')
@@ -243,7 +245,9 @@ def main():
     bad=copy.deepcopy(env); bad['key_size_bits']=2048; neg['weak_key_metadata']=not verify_envelope(bad)
     bad=copy.deepcopy(env); bad['artifacts']=bad['artifacts']+[copy.deepcopy(bad['artifacts'][0])]; neg['duplicate_artifact']=not verify_envelope(bad)
     bad=copy.deepcopy(env); bad['artifacts']=[x for x in bad['artifacts'] if x.get('path')!='update/update-descriptor.json']; neg['missing_descriptor_artifact']=not bundle_valid(manifest,a.manifest,a.package_root,desc,a.descriptor,bad,trust,0)
-    badm=copy.deepcopy(manifest); badm['files'][0]['sha256']='0'*64; neg['tampered_package_hash']=not valid_manifest(badm) or not package_matches(a.package_root,badm)
+    badm=copy.deepcopy(manifest); badm['files'][0]['sha256']='0'*64
+    badm_version=copy.deepcopy(manifest); badm_version['release_version']='1.0.0' if manifest.get('release_version')=='1.0.1' else '1.0.1'
+    neg['tampered_package_hash']=(not valid_manifest(badm) or not package_matches(a.package_root,badm)) and not bundle_valid(badm_version,a.manifest,a.package_root,desc,a.descriptor,env,trust,0)
     badr=copy.deepcopy(applyr); badr['auto_apply']=True; neg['auto_apply_claim']=not (badr.get('auto_apply') is False)
     badl=copy.deepcopy(lifecycle); badl['manual_rollback_passed']=False; neg['missing_manual_rollback']=not all(badl.get(k) is True for k in core_true)
     if len(neg) != 12:
@@ -251,7 +255,7 @@ def main():
 
     failures=[k for k,v in req.items() if not v]; negative_failures=[k for k,v in neg.items() if not v]
     result={
-        'schema_version':1,'authority':'nxb-v1-update-independent-v1','status':'passed' if not failures and not negative_failures else 'failed',
+        'schema_version':1,'authority':'nxb-v1-update-independent-v2','status':'passed' if not failures and not negative_failures else 'failed',
         'update_head':a.expected_head,'requirement_count':16,'requirements_validated':16-len(failures),'requirements_failures':failures,
         'negative_count':12,'negative_controls_validated':12-len(negative_failures),'negative_controls':neg,'negative_failures':negative_failures,
         'failures':failures+negative_failures

@@ -8,6 +8,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $script:FinalPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-production-finalization-policy.json'
         $script:ValidatorPath = Join-Path $script:RepositoryRoot 'tools\validate_v1_successor.py'
         $script:PackageSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v1-package-manifest.schema.json'
+        $script:UpdateDescriptorSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v1-update-descriptor.schema.json'
         $script:PredecessorHead = 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f'
         $script:PredecessorTree = '34779176d9e15cd4d700d46132785c0b25f19604'
     }
@@ -52,6 +53,10 @@ Describe 'NXB v1.0.1 successor version transition' {
         @($schema.properties.release_version.enum).Count | Should -Be 2
         @($schema.properties.release_version.enum) | Should -Contain '1.0.0'
         @($schema.properties.release_version.enum) | Should -Contain '1.0.1'
+        $updateSchema = Get-Content -LiteralPath $script:UpdateDescriptorSchemaPath -Raw | ConvertFrom-Json
+        @($updateSchema.properties.release_version.enum).Count | Should -Be 2
+        @($updateSchema.properties.release_version.enum) | Should -Contain '1.0.0'
+        @($updateSchema.properties.release_version.enum) | Should -Contain '1.0.1'
     }
 
     It 'keeps successor ancestry rooted at the exact production predecessor' {
@@ -74,8 +79,9 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v9'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v10'
         [bool]$result.checks.package_release_versions | Should -BeTrue
+        [bool]$result.checks.update_release_versions | Should -BeTrue
         [int]$result.negative_controls_validated | Should -Be 6
         [int]$result.negative_control_count | Should -Be 6
         @($result.failures).Count | Should -Be 0

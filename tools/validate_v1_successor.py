@@ -18,6 +18,7 @@ FINAL_CLOSURE_SHA256 = "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884
 PACKAGE_SHA256 = "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78"
 SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"
 PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
+UPDATE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
 
 COMPONENTS = {
     "cli": ("config/nxb-v1-cli-policy.json", "migrated", "1.0.1"),
@@ -52,6 +53,9 @@ ALLOWED_PATHS = {
     "tools/validate_v1_installer.py",
     "tests/V1Installer.Tests.ps1",
     "config/nxb-v1-update-policy.json",
+    "schemas/nxb-v1-update-descriptor.schema.json",
+    "scripts/NxbV1Update.Common.ps1",
+    "scripts/Invoke-NxbV1UpdateCertification.ps1",
     "tools/validate_v1_update.py",
     "tests/V1Update.Tests.ps1",
     "config/nxb-v1-production-signing-policy.json",
@@ -170,6 +174,7 @@ def main():
     policy_path = root / "config" / "nxb-v1-successor-policy.json"
     final_policy_path = root / "config" / "nxb-production-finalization-policy.json"
     package_schema_path = root / "schemas" / "nxb-v1-package-manifest.schema.json"
+    update_descriptor_schema_path = root / "schemas" / "nxb-v1-update-descriptor.schema.json"
     policy = load_json(policy_path)
     failures = []
     checks = {}
@@ -198,6 +203,11 @@ def main():
     checks["package_release_versions"] = package_schema.get("properties", {}).get("release_version", {}).get("enum") == PACKAGE_RELEASE_VERSIONS
     if not checks["package_release_versions"]:
         failures.append("package_release_versions")
+
+    update_descriptor_schema = load_json(update_descriptor_schema_path)
+    checks["update_release_versions"] = update_descriptor_schema.get("properties", {}).get("release_version", {}).get("enum") == UPDATE_RELEASE_VERSIONS
+    if not checks["update_release_versions"]:
+        failures.append("update_release_versions")
 
     target_versions = {}
     for name, (relative, status, expected) in COMPONENTS.items():
@@ -276,7 +286,7 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v9",
+        "authority": "nxb-v1-successor-independent-v10",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
@@ -306,6 +316,7 @@ def main():
             "validator": sha256_file(pathlib.Path(__file__).resolve()),
             "production_final_policy": sha256_file(final_policy_path),
             "package_manifest_schema": sha256_file(package_schema_path),
+            "update_descriptor_schema": sha256_file(update_descriptor_schema_path),
         },
     }
     print(json.dumps(result, separators=(",", ":"), sort_keys=True))
