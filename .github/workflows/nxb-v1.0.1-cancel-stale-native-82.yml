@@ -1,0 +1,52 @@
+name: NXB v1.0.1 cancel stale native run 82
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel-stale-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact stale run and cancel only if still queued
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STALE_RUN_ID: '32234787996'
+          STALE_HEAD: 395ce3a92e3650ea3dc0141524926e64810a82c8
+        run: |
+          set -euo pipefail
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+          run_json="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/actions/runs/${STALE_RUN_ID}")"
+          actual_head="$(python -c 'import json,sys; print(json.load(sys.stdin)["head_sha"])' <<<"${run_json}")"
+          status="$(python -c 'import json,sys; print(json.load(sys.stdin)["status"])' <<<"${run_json}")"
+          event="$(python -c 'import json,sys; print(json.load(sys.stdin)["event"])' <<<"${run_json}")"
+          if [[ "${actual_head}" != "${STALE_HEAD}" || "${event}" != "workflow_dispatch" ]]; then
+            echo "Refuse stale-run cancellation: head/event drift" >&2
+            exit 1
+          fi
+          if [[ "${status}" == "completed" ]]; then
+            echo "Run already completed; no cancellation required."
+            exit 0
+          fi
+          if [[ "${status}" != "queued" && "${status}" != "in_progress" ]]; then
+            echo "Refuse unexpected run status: ${status}" >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/actions/runs/${STALE_RUN_ID}/cancel"
+          echo "Cancelled stale native run ${STALE_RUN_ID}."
