@@ -1,4 +1,4 @@
-name: NXB v1.0.1 final hardening probe
+name: NXB v1.0.1 final hardening validation probe
 
 on:
   push:
@@ -14,28 +14,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Run patcher without pushing target
+      - name: Patch and run full validation without pushing target
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          rm -rf ops target probe.log
+          rm -rf ops target probe.log successor.json
           git clone --quiet --no-tags --branch automation/nxb-v1.0.1-native-dispatch "${remote}" ops >>probe.log 2>&1
           rc=$?
+          if [[ $rc -eq 0 ]]; then git clone --quiet --no-tags --branch release/nxb-v1.0.1-release-integration-boundary-repair "${remote}" target >>probe.log 2>&1; rc=$?; fi
+          if [[ $rc -eq 0 ]]; then python ops/ops/nxb-final-production-hardening-v2.py target >>probe.log 2>&1; rc=$?; fi
+          if [[ $rc -eq 0 ]]; then python -m py_compile target/tools/validate_v1_successor.py >>probe.log 2>&1; rc=$?; fi
+          if [[ $rc -eq 0 ]]; then pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; foreach($p in @("target/scripts/Invoke-NxbV1ProductionRelease.ps1","target/tests/V1Successor.Tests.ps1")){ $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") } }' >>probe.log 2>&1; rc=$?; fi
+          if [[ $rc -eq 0 ]]; then git -C target diff --check >>probe.log 2>&1; rc=$?; fi
           if [[ $rc -eq 0 ]]; then
-            git clone --quiet --no-tags --branch release/nxb-v1.0.1-release-integration-boundary-repair "${remote}" target >>probe.log 2>&1
+            expected_files=$'config/nxb-v1-production-release-policy.json\ndocs/NXB-V1-PRODUCTION-RELEASE.md\nscripts/Invoke-NxbV1ProductionRelease.ps1\ntests/V1Successor.Tests.ps1\ntools/validate_v1_successor.py'
+            actual_files="$(git -C target diff --name-only | sort)"
+            printf 'actual_files:\n%s\n' "${actual_files}" >>probe.log
+            [[ "${actual_files}" == "${expected_files}" ]]; rc=$?
+          fi
+          if [[ $rc -eq 0 ]]; then
+            git -C target config user.name Naveax
+            git -C target config user.email 79841922+Naveax@users.noreply.github.com
+            git -C target add -f -- config/nxb-v1-production-release-policy.json docs/NXB-V1-PRODUCTION-RELEASE.md scripts/Invoke-NxbV1ProductionRelease.ps1 tests/V1Successor.Tests.ps1 tools/validate_v1_successor.py >>probe.log 2>&1
+            git -C target commit -m 'release: harden final successor production boundary' >>probe.log 2>&1
             rc=$?
           fi
           if [[ $rc -eq 0 ]]; then
-            actual="$(git -C target rev-parse HEAD 2>>probe.log)"
-            echo "target_head=${actual}" >>probe.log
-            python ops/ops/nxb-final-production-hardening-v2.py target >>probe.log 2>&1
+            new_head="$(git -C target rev-parse HEAD)"
+            echo "new_head=${new_head}" >>probe.log
+            python target/tools/validate_v1_successor.py --repository-root target --expected-head "${new_head}" > successor.json 2>>probe.log
             rc=$?
+            cat successor.json >>probe.log
           fi
           echo "rc=${rc}" >>probe.log
-          tail -c 12000 probe.log > probe-tail.log
-          body=$(printf '<!-- nxb-final-hardening-probe -->\n## Final hardening probe\n\n```text\n%s\n```' "$(cat probe-tail.log)")
+          tail -c 14000 probe.log > probe-tail.log
+          body=$(printf '<!-- nxb-final-hardening-validation-probe -->\n## Final hardening validation probe\n\n```text\n%s\n```' "$(cat probe-tail.log)")
           gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
           exit 0
