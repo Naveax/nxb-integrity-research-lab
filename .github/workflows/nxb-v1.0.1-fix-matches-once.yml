@@ -50,7 +50,8 @@ jobs:
           p.write_text(s.replace(old,new),encoding='utf-8',newline='\n')
           PY
 
-          pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; $p=(Resolve-Path "target/scripts/Invoke-NxbV1ProductionRelease.ps1"); $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile($p,[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") }; Import-Module PSScriptAnalyzer -ErrorAction Stop; $f=@(Invoke-ScriptAnalyzer -Path $p -Severity Warning,Error); if($f.Count){ throw ((@($f|ForEach-Object {"$($_.RuleName):$($_.Line):$($_.Message)"}))-join "`n") }'
+          pwsh -NoLogo -NoProfile -Command 'Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber'
+          pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; $p=(Resolve-Path "target/scripts/Invoke-NxbV1ProductionRelease.ps1"); $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile($p,[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") }; Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -ErrorAction Stop; $f=@(Invoke-ScriptAnalyzer -Path $p -Severity Warning,Error); if($f.Count){ throw ((@($f|ForEach-Object {"$($_.RuleName):$($_.Line):$($_.Message)"}))-join "`n") }'
           git -C target diff --check
           changed="$(git -C target diff --name-only)"
           [[ "${changed}" == "scripts/Invoke-NxbV1ProductionRelease.ps1" ]] || { echo "Unexpected changed surface: ${changed}" >&2; exit 1; }
@@ -62,7 +63,7 @@ jobs:
           remote_before="$(git -C target ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
           [[ "${remote_before}" == "${EXPECTED_HEAD}" ]] || { echo "Target moved before push: ${remote_before}" >&2; exit 1; }
           git -C target push --porcelain origin "HEAD:refs/heads/${TARGET_BRANCH}" > push.txt
-          body=$(printf '<!-- nxb-matches-fix -->\n## Production authority analyzer fix\n\nSUCCESS. old=`%s` new=`%s`\n\nChanged exactly one file and renamed the `$matches` local to `$matchingRoots`. PSScriptAnalyzer and successor v12 passed.' "${EXPECTED_HEAD}" "${new_head}")
+          body=$(printf '<!-- nxb-matches-fix -->\n## Production authority analyzer fix\n\nSUCCESS. old=`%s` new=`%s`\n\nChanged exactly one file and renamed the `$matches` local to `$matchingRoots`. PSScriptAnalyzer 1.25.0 and successor v12 passed.' "${EXPECTED_HEAD}" "${new_head}")
           gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
           cat successor.json
           cat push.txt
