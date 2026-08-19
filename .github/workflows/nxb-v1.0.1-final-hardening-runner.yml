@@ -40,6 +40,7 @@ jobs:
           git -C target config user.email 79841922+Naveax@users.noreply.github.com
 
           python ops/ops/nxb-final-production-hardening-v2.py target
+          sed -i 's/[[:space:]]\+$//' target/scripts/Invoke-NxbV1ProductionRelease.ps1
           python -m py_compile target/tools/validate_v1_successor.py
           pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; foreach($p in @("target/scripts/Invoke-NxbV1ProductionRelease.ps1","target/tests/V1Successor.Tests.ps1")){ $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") } }'
           git -C target diff --check
