@@ -63,6 +63,21 @@ Describe 'NXB v1.0.1 successor version transition' {
         [bool]$production.safety.allow_signer_rotation | Should -BeFalse
         [bool]$production.safety.allow_production_private_key_export | Should -BeFalse
         [bool]$production.safety.allow_auto_apply | Should -BeFalse
+
+        $productionSource = Get-Content -LiteralPath $script:ProductionReleaseScriptPath -Raw
+        foreach ($token in @(
+            'Assert-Nxb $ConfirmProductionRelease.IsPresent',
+            'Integrated merge tree differs from exact certified repair tree.',
+            'Canonical native CI run identity/conclusion mismatch.',
+            'Production signer gate requires exactly one protected certificate matching frozen public fingerprint.',
+            "'--expected-signer-mode','production-windows-certificate-store'",
+            "-Action Stage",
+            'v1.0.1 tag already exists; refuse duplicate or rewrite.'
+        )) {
+            $productionSource | Should -Match ([regex]::Escape($token))
+        }
+        $productionSource | Should -Not -Match ([regex]::Escape("@('update-ref'"))
+        $productionSource | Should -Not -Match '(?im)\[(?:Parameter[^\]]*)\][^\r\n]*(?:Pfx|Pem|PrivateKey)(?:Path|Bytes)'
     }
 
     It 'keeps historical v1.0.0 package compatibility while admitting v1.0.1 package identity' {
