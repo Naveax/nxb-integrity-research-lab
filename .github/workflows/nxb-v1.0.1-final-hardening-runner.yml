@@ -1,0 +1,69 @@
+name: NXB v1.0.1 final production hardening runner
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Trigger approved Matches repair'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_BRANCH: release/nxb-v1.0.1-release-integration-boundary-repair
+      EXPECTED_HEAD: 460d99850f1495cc4f73c965fb006d758c8b227d
+    steps:
+      - name: Rename automatic-variable collision and CAS-push
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init target >/dev/null
+          git -C target remote add origin "${remote}"
+          git -C target fetch --no-tags origin "refs/heads/${TARGET_BRANCH}" >/dev/null
+          actual="$(git -C target rev-parse FETCH_HEAD)"
+          [[ "${actual}" == "${EXPECTED_HEAD}" ]] || { echo "Target drift: ${actual}" >&2; exit 1; }
+          git -C target checkout -q -b repair FETCH_HEAD
+          git -C target config user.name Naveax
+          git -C target config user.email 79841922+Naveax@users.noreply.github.com
+
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('target/scripts/Invoke-NxbV1ProductionRelease.ps1')
+          s=p.read_text(encoding='utf-8-sig')
+          old="""    $matches = @($candidates | Where-Object { Test-NxbPackageRootAgainstManifest -Root $_ -Manifest $Manifest })
+    Assert-Nxb ($matches.Count -eq 1) ('Frozen predecessor package root resolution failed: matches={0}' -f $matches.Count)
+    return [string]$matches[0]
+"""
+          new="""    $matchingRoots = @($candidates | Where-Object { Test-NxbPackageRootAgainstManifest -Root $_ -Manifest $Manifest })
+    Assert-Nxb ($matchingRoots.Count -eq 1) ('Frozen predecessor package root resolution failed: matches={0}' -f $matchingRoots.Count)
+    return [string]$matchingRoots[0]
+"""
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one Matches collision block, found {s.count(old)}')
+          p.write_text(s.replace(old,new),encoding='utf-8',newline='\n')
+          PY
+
+          pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; $p=(Resolve-Path "target/scripts/Invoke-NxbV1ProductionRelease.ps1"); $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile($p,[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") }'
+          git -C target diff --check
+          changed="$(git -C target diff --name-only)"
+          [[ "${changed}" == "scripts/Invoke-NxbV1ProductionRelease.ps1" ]] || { echo "Unexpected changed surface: ${changed}" >&2; exit 1; }
+
+          git -C target add -- scripts/Invoke-NxbV1ProductionRelease.ps1
+          git -C target commit -m 'release: avoid automatic Matches variable in production authority' >/dev/null
+          new_head="$(git -C target rev-parse HEAD)"
+          python target/tools/validate_v1_successor.py --repository-root target --expected-head "${new_head}" > successor.json
+          remote_before="$(git -C target ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          [[ "${remote_before}" == "${EXPECTED_HEAD}" ]] || { echo "Target moved before push: ${remote_before}" >&2; exit 1; }
+          git -C target push --porcelain origin "HEAD:refs/heads/${TARGET_BRANCH}" > push.txt
+          body=$(printf '<!-- nxb-matches-fix -->\n## Production authority analyzer fix\n\nSUCCESS. old=`%s` new=`%s`\n\nChanged exactly one file: `$matches` → `$matchingRoots`. Parser and successor v12 passed. Hosted CI remains the analyzer authority.' "${EXPECTED_HEAD}" "${new_head}")
+          gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+          cat successor.json
+          cat push.txt
