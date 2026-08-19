@@ -1,0 +1,73 @@
+name: NXB v1.0.1 final production hardening runner
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  harden:
+    if: github.event.head_commit.message == 'Run split final production hardening patcher'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_BRANCH: release/nxb-v1.0.1-release-integration-boundary-repair
+      EXPECTED_HEAD: 395ce3a92e3650ea3dc0141524926e64810a82c8
+    steps:
+      - name: Patch, validate and CAS-push exact target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git clone --quiet --no-tags --branch automation/nxb-v1.0.1-native-dispatch "${remote}" ops
+          git init target >/dev/null
+          git -C target remote add origin "${remote}"
+          git -C target fetch --no-tags origin "refs/heads/${TARGET_BRANCH}" >/dev/null
+          actual="$(git -C target rev-parse FETCH_HEAD)"
+          if [[ "${actual}" != "${EXPECTED_HEAD}" ]]; then
+            body=$(printf '<!-- nxb-final-hardening-runner -->\n## Final hardening runner\n\nBLOCKED: target drift. expected=`%s` actual=`%s`' "${EXPECTED_HEAD}" "${actual}")
+            gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+            exit 1
+          fi
+          git -C target checkout -q -b hardening FETCH_HEAD
+          git -C target config user.name Naveax
+          git -C target config user.email 79841922+Naveax@users.noreply.github.com
+
+          python ops/ops/nxb-final-production-hardening-v2.py target
+          python -m py_compile target/tools/validate_v1_successor.py
+          pwsh -NoLogo -NoProfile -Command '$ErrorActionPreference="Stop"; foreach($p in @("target/scripts/Invoke-NxbV1ProductionRelease.ps1","target/tests/V1Successor.Tests.ps1")){ $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$t,[ref]$e); if(@($e).Count){ throw ((@($e|ForEach-Object Message))-join "`n") } }'
+          git -C target diff --check
+
+          expected_files=$'config/nxb-v1-production-release-policy.json\ndocs/NXB-V1-PRODUCTION-RELEASE.md\nscripts/Invoke-NxbV1ProductionRelease.ps1\ntests/V1Successor.Tests.ps1\ntools/validate_v1_successor.py'
+          actual_files="$(git -C target diff --name-only | sort)"
+          if [[ "${actual_files}" != "${expected_files}" ]]; then
+            printf 'Changed surface drift\nExpected:\n%s\nActual:\n%s\n' "${expected_files}" "${actual_files}" >&2
+            exit 1
+          fi
+
+          git -C target add -f -- \
+            config/nxb-v1-production-release-policy.json \
+            docs/NXB-V1-PRODUCTION-RELEASE.md \
+            scripts/Invoke-NxbV1ProductionRelease.ps1 \
+            tests/V1Successor.Tests.ps1 \
+            tools/validate_v1_successor.py
+          git -C target commit -m 'release: harden final successor production boundary' >/dev/null
+          new_head="$(git -C target rev-parse HEAD)"
+          python target/tools/validate_v1_successor.py --repository-root target --expected-head "${new_head}" > successor.json
+
+          remote_before="$(git -C target ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          if [[ "${remote_before}" != "${EXPECTED_HEAD}" ]]; then
+            echo "Target branch moved before push: ${remote_before}" >&2
+            exit 1
+          fi
+          git -C target push --porcelain origin "HEAD:refs/heads/${TARGET_BRANCH}" > push.txt
+          body=$(printf '<!-- nxb-final-hardening-runner -->\n## Final hardening runner\n\nSUCCESS. old=`%s` new=`%s`\n\nExactly five files changed. Successor v12 passed with 8/8 negative controls.' "${EXPECTED_HEAD}" "${new_head}")
+          gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+          cat successor.json
+          cat push.txt
