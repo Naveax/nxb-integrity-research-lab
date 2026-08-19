@@ -12,6 +12,7 @@ Describe 'NXB v1 production signing contract' {
                 signature_schema = Join-Path $fullRoot 'schemas\nxb-v1-release-signature-envelope.schema.json'
                 receipt_schema = Join-Path $fullRoot 'schemas\nxb-v1-production-signing-certification-receipt.schema.json'
                 common = Join-Path $fullRoot 'scripts\NxbV1ProductionSigning.Common.ps1'
+                exporter = Join-Path $fullRoot 'scripts\Export-NxbV1PackageManifest.ps1'
                 operator = Join-Path $fullRoot 'scripts\Invoke-NxbV1ReleaseManifestSigning.ps1'
                 authority = Join-Path $fullRoot 'scripts\Invoke-NxbV1ProductionSigningCertification.ps1'
                 validator = Join-Path $fullRoot 'tools\validate_v1_production_signing.py'
@@ -24,7 +25,7 @@ Describe 'NXB v1 production signing contract' {
 
     It 'keeps every production signing authority component repo-owned' {
         $c = Get-NxbV1SigningTestContext
-        foreach ($p in @($c.policy,$c.integration_policy,$c.signature_schema,$c.receipt_schema,$c.common,$c.operator,$c.authority,$c.validator,$c.release_errors,$c.signing_errors,$c.docs)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
+        foreach ($p in @($c.policy,$c.integration_policy,$c.signature_schema,$c.receipt_schema,$c.common,$c.exporter,$c.operator,$c.authority,$c.validator,$c.release_errors,$c.signing_errors,$c.docs)) { Test-Path -LiteralPath $p -PathType Leaf | Should -BeTrue }
     }
 
     It 'binds production signing to the native-certified release integration predecessor' {
@@ -118,9 +119,26 @@ Describe 'NXB v1 production signing contract' {
         $source | Should -Match ([regex]::Escape('-ReleaseVersion ([string]$policy.target_version)'))
     }
 
-    It 'hashes real package notes and artifact files and performs a post-signing TOCTOU recheck' {
+    It 'binds package identity files and TOCTOU-safe artifact hashes before and after signing' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).operator -Raw
-        foreach ($token in @('Get-NxbV1ReleaseSigningFileSha256','Package manifest changed during signing.','Release notes changed during signing.','Artifact changed during signing: {0}','[IO.FileAttributes]::ReparsePoint','$trimChars = [char[]]@(')) { $source | Should -Match ([regex]::Escape($token)) }
+        foreach ($token in @(
+            'Get-NxbV1ReleaseSigningFileSha256',
+            'nxb-v1-package-manifest-v1',
+            'Package manifest release version does not match production signing target version.',
+            'Package manifest source head does not match release head.',
+            'Signed artifact set is missing package manifest file: {0}',
+            'Signed package artifact does not match package manifest bytes/hash: {0}',
+            'Package manifest changed during signing.',
+            'Release notes changed during signing.',
+            'Artifact changed during signing: {0}',
+            '[IO.FileAttributes]::ReparsePoint',
+            '$trimChars = [char[]]@('
+        )) { $source | Should -Match ([regex]::Escape($token)) }
+        $authority = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).authority -Raw
+        $authority | Should -Match ([regex]::Escape('$exporterPath = Join-Path $PSScriptRoot ''Export-NxbV1PackageManifest.ps1'''))
+        $authority | Should -Match ([regex]::Escape('-PackageRoot $packageRoot -SourceHead $currentHead -OutputPath $packageManifestPath'))
+        $authority | Should -Match ([regex]::Escape("[string]`$fixtureManifest.release_version -cne '1.0.1'"))
+        $authority | Should -Match ([regex]::Escape("'package/z-last.bin','package/a-first.bin'"))
     }
 
     It 'creates certification RSA without persistence or production signer claims' {
@@ -137,12 +155,20 @@ Describe 'NXB v1 production signing contract' {
         foreach ($token in @('$Signer.rsa.SignData','[Security.Cryptography.HashAlgorithmName]::SHA256','[Security.Cryptography.RSASignaturePadding]::Pkcs1','$rsa.VerifyData','canonical_sha256')) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'gives the independent validator twelve requirements and all eight adversarial controls' {
+    It 'gives independent validator v2 twelve requirements eight controls and explicit production signer mode' {
         $source = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).validator -Raw
+        $source | Should -Match ([regex]::Escape('nxb-v1-production-signing-independent-v2'))
         $source | Should -Match ([regex]::Escape('requirement_count": 12'.Replace('\','')))
         $source | Should -Match ([regex]::Escape('negative_count": 8'.Replace('\','')))
         $source | Should -Match ([regex]::Escape('== "1.0.1"'))
+        $source | Should -Match ([regex]::Escape('production-windows-certificate-store'))
+        $source | Should -Match ([regex]::Escape('--expected-signer-mode'))
+        $source | Should -Match ([regex]::Escape('--expected-production-fingerprint'))
+        $source | Should -Match ([regex]::Escape('PRODUCTION_KEY_ID'))
         foreach ($token in @('tampered_release_head','tampered_package_manifest_sha256','tampered_artifact_sha256','tampered_signer_fingerprint','malformed_signature','weak_key_metadata','wrong_signer_key_id','duplicate_artifact_path','pow(signature_int, exponent, modulus)','hmac.compare_digest')) { $source | Should -Match ([regex]::Escape($token)) }
+        $authority = Get-Content -LiteralPath (Get-NxbV1SigningTestContext).authority -Raw
+        $authority | Should -Match ([regex]::Escape("'--expected-signer-mode','certification-ephemeral'"))
+        $authority | Should -Match ([regex]::Escape("[string]`$independent.authority -cne 'nxb-v1-production-signing-independent-v2'"))
     }
 
     It 'extends successor known-error regression coverage over the signing authority surface' {

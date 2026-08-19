@@ -5,13 +5,17 @@ import copy
 import hashlib
 import hmac
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 CANONICAL_CONTRACT = "nxb-v1-release-signature-canonical-v1"
 PUBLIC_KEY_CONTRACT = "nxb-v1-rsa-public-key-v1"
 ALGORITHM = "RSA-PKCS1-SHA256"
 DIGEST_INFO_SHA256 = bytes.fromhex("3031300d060960864801650304020105000420")
+CERTIFICATION_MODE = "certification-ephemeral"
+PRODUCTION_MODE = "production-windows-certificate-store"
+PRODUCTION_KEY_ID = re.compile(r"^win-cert:(?:CurrentUser|LocalMachine)/My/[0-9A-F]{40,128}$")
 
 
 def is_lower_hex(value: Any, length: int) -> bool:
@@ -143,7 +147,42 @@ def verify_rsa_signature(envelope: Dict[str, Any], material: str) -> bool:
         return False
 
 
-def validate(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_head: str, expected_certified_head: str) -> Tuple[List[str], str]:
+def signer_mode_checks(
+    envelope: Dict[str, Any],
+    computed_fingerprint: str,
+    expected_signer_mode: str,
+    expected_production_fingerprint: Optional[str],
+) -> Tuple[bool, bool]:
+    if expected_signer_mode == CERTIFICATION_MODE:
+        boundary = (
+            envelope.get("signer_mode") == CERTIFICATION_MODE
+            and envelope.get("production_signer_claimed") is False
+            and envelope.get("private_key_persisted") is False
+        )
+        key_id = envelope.get("signer_key_id") == f"cert-ephemeral:{computed_fingerprint}"
+        return boundary, key_id
+
+    boundary = (
+        envelope.get("signer_mode") == PRODUCTION_MODE
+        and envelope.get("production_signer_claimed") is True
+        and envelope.get("private_key_persisted") is True
+        and isinstance(expected_production_fingerprint, str)
+        and hmac.compare_digest(computed_fingerprint, expected_production_fingerprint)
+        and hmac.compare_digest(str(envelope.get("public_key", {}).get("fingerprint", "")), expected_production_fingerprint)
+    )
+    key_id_value = envelope.get("signer_key_id")
+    key_id = isinstance(key_id_value, str) and PRODUCTION_KEY_ID.fullmatch(key_id_value) is not None
+    return boundary, key_id
+
+
+def validate(
+    policy: Dict[str, Any],
+    envelope: Dict[str, Any],
+    expected_release_head: str,
+    expected_certified_head: str,
+    expected_signer_mode: str = CERTIFICATION_MODE,
+    expected_production_fingerprint: Optional[str] = None,
+) -> Tuple[List[str], str]:
     failures: List[str] = []
     try:
         material = canonical_material(envelope)
@@ -153,6 +192,12 @@ def validate(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_
     public_key = envelope.get("public_key", {})
     computed_fingerprint = public_fingerprint(public_key)
     canonical_sha = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    signer_boundary, signer_key_id = signer_mode_checks(
+        envelope,
+        computed_fingerprint,
+        expected_signer_mode,
+        expected_production_fingerprint,
+    )
 
     requirements = {
         "policy_identity": policy.get("contract_id") == "nxb-v1-production-signing-v1" and policy.get("schema_version") == 1,
@@ -163,8 +208,8 @@ def validate(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_
         "public_fingerprint": hmac.compare_digest(str(public_key.get("fingerprint", "")), computed_fingerprint),
         "canonical_sha256": hmac.compare_digest(str(envelope.get("canonical_sha256", "")), canonical_sha),
         "rsa_signature": verify_rsa_signature(envelope, material),
-        "certification_signer_boundary": envelope.get("signer_mode") == "certification-ephemeral" and envelope.get("production_signer_claimed") is False and envelope.get("private_key_persisted") is False,
-        "certification_key_id_binding": envelope.get("signer_key_id") == f"cert-ephemeral:{computed_fingerprint}",
+        "signer_mode_boundary": signer_boundary,
+        "signer_key_id_binding": signer_key_id,
         "production_policy_boundary": policy.get("production", {}).get("signer_mode") == "windows-certificate-store" and policy.get("production", {}).get("allow_pfx_path") is False and policy.get("production", {}).get("allow_pem_path") is False and policy.get("production", {}).get("allow_raw_private_key_bytes") is False,
         "production_key_protection": policy.get("production", {}).get("require_protected_private_key") is True and policy.get("production", {}).get("require_exact_thumbprint") is True,
     }
@@ -174,13 +219,27 @@ def validate(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_
     return failures, material
 
 
-def negative_controls(policy: Dict[str, Any], envelope: Dict[str, Any], expected_release_head: str, expected_certified_head: str) -> Dict[str, bool]:
+def negative_controls(
+    policy: Dict[str, Any],
+    envelope: Dict[str, Any],
+    expected_release_head: str,
+    expected_certified_head: str,
+    expected_signer_mode: str,
+    expected_production_fingerprint: Optional[str],
+) -> Dict[str, bool]:
     controls: Dict[str, bool] = {}
 
     def rejected(name: str, mutate) -> None:
         candidate = copy.deepcopy(envelope)
         mutate(candidate)
-        failures, _ = validate(policy, candidate, expected_release_head, expected_certified_head)
+        failures, _ = validate(
+            policy,
+            candidate,
+            expected_release_head,
+            expected_certified_head,
+            expected_signer_mode,
+            expected_production_fingerprint,
+        )
         controls[name] = bool(failures)
 
     rejected("tampered_release_head", lambda x: x.__setitem__("release_head", "0" * 40))
@@ -189,7 +248,7 @@ def negative_controls(policy: Dict[str, Any], envelope: Dict[str, Any], expected
     rejected("tampered_signer_fingerprint", lambda x: x["public_key"].__setitem__("fingerprint", "3" * 64))
     rejected("malformed_signature", lambda x: x.__setitem__("signature_b64", "%%%not-base64%%%"))
     rejected("weak_key_metadata", lambda x: x.__setitem__("key_size_bits", 2048))
-    rejected("wrong_signer_key_id", lambda x: x.__setitem__("signer_key_id", "cert-ephemeral:wrong"))
+    rejected("wrong_signer_key_id", lambda x: x.__setitem__("signer_key_id", "invalid-signer-key-id"))
     rejected("duplicate_artifact_path", lambda x: x["artifacts"].append(copy.deepcopy(x["artifacts"][0])))
     return controls
 
@@ -200,26 +259,56 @@ def main() -> int:
     parser.add_argument("--envelope", required=True)
     parser.add_argument("--expected-release-head", required=True)
     parser.add_argument("--expected-certified-head", required=True)
+    parser.add_argument(
+        "--expected-signer-mode",
+        choices=[CERTIFICATION_MODE, PRODUCTION_MODE],
+        default=CERTIFICATION_MODE,
+    )
+    parser.add_argument("--expected-production-fingerprint")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    expected_production_fingerprint: Optional[str] = None
+    if args.expected_signer_mode == PRODUCTION_MODE:
+        candidate = str(args.expected_production_fingerprint or "").lower()
+        if not is_lower_hex(candidate, 64):
+            parser.error("--expected-production-fingerprint must be 64 lowercase hex in production signer mode")
+        expected_production_fingerprint = candidate
+    elif args.expected_production_fingerprint is not None:
+        parser.error("--expected-production-fingerprint is valid only in production signer mode")
+
     policy = json.loads(Path(args.policy).read_text(encoding="utf-8"))
     envelope = json.loads(Path(args.envelope).read_text(encoding="utf-8"))
-    failures, _ = validate(policy, envelope, args.expected_release_head, args.expected_certified_head)
-    controls = negative_controls(policy, envelope, args.expected_release_head, args.expected_certified_head)
+    failures, _ = validate(
+        policy,
+        envelope,
+        args.expected_release_head,
+        args.expected_certified_head,
+        args.expected_signer_mode,
+        expected_production_fingerprint,
+    )
+    controls = negative_controls(
+        policy,
+        envelope,
+        args.expected_release_head,
+        args.expected_certified_head,
+        args.expected_signer_mode,
+        expected_production_fingerprint,
+    )
     negative_failures = [name for name, passed in controls.items() if not passed]
     all_failures = failures + [f"negative:{name}" for name in negative_failures]
 
     result = {
         "schema_version": 1,
         "status": "passed" if not all_failures else "failed",
-        "authority": "nxb-v1-production-signing-independent-v1",
+        "authority": "nxb-v1-production-signing-independent-v2",
         "requirements_validated": 12 - len(failures),
         "requirement_count": 12,
         "negative_controls_validated": 8 - len(negative_failures),
         "negative_count": 8,
         "release_head": envelope.get("release_head"),
         "certified_implementation_head": envelope.get("certified_implementation_head"),
+        "expected_signer_mode": args.expected_signer_mode,
         "public_fingerprint": envelope.get("public_key", {}).get("fingerprint"),
         "requirements_failures": failures,
         "negative_controls": controls,

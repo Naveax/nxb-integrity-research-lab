@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "nxb-v1-release-integration-v1",
-  "certified_implementation_head": "a10535b294c4d7ba8a4c3683154609087bf50c4b",
+  "certified_implementation_head": "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f",
   "certified_main_ancestor": "b55fed4e4c960f8fea73b959f29dd57649c6bd65",
   "candidate_version": "1.0.1-candidate",
   "target_version": "1.0.1",
@@ -16,10 +16,12 @@
     "allow_generated_evidence_in_tree": false,
     "allowed_successor_paths": [
       ".github/workflows/nxb-v1-",
+      "AGENTS.md",
       "config/nxb-v1-",
       "docs/NXB-V1-",
       "schemas/nxb-v1-",
       "scripts/Invoke-NxbV1",
+      "scripts/NxbV1",
       "scripts/Test-NxbV1",
       "tests/V1",
       "tools/validate_v1_"

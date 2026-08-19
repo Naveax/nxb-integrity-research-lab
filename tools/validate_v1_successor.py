@@ -14,9 +14,17 @@ TARGET_VERSION = "1.0.1"
 CANDIDATE_VERSION = "1.0.1-candidate"
 HISTORICAL_CANDIDATE_VERSION = "1.0.0-candidate"
 HISTORICAL_CERTIFIED_POINTER = "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
+HISTORICAL_IMPLEMENTATION_HEAD = "a10535b294c4d7ba8a4c3683154609087bf50c4b"
 FINAL_CLOSURE_SHA256 = "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355"
 PACKAGE_SHA256 = "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78"
 SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"
+NATIVE_RUNNER_NAME = "NXB-NATIVE-WPT"
+PREDECESSOR_ASSETS = {
+    "nxb-v1.0.0-public-evidence.zip": "51caec3a66d7300ae774219f142c2a9d2351fafb613cee0c22795709b12b9d40",
+    "nxb-v1.0.0.zip": "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78",
+    "package-manifest.json": "5de097246c5d0bda633a64973491b571c8383d4ca489851f2b225e6633cbf466",
+    "production-final-closure-receipt.json": "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355",
+}
 PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
 UPDATE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
 
@@ -32,11 +40,20 @@ COMPONENT_ORDER = list(COMPONENTS)
 REQUIRED_DOCUMENTS = [
     "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
     "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md",
+    "docs/NXB-V1-RELEASE-INTEGRATION.md",
+    "docs/NXB-V1-PRODUCTION-SIGNING.md",
+    "docs/NXB-V1-PRODUCTION-RELEASE.md",
 ]
 ALLOWED_PATHS = {
+    ".github/workflows/nxb-v1-ci.yml",
+    "AGENTS.md",
     "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
     "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md",
+    "docs/NXB-V1-RELEASE-INTEGRATION.md",
+    "docs/NXB-V1-PRODUCTION-SIGNING.md",
+    "docs/NXB-V1-PRODUCTION-RELEASE.md",
     "config/nxb-v1-successor-policy.json",
+    "config/nxb-v1-production-release-policy.json",
     "tools/validate_v1_successor.py",
     "tests/V1Successor.Tests.ps1",
     "config/nxb-v1-cli-policy.json",
@@ -62,6 +79,7 @@ ALLOWED_PATHS = {
     "schemas/nxb-v1-release-signature-envelope.schema.json",
     "scripts/NxbV1ProductionSigning.Common.ps1",
     "scripts/Invoke-NxbV1ReleaseManifestSigning.ps1",
+    "scripts/Invoke-NxbV1ProductionSigningCertification.ps1",
     "tools/validate_v1_production_signing.py",
     "tests/V1ProductionSigning.Tests.ps1",
     "config/nxb-v1-ci-policy.json",
@@ -73,6 +91,7 @@ ALLOWED_PATHS = {
     "scripts/Test-NxbV1ReleaseIntegration.ps1",
     "tools/validate_v1_release_integration.py",
     "tests/V1ReleaseIntegration.Tests.ps1",
+    "scripts/Invoke-NxbV1ProductionRelease.ps1",
 }
 FORBIDDEN_SUFFIXES = (".etl", ".etl.tmp", ".pfx", ".p12", ".pem", ".key", ".zip")
 PRIVATE_MARKERS = [
@@ -165,6 +184,71 @@ def validate_policy(policy):
     )
 
 
+
+def predecessor_asset_map(value):
+    if not isinstance(value, list): return None
+    result = {}
+    for row in value:
+        if not isinstance(row, dict): return None
+        name, sha = row.get("name"), row.get("sha256")
+        if not isinstance(name,str) or not name or name in result or not isinstance(sha,str) or not re.fullmatch(r"[0-9a-f]{64}",sha): return None
+        result[name]=sha
+    return result
+
+def validate_production_release_policy(policy):
+    predecessor = policy.get("predecessor", {})
+    implementation = policy.get("implementation", {})
+    branches = policy.get("branches", {})
+    ci = policy.get("ci", {})
+    safety = policy.get("safety", {})
+    predecessor_assets = predecessor_asset_map(predecessor.get("assets"))
+    return all(
+        [
+            policy.get("schema_version") == 1,
+            policy.get("contract_id") == "nxb-v1-production-release-v1",
+            policy.get("repository") == "Naveax/nxb-integrity-research-lab",
+            policy.get("target_version") == TARGET_VERSION,
+            policy.get("tag") == "v1.0.1",
+            policy.get("release_sequence") == 2,
+            policy.get("channel") == "stable",
+            branches.get("main") == "main",
+            branches.get("release") == "release/nxb-v1.0.1-prep",
+            branches.get("historical_certified") == "release/nxb-v1.0.0-ci",
+            predecessor.get("head") == PREDECESSOR_HEAD,
+            predecessor.get("tree") == PREDECESSOR_TREE,
+            predecessor.get("tag") == "v1.0.0",
+            predecessor.get("github_release_id") == 370629171,
+            predecessor.get("package_sha256") == PACKAGE_SHA256,
+            predecessor.get("final_closure_sha256") == FINAL_CLOSURE_SHA256,
+            predecessor_assets == PREDECESSOR_ASSETS,
+            predecessor.get("production_signer_fingerprint") == SIGNER_FINGERPRINT,
+            predecessor.get("historical_certified_pointer") == HISTORICAL_CERTIFIED_POINTER,
+            implementation.get("certified_head") == HISTORICAL_IMPLEMENTATION_HEAD,
+            ci.get("workflow_name") == "NXB v1 CI",
+            ci.get("required_event") == "workflow_dispatch",
+            ci.get("ps7_passed") == 899,
+            ci.get("ps7_total") == 899,
+            ci.get("ps51_passed") == 892,
+            ci.get("ps51_total") == 899,
+            ci.get("ps51_not_run") == 7,
+            ci.get("ps51_excluded_tag") == "PS7Only",
+            ci.get("native_runner_name") == NATIVE_RUNNER_NAME,
+            safety.get("require_merge_commit") is True,
+            safety.get("require_certified_head_direct_parent") is True,
+            safety.get("require_merge_tree_identity") is True,
+            safety.get("require_historical_certified_pointer_unchanged") is True,
+            safety.get("require_predecessor_signer_fingerprint") is True,
+            safety.get("allow_signer_rotation") is False,
+            safety.get("allow_production_private_key_export") is False,
+            safety.get("allow_auto_apply") is False,
+            safety.get("allow_v1_0_0_mutation") is False,
+            safety.get("require_predecessor_asset_set_exact") is True,
+            safety.get("require_predecessor_update_smoke") is True,
+            safety.get("require_final_release_asset_set_exact") is True,
+        ]
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repository-root", required=True)
@@ -172,6 +256,7 @@ def main():
     a = ap.parse_args()
     root = pathlib.Path(a.repository_root).resolve()
     policy_path = root / "config" / "nxb-v1-successor-policy.json"
+    production_release_policy_path = root / "config" / "nxb-v1-production-release-policy.json"
     final_policy_path = root / "config" / "nxb-production-finalization-policy.json"
     package_schema_path = root / "schemas" / "nxb-v1-package-manifest.schema.json"
     update_descriptor_schema_path = root / "schemas" / "nxb-v1-update-descriptor.schema.json"
@@ -182,6 +267,11 @@ def main():
     checks["policy_contract"] = validate_policy(policy)
     if not checks["policy_contract"]:
         failures.append("policy_contract")
+
+    production_release_policy = load_json(production_release_policy_path)
+    checks["production_release_policy"] = validate_production_release_policy(production_release_policy)
+    if not checks["production_release_policy"]:
+        failures.append("production_release_policy")
 
     for name, value, length in [
         ("predecessor_head_format", PREDECESSOR_HEAD, 40),
@@ -279,14 +369,16 @@ def main():
     m = copy.deepcopy(policy); m["version_transition"]["components"]["release_integration"]["expected_target_version"] = "1.0.0"; negatives.append(not validate_policy(m))
     m = copy.deepcopy(policy); m["historical"]["production_final_candidate_version"] = CANDIDATE_VERSION; negatives.append(not validate_policy(m))
     m = copy.deepcopy(policy); m["safety"]["allow_history_rewrite"] = True; negatives.append(not validate_policy(m))
-    checks["negative_controls"] = all(negatives) and len(negatives) == 6
+    m = copy.deepcopy(production_release_policy); m["predecessor"]["assets"][0]["sha256"] = "0" * 64; negatives.append(not validate_production_release_policy(m))
+    m = copy.deepcopy(production_release_policy); m["ci"]["native_runner_name"] = "OTHER-RUNNER"; negatives.append(not validate_production_release_policy(m))
+    checks["negative_controls"] = all(negatives) and len(negatives) == 8
     if not checks["negative_controls"]:
         failures.append("negative_controls")
 
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v10",
+        "authority": "nxb-v1-successor-independent-v12",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
@@ -309,10 +401,11 @@ def main():
         "private_key_hits": private_hits,
         "missing_documents": missing,
         "negative_controls_validated": sum(bool(x) for x in negatives),
-        "negative_control_count": 6,
+        "negative_control_count": 8,
         "failures": sorted(set(failures)),
         "source_sha256": {
             "policy": sha256_file(policy_path),
+            "production_release_policy": sha256_file(production_release_policy_path),
             "validator": sha256_file(pathlib.Path(__file__).resolve()),
             "production_final_policy": sha256_file(final_policy_path),
             "package_manifest_schema": sha256_file(package_schema_path),
