@@ -1,0 +1,85 @@
+name: NXB v1.0.1 final hardening diagnostic
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_BRANCH: release/nxb-v1.0.1-release-integration-boundary-repair
+      EXPECTED_HEAD: 395ce3a92e3650ea3dc0141524926e64810a82c8
+    steps:
+      - name: Diagnose exact replacement surface
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init repo >/dev/null
+          cd repo
+          git remote add origin "${remote}"
+          git fetch --no-tags --depth=1 origin "refs/heads/${TARGET_BRANCH}" >/dev/null
+          actual="$(git rev-parse FETCH_HEAD)"
+          if [[ "${actual}" != "${EXPECTED_HEAD}" ]]; then
+            body="<!-- nxb-final-hardening-diagnostic -->\n## Final hardening diagnostic\n\nTarget drifted before diagnosis: expected \`${EXPECTED_HEAD}\`, actual \`${actual}\`."
+            gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+            exit 0
+          fi
+          git checkout -q --detach FETCH_HEAD
+          python - <<'PY' > ../diagnostic.txt
+          from pathlib import Path
+
+          checks = [
+            ('script.helper_anchor','scripts/Invoke-NxbV1ProductionRelease.ps1','function Test-NxbHostedReceipt {'),
+            ('script.snapshot','scripts/Invoke-NxbV1ProductionRelease.ps1',"    $packageAsset = @($assets | Where-Object { $_.name -ceq 'nxb-v1.0.0.zip' })"),
+            ('script.runner','scripts/Invoke-NxbV1ProductionRelease.ps1',"Assert-Nxb (-not [string]::IsNullOrWhiteSpace([string]$nativeJob.runner_name)) 'Native job has no bound self-hosted runner name.'"),
+            ('script.download','scripts/Invoke-NxbV1ProductionRelease.ps1','$hostedArchiveSha = Save-NxbGitHubArtifactArchive'),
+            ('script.stage','scripts/Invoke-NxbV1ProductionRelease.ps1',"Write-Information '[12/18] Production-signed Stage-only updater smoke'"),
+            ('script.readiness','scripts/Invoke-NxbV1ProductionRelease.ps1','portable_stage_receipt_sha256=(Get-NxbSha256 -Path $portableStageReceipt); portable_uninstall_receipt_sha256=(Get-NxbSha256 -Path $portableUninstallReceipt); update_stage_receipt_sha256=(Get-NxbSha256 -Path $updateStageReceipt);'),
+            ('script.evidence','scripts/Invoke-NxbV1ProductionRelease.ps1',"'portable-uninstall-receipt.json'=$portableUninstallReceipt; 'update-stage-receipt.json'=$updateStageReceipt; 'production-signer-gate.json'=$signerGatePath"),
+            ('script.final','scripts/Invoke-NxbV1ProductionRelease.ps1',"Assert-Nxb ((Get-NxbSha256 -Path $downloadedFinal) -ceq $finalSha) 'Final closure receipt uploaded bytes do not match local canonical bytes.'"),
+            ('validator.signer','tools/validate_v1_successor.py','SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"\n'),
+            ('validator.function','tools/validate_v1_successor.py','\ndef validate_production_release_policy(policy):\n'),
+            ('validator.safety_header','tools/validate_v1_successor.py','    safety = policy.get("safety", {})\n    return all(\n'),
+            ('validator.final_hash','tools/validate_v1_successor.py','            predecessor.get("final_closure_sha256") == FINAL_CLOSURE_SHA256,\n            predecessor.get("production_signer_fingerprint") == SIGNER_FINGERPRINT,'),
+            ('validator.runner_anchor','tools/validate_v1_successor.py','            ci.get("ps51_excluded_tag") == "PS7Only",\n            safety.get("require_merge_commit") is True,'),
+            ('validator.safety_tail','tools/validate_v1_successor.py','            safety.get("allow_v1_0_0_mutation") is False,\n'),
+            ('validator.negatives','tools/validate_v1_successor.py','    m = copy.deepcopy(policy); m["safety"]["allow_history_rewrite"] = True; negatives.append(not validate_policy(m))\n    checks["negative_controls"] = all(negatives) and len(negatives) == 6'),
+            ('validator.authority','tools/validate_v1_successor.py','"authority": "nxb-v1-successor-independent-v11"'),
+            ('validator.count','tools/validate_v1_successor.py','"negative_control_count": 6,'),
+            ('tests.asset_anchor','tests/V1Successor.Tests.ps1',"        [string]$production.predecessor.production_signer_fingerprint | Should -BeExactly '1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373'\n        [string]$production.implementation.certified_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'"),
+            ('tests.safety','tests/V1Successor.Tests.ps1','        [bool]$production.safety.allow_auto_apply | Should -BeFalse\n'),
+            ('tests.tokens','tests/V1Successor.Tests.ps1',"            'Canonical native CI run identity/conclusion mismatch.',\n            'Production signer gate requires exactly one protected certificate matching frozen public fingerprint.',"),
+            ('tests.no-update-ref','tests/V1Successor.Tests.ps1',"        $productionSource | Should -Not -Match ([regex]::Escape(\"@('update-ref'\"))\n"),
+            ('tests.title','tests/V1Successor.Tests.ps1',"    It 'passes the successor independent validator with production authority and six negative controls' {"),
+            ('tests.authority','tests/V1Successor.Tests.ps1',"[string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v11'"),
+            ('tests.count','tests/V1Successor.Tests.ps1',"[int]$result.negative_controls_validated | Should -Be 6\n        [int]$result.negative_control_count | Should -Be 6"),
+            ('doc.hashes','docs/NXB-V1-PRODUCTION-RELEASE.md','package     c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78\nclosure     b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355\nsigner      1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373'),
+            ('doc.snapshot','docs/NXB-V1-PRODUCTION-RELEASE.md','The production authority snapshots the v1.0.0 GitHub Release and its canonical package/final-closure digests before successor publication, repeats that check before tagging, and repeats it after v1.0.1 publication.'),
+            ('doc.runner','docs/NXB-V1-PRODUCTION-RELEASE.md','The native job must expose exactly the NXB runner labels:'),
+            ('doc.stage','docs/NXB-V1-PRODUCTION-RELEASE.md','The release performs a production-signed `Stage` smoke only. It requires:'),
+            ('doc.final','docs/NXB-V1-PRODUCTION-RELEASE.md','After all initial assets are re-downloaded and verified, the immutable final closure asset is added:'),
+          ]
+          bad=[]
+          for label,path,needle in checks:
+              text=Path(path).read_text(encoding='utf-8-sig')
+              n=text.count(needle)
+              print(f'{label}: {n}')
+              if n != 1: bad.append((label,n))
+          print('RESULT=' + ('PASS' if not bad else 'FAIL'))
+          if bad:
+              print('BAD=' + ', '.join(f'{k}:{n}' for k,n in bad))
+          PY
+          result="$(cat ../diagnostic.txt)"
+          body=$(printf '<!-- nxb-final-hardening-diagnostic -->\n## Final hardening diagnostic\n\nExact target: `%s`\n\n```text\n%s\n```' "${actual}" "${result}")
+          gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+          cat ../diagnostic.txt
