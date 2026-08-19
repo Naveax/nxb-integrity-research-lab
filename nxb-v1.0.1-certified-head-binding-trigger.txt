@@ -1,1 +1,0 @@
-one-shot trigger for certified-head binding patch
