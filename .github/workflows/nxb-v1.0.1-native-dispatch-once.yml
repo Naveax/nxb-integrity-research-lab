@@ -1,25 +1,29 @@
-name: NXB v1.0.1 Native Dispatch Once
+name: NXB v1.0.1 Native Dispatch Observer
 
 on:
   push:
     branches:
       - automation/nxb-v1.0.1-native-dispatch
+    paths:
+      - .nxb-v1.0.1-native-dispatch-query
 
 permissions:
   contents: read
   actions: write
+  issues: write
 
 jobs:
-  dispatch-native:
+  observe-or-dispatch-native:
     runs-on: ubuntu-latest
     steps:
-      - name: Deduplicate and dispatch exact-head native run
+      - name: Deduplicate, dispatch if absent, and publish exact-head run identity
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: release/nxb-v1.0.1-release-integration-boundary-repair
           EXPECTED_HEAD: 395ce3a92e3650ea3dc0141524926e64810a82c8
           WORKFLOW_FILE: nxb-v1-ci.yml
+          ISSUE_NUMBER: "42"
         run: |
           set -euo pipefail
 
@@ -29,25 +33,60 @@ jobs:
             exit 21
           fi
 
-          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?event=workflow_dispatch&branch=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["TARGET_BRANCH"], safe=""))')&per_page=100"
-          runs_json="$(curl -fsSL \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${api}")"
+          encoded_branch="$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["TARGET_BRANCH"], safe=""))')"
+          runs_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?event=workflow_dispatch&branch=${encoded_branch}&per_page=100"
 
-          existing="$(jq -r --arg head "${EXPECTED_HEAD}" '.workflow_runs[] | select(.head_sha == $head) | [.id,.status,(.conclusion // "null"),.html_url] | @tsv' <<<"${runs_json}")"
-          if [[ -n "${existing}" ]]; then
-            echo "Exact-head workflow_dispatch already exists; refusing duplicate dispatch."
-            echo "${existing}"
-            exit 0
+          query_runs() {
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${runs_api}"
+          }
+
+          runs_json="$(query_runs)"
+          existing_count="$(jq --arg head "${EXPECTED_HEAD}" '[.workflow_runs[] | select(.head_sha == $head)] | length' <<<"${runs_json}")"
+
+          dispatch_performed=false
+          if [[ "${existing_count}" -eq 0 ]]; then
+            curl -fsSL -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/dispatches" \
+              -d "$(jq -nc --arg ref "${TARGET_BRANCH}" '{ref:$ref,inputs:{run_native:"true"}}')"
+            dispatch_performed=true
+            sleep 5
+            runs_json="$(query_runs)"
           fi
+
+          exact_runs="$(jq -c --arg head "${EXPECTED_HEAD}" '[.workflow_runs[] | select(.head_sha == $head) | {id,run_number,event,status,conclusion,head_sha,html_url,created_at}]' <<<"${runs_json}")"
+          exact_count="$(jq 'length' <<<"${exact_runs}")"
+          if [[ "${exact_count}" -lt 1 ]]; then
+            echo "Dispatch/query completed but no exact-head workflow_dispatch became observable." >&2
+            exit 22
+          fi
+
+          table="$(jq -r '.[] | "- run #\(.run_number) / `\(.id)` — `\(.status)` / `\(.conclusion // "null")` — \(.html_url)"' <<<"${exact_runs}")"
+          body=$(cat <<EOF
+<!-- nxb-native-dispatch-observer:${EXPECTED_HEAD} -->
+## Native dispatch observer
+
+Exact freeze: `${EXPECTED_HEAD}`
+
+Observer dispatch_performed: `${dispatch_performed}`
+
+${table}
+
+The observer refuses duplicate exact-head workflow_dispatch creation. A completed failed run requires explicit diagnosis/retry policy instead of a new full dispatch.
+EOF
+)
 
           curl -fsSL -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/dispatches" \
-            -d "$(jq -nc --arg ref "${TARGET_BRANCH}" '{ref:$ref,inputs:{run_native:"true"}}')"
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
+            -d "$(jq -nc --arg body "${body}" '{body:$body}')" >/dev/null
 
-          echo "Dispatched one exact-head native run for ${EXPECTED_HEAD}."
+          echo "${exact_runs}"
