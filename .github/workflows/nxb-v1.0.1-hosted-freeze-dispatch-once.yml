@@ -1,4 +1,4 @@
-name: NXB v1.0.1 hosted freeze dispatch once
+name: NXB v1.0.1 hosted freeze observer
 
 on:
   push:
@@ -6,16 +6,16 @@ on:
       - automation/nxb-v1.0.1-native-dispatch
 
 permissions:
-  actions: write
+  actions: read
   contents: read
   issues: write
 
 jobs:
-  dispatch-hosted:
+  observe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Deduplicate and dispatch exact-head hosted-only CI
+      - name: Report exact-head workflow-dispatch run without redispatch
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -25,18 +25,8 @@ jobs:
           set -euo pipefail
           api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
           encoded_branch="release%2Fnxb-v1.0.1-release-integration-boundary-repair"
-          ref_json="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${api}/git/ref/heads/${encoded_branch}")"
-          actual="$(python -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])' <<<"${ref_json}")"
-          [[ "${actual}" == "${TARGET_HEAD}" ]] || { echo "Target head drift: ${actual}" >&2; exit 1; }
-
           runs_json="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${api}/actions/workflows/nxb-v1-ci.yml/runs?event=workflow_dispatch&branch=${encoded_branch}&per_page=30")"
-          existing="$(TARGET_HEAD="${TARGET_HEAD}" python -c 'import json,os,sys; d=json.load(sys.stdin); h=os.environ["TARGET_HEAD"]; xs=[r for r in d.get("workflow_runs",[]) if r.get("head_sha")==h and r.get("event")=="workflow_dispatch" and r.get("status") in ("queued","in_progress","waiting","pending","requested")]; print(xs[0]["id"] if xs else "")' <<<"${runs_json}")"
-          if [[ -n "${existing}" ]]; then
-            body=$(printf '<!-- nxb-hosted-freeze-dispatch:%s -->\n## Hosted freeze dispatch\n\nNo duplicate dispatch. Existing exact-head run: `%s`.' "${TARGET_HEAD}" "${existing}")
-            gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
-            exit 0
-          fi
-
-          curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${api}/actions/workflows/nxb-v1-ci.yml/dispatches" -d '{"ref":"release/nxb-v1.0.1-release-integration-boundary-repair","inputs":{"run_native":"false"}}'
-          body=$(printf '<!-- nxb-hosted-freeze-dispatch:%s -->\n## Hosted freeze dispatch\n\nDispatched exact-head hosted-only CI (`run_native=false`) for `%s`. Native runner queue was not opened.' "${TARGET_HEAD}" "${TARGET_HEAD}")
+          row="$(TARGET_HEAD="${TARGET_HEAD}" python -c 'import json,os,sys; d=json.load(sys.stdin); h=os.environ["TARGET_HEAD"]; xs=[r for r in d.get("workflow_runs",[]) if r.get("head_sha")==h and r.get("event")=="workflow_dispatch"]; xs=sorted(xs,key=lambda r:r.get("created_at","") ,reverse=True); assert xs,"exact-head workflow_dispatch run not found"; r=xs[0]; print("%s|%s|%s|%s|%s"%(r["id"],r["run_number"],r["status"],r.get("conclusion") or "null",r["html_url"]))' <<<"${runs_json}")"
+          IFS='|' read -r run_id run_number status conclusion url <<<"${row}"
+          body=$(printf '<!-- nxb-hosted-freeze-observer:%s -->\n## Hosted freeze observer\n\n- run #%s / `%s` — `%s` / `%s`\n- exact head: `%s`\n- %s\n\nNo redispatch was performed.' "${TARGET_HEAD}" "${run_number}" "${run_id}" "${status}" "${conclusion}" "${TARGET_HEAD}" "${url}")
           gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
