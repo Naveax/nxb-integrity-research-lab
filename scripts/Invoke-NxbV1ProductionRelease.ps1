@@ -377,7 +377,7 @@ $ciPolicy = Get-Content -LiteralPath $ciPolicyPath -Raw | ConvertFrom-Json
 Assert-Nxb ([int]$policy.schema_version -eq 1 -and [string]$policy.contract_id -ceq 'nxb-v1-production-release-v1') 'Production release policy identity drift.'
 Assert-Nxb ([string]$policy.target_version -ceq '1.0.1' -and [string]$policy.tag -ceq 'v1.0.1' -and [int]$policy.release_sequence -eq 2) 'Production release version/sequence drift.'
 Assert-Nxb ([string]$successor.predecessor.head -ceq [string]$policy.predecessor.head -and [string]$successor.predecessor.production_signer_fingerprint -ceq [string]$policy.predecessor.production_signer_fingerprint) 'Successor/predecessor production policy drift.'
-Assert-Nxb ([string]$signingPolicy.target_version -ceq [string]$policy.target_version -and [string]$signingPolicy.certified_implementation_head -ceq [string]$policy.implementation.certified_head) 'Production signing policy binding drift.'
+Assert-Nxb ([string]$signingPolicy.target_version -ceq [string]$policy.target_version -and [string]$signingPolicy.certified_implementation_head -ceq [string]$policy.implementation.historical_certified_head) 'Production signing policy binding drift.'
 Assert-Nxb ([string]$releaseIntegrationPolicy.target_version -ceq [string]$policy.target_version -and [string]$releaseIntegrationPolicy.certified_implementation_head -ceq [string]$policy.predecessor.head) 'Release integration production-predecessor binding drift.'
 Assert-Nxb ([string]$ciPolicy.target_version -ceq [string]$policy.target_version) 'CI target version drift.'
 $script:Repository = [string]$policy.repository
@@ -570,10 +570,14 @@ $revocationPath = Join-Path $operationsRoot 'production-revocation-policy.txt'
 $descriptorPath = Join-Path $updateRoot 'update-descriptor.json'
 Write-NxbJsonNew -Path $descriptorPath -Value ([pscustomobject][ordered]@{
     schema_version=1; contract_id='nxb-v1-update-descriptor-v1'; channel=[string]$policy.channel; release_version=[string]$policy.target_version; release_sequence=[int]$policy.release_sequence;
-    release_head=$expected; certified_implementation_head=[string]$policy.implementation.certified_head; package_manifest_sha256=$manifestSha; created_utc=[DateTime]::UtcNow.ToString('o')
+    release_head=$expected; certified_implementation_head=$certified; package_manifest_sha256=$manifestSha; created_utc=[DateTime]::UtcNow.ToString('o')
 })
 $packageZip = Join-Path $distRoot ([string]$policy.package.zip_name)
 Export-NxbDeterministicZip -Root $packageRoot -Output $packageZip
+$packageZipReplay = Join-Path $releaseRoot 'nxb-v1.0.1-determinism-replay.zip'
+Export-NxbDeterministicZip -Root $packageRoot -Output $packageZipReplay
+Assert-Nxb ((Get-NxbSha256 -Path $packageZipReplay) -ceq (Get-NxbSha256 -Path $packageZip)) 'Deterministic package ZIP replay hash mismatch.'
+Remove-Item -LiteralPath $packageZipReplay -Force
 
 Write-Information '[10/18] Production signer fingerprint and protected-key gate'
 $signingCommon = Join-Path $repositoryRoot 'scripts\NxbV1ProductionSigning.Common.ps1'
@@ -603,15 +607,15 @@ $artifactPaths.Add('operations/production-key-rotation-policy.txt')
 $artifactPaths.Add('operations/production-revocation-policy.txt')
 Assert-Nxb ($artifactPaths.Count -eq (@($manifest.files).Count + $reservedSignedArtifacts) -and $artifactPaths.Count -le $maximumReleaseArtifacts) 'Production signed artifact accounting drift.'
 $envelopePath = Join-Path $releaseRoot 'signature-envelope.json'
-$envelopePipeline = @(& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1ReleaseManifestSigning.ps1') -SignerMode ProductionWindowsCertificateStore -ReleaseHead $expected -CertifiedImplementationHead ([string]$policy.implementation.certified_head) -PackageManifestPath $manifestPath -ReleaseNotesPath $releaseNotesPath -ArtifactRoot $artifactRoot -ArtifactPath @($artifactPaths) -OutputPath $envelopePath -StoreLocation ([string]$selected.store_location) -StoreName 'My' -Thumbprint ([string]$selected.thumbprint) -PassThru)
+$envelopePipeline = @(& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1ReleaseManifestSigning.ps1') -SignerMode ProductionWindowsCertificateStore -ReleaseHead $expected -CertifiedImplementationHead $certified -PackageManifestPath $manifestPath -ReleaseNotesPath $releaseNotesPath -ArtifactRoot $artifactRoot -ArtifactPath @($artifactPaths) -OutputPath $envelopePath -StoreLocation ([string]$selected.store_location) -StoreName 'My' -Thumbprint ([string]$selected.thumbprint) -PassThru)
 $envelope = $null
 foreach ($item in $envelopePipeline) { if ($null -ne $item -and $null -ne $item.PSObject.Properties['signature_b64']) { $envelope=$item } }
-Assert-Nxb ($null -ne $envelope -and [string]$envelope.signer_mode -ceq 'production-windows-certificate-store' -and [bool]$envelope.production_signer_claimed -and [string]$envelope.public_key.fingerprint -ceq [string]$policy.predecessor.production_signer_fingerprint) 'Production envelope signer/fingerprint boundary failed.'
+Assert-Nxb ($null -ne $envelope -and [string]$envelope.certified_implementation_head -ceq $certified -and [string]$envelope.signer_mode -ceq 'production-windows-certificate-store' -and [bool]$envelope.production_signer_claimed -and [string]$envelope.public_key.fingerprint -ceq [string]$policy.predecessor.production_signer_fingerprint) 'Production envelope signer/fingerprint/certified-head boundary failed.'
 $productionIndependentPath = Join-Path $releaseRoot 'production-signing-independent.json'
-$productionIndependentRun = Invoke-NxbNative -Executable $python -ArgumentList @((Join-Path $repositoryRoot 'tools\validate_v1_production_signing.py'),'--policy',$signingPolicyPath,'--envelope',$envelopePath,'--expected-release-head',$expected,'--expected-certified-head',([string]$policy.implementation.certified_head),'--expected-signer-mode','production-windows-certificate-store','--expected-production-fingerprint',([string]$policy.predecessor.production_signer_fingerprint),'--output',$productionIndependentPath)
+$productionIndependentRun = Invoke-NxbNative -Executable $python -ArgumentList @((Join-Path $repositoryRoot 'tools\validate_v1_production_signing.py'),'--policy',$signingPolicyPath,'--envelope',$envelopePath,'--expected-release-head',$expected,'--expected-certified-head',$certified,'--expected-signer-mode','production-windows-certificate-store','--expected-production-fingerprint',([string]$policy.predecessor.production_signer_fingerprint),'--output',$productionIndependentPath)
 Assert-Nxb ($productionIndependentRun.exit_code -eq 0) ('Independent production signer verification failed: {0}' -f $productionIndependentRun.output)
 $productionIndependent = Get-Content -LiteralPath $productionIndependentPath -Raw | ConvertFrom-Json
-Assert-Nxb ([string]$productionIndependent.status -ceq 'passed' -and [string]$productionIndependent.authority -ceq 'nxb-v1-production-signing-independent-v2' -and [string]$productionIndependent.expected_signer_mode -ceq 'production-windows-certificate-store' -and [int]$productionIndependent.requirements_validated -eq 12 -and [int]$productionIndependent.negative_controls_validated -eq 8 -and @($productionIndependent.failures).Count -eq 0) 'Independent production signing closure is not 12/12 + 8/8.'
+Assert-Nxb ([string]$productionIndependent.status -ceq 'passed' -and [string]$productionIndependent.authority -ceq 'nxb-v1-production-signing-independent-v2' -and [string]$productionIndependent.certified_implementation_head -ceq $certified -and [string]$productionIndependent.expected_signer_mode -ceq 'production-windows-certificate-store' -and [int]$productionIndependent.requirements_validated -eq 12 -and [int]$productionIndependent.negative_controls_validated -eq 8 -and @($productionIndependent.failures).Count -eq 0) 'Independent production signing closure is not exact-head 12/12 + 8/8.'
 
 Write-Information '[12/18] Production-signed Stage-only updater smoke'
 $updateInstallRoot = Join-Path $releaseRoot 'update-smoke-install'
