@@ -41,11 +41,13 @@ tree        34779176d9e15cd4d700d46132785c0b25f19604
 tag         v1.0.0
 release id  370629171
 package     c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78
+manifest    5de097246c5d0bda633a64973491b571c8383d4ca489851f2b225e6633cbf466
+evidence    51caec3a66d7300ae774219f142c2a9d2351fafb613cee0c22795709b12b9d40
 closure     b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355
 signer      1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373
 ```
 
-The production authority snapshots the v1.0.0 GitHub Release and its canonical package/final-closure digests before successor publication, repeats that check before tagging, and repeats it after v1.0.1 publication.
+The production authority pins the exact four-asset v1.0.0 GitHub Release set and every SHA-256 digest before successor publication, repeats that full-set check before tagging, and repeats it after v1.0.1 publication. It also downloads and re-hashes the frozen v1.0.0 package and package manifest before the successor update smoke.
 
 The historical Phase-7 pointer remains:
 
@@ -69,7 +71,7 @@ The operator receives one `NativeRunId` and requires the run to be:
   - `nxb-v1 / native-wpt`
   - `nxb-v1 / release-candidate`.
 
-The native job must expose exactly the NXB runner labels:
+The native job must bind runner name `NXB-NATIVE-WPT` and expose exactly the NXB runner labels:
 
 ```text
 self-hosted
@@ -138,7 +140,7 @@ channel          stable
 release_sequence 2
 ```
 
-The release performs a production-signed `Stage` smoke only. It requires:
+The release downloads the frozen, hash-pinned v1.0.0 package and manifest, installs that predecessor with the current compatibility-aware installer, then performs a production-signed v1.0.1 `Stage` smoke only. The v1.0.0 install state must remain bound to the predecessor after Stage. It requires:
 
 ```text
 auto_apply=false
@@ -189,7 +191,7 @@ production-key-rotation-policy.txt
 production-revocation-policy.txt
 ```
 
-After all initial assets are re-downloaded and verified, the immutable final closure asset is added:
+After all initial assets are re-downloaded and verified, the immutable final closure asset is added. The operator then queries the GitHub Release again and requires the complete final asset-name set and every GitHub-recorded SHA-256 digest to match the local canonical bytes exactly:
 
 ```text
 production-final-closure-receipt.json

@@ -297,6 +297,88 @@ function Save-NxbGitHubArtifactArchive {
     return $actual
 }
 
+function Get-NxbPredecessorExpectedAssetMap {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Policy)
+    $map = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in @($Policy.predecessor.assets)) {
+        $name = [string]$entry.name
+        $sha = [string]$entry.sha256
+        Assert-Nxb (-not [string]::IsNullOrWhiteSpace($name)) 'Frozen predecessor asset name is empty.'
+        Assert-Nxb ($sha -cmatch '^[0-9a-f]{64}$') ('Frozen predecessor asset SHA-256 is malformed: {0}' -f $name)
+        Assert-Nxb (-not $map.ContainsKey($name)) ('Frozen predecessor asset policy contains a duplicate: {0}' -f $name)
+        $map.Add($name,$sha)
+    }
+    Assert-Nxb ($map.Count -eq 4) ('Frozen predecessor asset policy count drift: {0}' -f $map.Count)
+    return $map
+}
+
+function Save-NxbGitHubReleaseAsset {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][long]$AssetId,
+        [Parameter(Mandatory)][string]$OutputPath,
+        [Parameter(Mandatory)][string]$ExpectedSha256,
+        [Parameter(Mandatory)][string]$Token
+    )
+    Assert-Nxb ($ExpectedSha256 -cmatch '^[0-9a-f]{64}$') 'Expected GitHub Release asset SHA-256 is malformed.'
+    Assert-Nxb (-not (Test-Path -LiteralPath $OutputPath)) ('Release asset output already exists: {0}' -f $OutputPath)
+    $headers = @{ Authorization=('Bearer {0}' -f $Token); Accept='application/octet-stream'; 'X-GitHub-Api-Version'='2022-11-28'; 'User-Agent'='NXB-v1-production-release' }
+    $uri = 'https://api.github.com/repos/{0}/releases/assets/{1}' -f $script:Repository,$AssetId
+    Invoke-WebRequest -Uri $uri -Headers $headers -OutFile $OutputPath -MaximumRedirection 10 | Out-Null
+    $actual = Get-NxbSha256 -Path $OutputPath
+    Assert-Nxb ($actual -ceq $ExpectedSha256) ('Downloaded frozen predecessor asset SHA mismatch: asset={0} expected={1} actual={2}' -f $AssetId,$ExpectedSha256,$actual)
+    return $actual
+}
+
+function Test-NxbPackageRootAgainstManifest {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Root,[Parameter(Mandatory)][object]$Manifest)
+    try {
+        if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
+        $rootFull = [IO.Path]::GetFullPath($Root)
+        $trimChars = [char[]]@([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+        $prefix = $rootFull.TrimEnd($trimChars) + [IO.Path]::DirectorySeparatorChar
+        $rows = @($Manifest.files)
+        if ([int]$Manifest.file_count -ne $rows.Count) { return $false }
+        $expected = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+        foreach ($row in $rows) {
+            $relative = [string]$row.path
+            if ([string]::IsNullOrWhiteSpace($relative) -or $relative -match '(^/|^[A-Za-z]:|(^|/)\.\.(/|$)|\\)') { return $false }
+            if ($expected.ContainsKey($relative)) { return $false }
+            $expected.Add($relative,$true)
+            $full = [IO.Path]::GetFullPath((Join-Path $rootFull $relative.Replace('/',[IO.Path]::DirectorySeparatorChar)))
+            if (-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { return $false }
+            if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { return $false }
+            $item = Get-Item -LiteralPath $full -Force
+            if ([int64]$item.Length -ne [int64]$row.bytes -or (Get-NxbSha256 -Path $full) -cne [string]$row.sha256) { return $false }
+        }
+        $actual = @(Get-ChildItem -LiteralPath $rootFull -File -Recurse -Force)
+        if ($actual.Count -ne $expected.Count) { return $false }
+        foreach ($file in $actual) {
+            $full = [IO.Path]::GetFullPath($file.FullName)
+            $relative = $full.Substring($prefix.Length).Replace([IO.Path]::DirectorySeparatorChar,[char]'/')
+            if (-not $expected.ContainsKey($relative)) { return $false }
+        }
+        return $true
+    }
+    catch { return $false }
+}
+
+function Resolve-NxbExtractedPackageRoot {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ExtractRoot,[Parameter(Mandatory)][object]$Manifest)
+    $rootFull = [IO.Path]::GetFullPath($ExtractRoot)
+    $candidates = [Collections.Generic.List[string]]::new()
+    $candidates.Add($rootFull)
+    $topFiles = @(Get-ChildItem -LiteralPath $rootFull -File -Force)
+    $topDirs = @(Get-ChildItem -LiteralPath $rootFull -Directory -Force)
+    if ($topFiles.Count -eq 0 -and $topDirs.Count -eq 1) { $candidates.Add([IO.Path]::GetFullPath($topDirs[0].FullName)) }
+    $matches = @($candidates | Where-Object { Test-NxbPackageRootAgainstManifest -Root $_ -Manifest $Manifest })
+    Assert-Nxb ($matches.Count -eq 1) ('Frozen predecessor package root resolution failed: matches={0}' -f $matches.Count)
+    return [string]$matches[0]
+}
+
 function Test-NxbHostedReceipt {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object]$Receipt,[Parameter(Mandatory)][string]$Head,[Parameter(Mandatory)][object]$Policy)
@@ -335,10 +417,19 @@ function Get-NxbPredecessorReleaseSnapshot {
     Assert-Nxb ([string]$release.tag_name -ceq [string]$Policy.predecessor.tag) 'Frozen predecessor GitHub Release tag drift.'
     Assert-Nxb (-not [bool]$release.draft -and -not [bool]$release.prerelease) 'Frozen predecessor GitHub Release state drift.'
     $assets = @($release.assets | ForEach-Object { [pscustomobject][ordered]@{ id=[long]$_.id; name=[string]$_.name; size=[long]$_.size; digest=[string]$_.digest } } | Sort-Object name)
-    $packageAsset = @($assets | Where-Object { $_.name -ceq 'nxb-v1.0.0.zip' })
-    $closureAsset = @($assets | Where-Object { $_.name -ceq 'production-final-closure-receipt.json' })
-    Assert-Nxb ($packageAsset.Count -eq 1 -and [string]$packageAsset[0].digest -ceq ('sha256:' + [string]$Policy.predecessor.package_sha256)) 'Frozen predecessor package asset digest drift.'
-    Assert-Nxb ($closureAsset.Count -eq 1 -and [string]$closureAsset[0].digest -ceq ('sha256:' + [string]$Policy.predecessor.final_closure_sha256)) 'Frozen predecessor final closure asset digest drift.'
+    $expectedAssetMap = Get-NxbPredecessorExpectedAssetMap -Policy $Policy
+    Assert-Nxb ($assets.Count -eq $expectedAssetMap.Count) ('Frozen predecessor asset set drift: expected={0} actual={1}' -f $expectedAssetMap.Count,$assets.Count)
+    $seen = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+    foreach ($asset in $assets) {
+        $name = [string]$asset.name
+        Assert-Nxb (-not $seen.ContainsKey($name)) ('Frozen predecessor GitHub Release contains duplicate asset name: {0}' -f $name)
+        Assert-Nxb ($expectedAssetMap.ContainsKey($name)) ('Frozen predecessor GitHub Release contains unexpected asset: {0}' -f $name)
+        Assert-Nxb ([string]$asset.digest -ceq ('sha256:' + $expectedAssetMap[$name])) ('Frozen predecessor asset digest drift: {0}' -f $name)
+        $seen.Add($name,$true)
+    }
+    Assert-Nxb ($seen.Count -eq $expectedAssetMap.Count) 'Frozen predecessor asset set is incomplete.'
+    Assert-Nxb ($expectedAssetMap['nxb-v1.0.0.zip'] -ceq [string]$Policy.predecessor.package_sha256) 'Frozen predecessor package hash policy drift.'
+    Assert-Nxb ($expectedAssetMap['production-final-closure-receipt.json'] -ceq [string]$Policy.predecessor.final_closure_sha256) 'Frozen predecessor final-closure hash policy drift.'
     return [pscustomobject][ordered]@{ release_id=[long]$release.id; tag=[string]$release.tag_name; draft=[bool]$release.draft; prerelease=[bool]$release.prerelease; assets=$assets }
 }
 
@@ -425,7 +516,7 @@ $nativeJob = @($jobs | Where-Object { [string]$_.name -ceq 'nxb-v1 / native-wpt'
 $actualLabels = @($nativeJob.labels | ForEach-Object { [string]$_ } | Sort-Object)
 $expectedLabels = @($policy.ci.native_runner_labels | ForEach-Object { [string]$_ } | Sort-Object)
 Assert-Nxb ($actualLabels.Count -eq $expectedLabels.Count -and @(Compare-Object -ReferenceObject $expectedLabels -DifferenceObject $actualLabels).Count -eq 0) 'Native runner label identity drift.'
-Assert-Nxb (-not [string]::IsNullOrWhiteSpace([string]$nativeJob.runner_name)) 'Native job has no bound self-hosted runner name.'
+Assert-Nxb ([string]$nativeJob.runner_name -ceq [string]$policy.ci.native_runner_name) 'Native runner name identity drift.'
 
 Write-Information '[4/18] Download and independently audit hosted/native CI artifact archives'
 $artifactDocument = Invoke-NxbGhJson -Endpoint ('repos/{0}/actions/runs/{1}/artifacts?per_page=100' -f $script:Repository,$NativeRunId)
@@ -450,6 +541,23 @@ $hostedArchive = Join-Path $ciRoot 'hosted-artifact.zip'
 $nativeArchive = Join-Path $ciRoot 'native-artifact.zip'
 $hostedArchiveSha = Save-NxbGitHubArtifactArchive -ArtifactId ([long]$hostedArtifact[0].id) -OutputPath $hostedArchive -ExpectedDigest ([string]$hostedArtifact[0].digest) -Token $ghToken
 $nativeArchiveSha = Save-NxbGitHubArtifactArchive -ArtifactId ([long]$nativeArtifact[0].id) -OutputPath $nativeArchive -ExpectedDigest ([string]$nativeArtifact[0].digest) -Token $ghToken
+
+$predecessorExpectedAssets = Get-NxbPredecessorExpectedAssetMap -Policy $policy
+$predecessorAssetRoot = Join-Path $releaseRoot 'predecessor-assets'
+[IO.Directory]::CreateDirectory($predecessorAssetRoot) | Out-Null
+$predecessorPackageAsset = @($predecessorSnapshot.assets | Where-Object { [string]$_.name -ceq 'nxb-v1.0.0.zip' })
+$predecessorManifestAsset = @($predecessorSnapshot.assets | Where-Object { [string]$_.name -ceq 'package-manifest.json' })
+Assert-Nxb ($predecessorPackageAsset.Count -eq 1 -and $predecessorManifestAsset.Count -eq 1) 'Frozen predecessor package/manifest assets are not unique.'
+$predecessorPackageZip = Join-Path $predecessorAssetRoot 'nxb-v1.0.0.zip'
+$predecessorManifestPath = Join-Path $predecessorAssetRoot 'package-manifest.json'
+[void](Save-NxbGitHubReleaseAsset -AssetId ([long]$predecessorPackageAsset[0].id) -OutputPath $predecessorPackageZip -ExpectedSha256 $predecessorExpectedAssets['nxb-v1.0.0.zip'] -Token $ghToken)
+[void](Save-NxbGitHubReleaseAsset -AssetId ([long]$predecessorManifestAsset[0].id) -OutputPath $predecessorManifestPath -ExpectedSha256 $predecessorExpectedAssets['package-manifest.json'] -Token $ghToken)
+$predecessorManifest = Get-Content -LiteralPath $predecessorManifestPath -Raw | ConvertFrom-Json
+Assert-Nxb ([string]$predecessorManifest.release_version -ceq '1.0.0' -and [string]$predecessorManifest.source_head -ceq [string]$policy.predecessor.head) 'Predecessor package manifest identity drift.'
+$predecessorExtractRoot = Join-Path $predecessorAssetRoot 'package-extracted'
+Expand-Archive -LiteralPath $predecessorPackageZip -DestinationPath $predecessorExtractRoot
+$predecessorPackageRoot = Resolve-NxbExtractedPackageRoot -ExtractRoot $predecessorExtractRoot -Manifest $predecessorManifest
+Assert-Nxb (Test-NxbPackageRootAgainstManifest -Root $predecessorPackageRoot -Manifest $predecessorManifest) 'Frozen predecessor package bytes do not match pinned manifest.'
 $ghToken = $null
 $hostedExtract = Join-Path $ciRoot 'hosted'
 $nativeExtract = Join-Path $ciRoot 'native'
@@ -613,18 +721,31 @@ Assert-Nxb ($productionIndependentRun.exit_code -eq 0) ('Independent production 
 $productionIndependent = Get-Content -LiteralPath $productionIndependentPath -Raw | ConvertFrom-Json
 Assert-Nxb ([string]$productionIndependent.status -ceq 'passed' -and [string]$productionIndependent.authority -ceq 'nxb-v1-production-signing-independent-v2' -and [string]$productionIndependent.expected_signer_mode -ceq 'production-windows-certificate-store' -and [int]$productionIndependent.requirements_validated -eq 12 -and [int]$productionIndependent.negative_controls_validated -eq 8 -and @($productionIndependent.failures).Count -eq 0) 'Independent production signing closure is not 12/12 + 8/8.'
 
-Write-Information '[12/18] Production-signed Stage-only updater smoke'
+Write-Information '[12/18] Frozen v1.0.0 -> production-signed v1.0.1 Stage-only updater smoke'
 $updateInstallRoot = Join-Path $releaseRoot 'update-smoke-install'
 $updateStateRoot = Join-Path $releaseRoot 'update-smoke-state'
 [IO.Directory]::CreateDirectory($updateStateRoot) | Out-Null
 $updateInstallReceipt = Join-Path $releaseRoot 'update-smoke-install-receipt.json'
 $updateStageReceipt = Join-Path $releaseRoot 'update-smoke-stage-receipt.json'
 $updateUninstallReceipt = Join-Path $releaseRoot 'update-smoke-uninstall-receipt.json'
-& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1Installer.ps1') -Action Install -Mode PerUser -PackageRoot $packageRoot -ManifestPath $manifestPath -InstallRoot $updateInstallRoot -ReceiptPath $updateInstallReceipt -Confirm:$false | Out-Null
+$predecessorTransitionReceiptPath = Join-Path $releaseRoot 'predecessor-transition-stage-receipt.json'
+& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1Installer.ps1') -Action Install -Mode PerUser -PackageRoot $predecessorPackageRoot -ManifestPath $predecessorManifestPath -InstallRoot $updateInstallRoot -ReceiptPath $updateInstallReceipt -Confirm:$false | Out-Null
+$predecessorStatePath = Join-Path $updateInstallRoot '.nxb-install-state.json'
+Assert-Nxb (Test-Path -LiteralPath $predecessorStatePath -PathType Leaf) 'Predecessor install state is missing before Stage.'
+$predecessorState = Get-Content -LiteralPath $predecessorStatePath -Raw | ConvertFrom-Json
+Assert-Nxb ([string]$predecessorState.release_version -ceq '1.0.0' -and [string]$predecessorState.source_head -ceq [string]$policy.predecessor.head -and [string]$predecessorState.package_manifest_sha256 -ceq (Get-NxbSha256 -Path $predecessorManifestPath)) 'Predecessor install-state identity drift before Stage.'
 & (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1Updater.ps1') -Action Stage -InstallRoot $updateInstallRoot -UpdateRoot $updateStateRoot -ReceiptPath $updateStageReceipt -PackageRoot $packageRoot -ManifestPath $manifestPath -DescriptorPath $descriptorPath -EnvelopePath $envelopePath -TrustPath $trustPath -Confirm:$false | Out-Null
 $stageReceipt = Get-Content -LiteralPath $updateStageReceipt -Raw | ConvertFrom-Json
-Assert-Nxb ([string]$stageReceipt.status -ceq 'passed' -and [int]$stageReceipt.release_sequence -eq [int]$policy.release_sequence -and -not [bool]$stageReceipt.auto_apply -and -not [bool]$stageReceipt.production_release_updated) 'Production signed Stage-only updater smoke failed.'
-& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1Installer.ps1') -Action Uninstall -Mode PerUser -PackageRoot $packageRoot -ManifestPath $manifestPath -InstallRoot $updateInstallRoot -ReceiptPath $updateUninstallReceipt -Confirm:$false | Out-Null
+Assert-Nxb ([string]$stageReceipt.status -ceq 'passed' -and [int]$stageReceipt.release_sequence -eq [int]$policy.release_sequence -and [string]$stageReceipt.release_head -ceq $expected -and -not [bool]$stageReceipt.auto_apply -and -not [bool]$stageReceipt.production_release_updated) 'Production signed Stage-only updater smoke failed.'
+$postStageState = Get-Content -LiteralPath $predecessorStatePath -Raw | ConvertFrom-Json
+Assert-Nxb ([string]$postStageState.release_version -ceq '1.0.0' -and [string]$postStageState.source_head -ceq [string]$policy.predecessor.head -and [string]$postStageState.package_manifest_sha256 -ceq [string]$predecessorState.package_manifest_sha256) 'Stage-only smoke mutated predecessor install state.'
+Write-NxbJsonNew -Path $predecessorTransitionReceiptPath -Value ([pscustomobject][ordered]@{
+    schema_version=1; status='passed'; authority='nxb-v1-predecessor-update-stage-smoke-v1'; predecessor_version='1.0.0'; predecessor_head=[string]$policy.predecessor.head;
+    predecessor_package_sha256=(Get-NxbSha256 -Path $predecessorPackageZip); predecessor_manifest_sha256=(Get-NxbSha256 -Path $predecessorManifestPath); successor_version=[string]$policy.target_version;
+    successor_head=$expected; release_sequence=[int]$stageReceipt.release_sequence; stage_receipt_sha256=(Get-NxbSha256 -Path $updateStageReceipt); install_state_preserved=$true;
+    auto_apply=[bool]$stageReceipt.auto_apply; production_release_updated=[bool]$stageReceipt.production_release_updated
+})
+& (Join-Path $repositoryRoot 'scripts\Invoke-NxbV1Installer.ps1') -Action Uninstall -Mode PerUser -PackageRoot $predecessorPackageRoot -ManifestPath $predecessorManifestPath -InstallRoot $updateInstallRoot -ReceiptPath $updateUninstallReceipt -Confirm:$false | Out-Null
 if (Test-Path -LiteralPath $updateStateRoot) { Remove-Item -LiteralPath $updateStateRoot -Recurse -Force }
 
 Write-Information '[13/18] Production readiness and public evidence bundle'
@@ -634,7 +755,7 @@ Write-NxbJsonNew -Path $readinessPath -Value ([pscustomobject][ordered]@{
     native_run_id=$NativeRunId; ci_authority_audit_sha256=(Get-NxbSha256 -Path $ciAuditPath); runtime_package_surface_receipt_sha256=(Get-NxbSha256 -Path $packageSurfacePath);
     package_manifest_sha256=$manifestSha; package_zip_sha256=(Get-NxbSha256 -Path $packageZip); release_notes_sha256=(Get-NxbSha256 -Path $releaseNotesPath); signature_envelope_sha256=(Get-NxbSha256 -Path $envelopePath);
     signer_fingerprint=[string]$envelope.public_key.fingerprint; production_signer_claimed=[bool]$envelope.production_signer_claimed; independent_production_signing_sha256=(Get-NxbSha256 -Path $productionIndependentPath);
-    portable_stage_receipt_sha256=(Get-NxbSha256 -Path $portableStageReceipt); portable_uninstall_receipt_sha256=(Get-NxbSha256 -Path $portableUninstallReceipt); update_stage_receipt_sha256=(Get-NxbSha256 -Path $updateStageReceipt);
+    portable_stage_receipt_sha256=(Get-NxbSha256 -Path $portableStageReceipt); portable_uninstall_receipt_sha256=(Get-NxbSha256 -Path $portableUninstallReceipt); update_stage_receipt_sha256=(Get-NxbSha256 -Path $updateStageReceipt); predecessor_transition_stage_receipt_sha256=(Get-NxbSha256 -Path $predecessorTransitionReceiptPath);
     update_auto_apply=[bool]$stageReceipt.auto_apply; update_production_release_updated=[bool]$stageReceipt.production_release_updated; production_merge_performed=$true; tag_created=$false; github_release_created=$false; freeze_ready=$true
 })
 $publicEvidenceRoot = Join-Path $releaseRoot 'public-evidence'
@@ -642,7 +763,7 @@ $publicEvidenceRoot = Join-Path $releaseRoot 'public-evidence'
 $evidenceRows = [ordered]@{
     'ci-authority-audit.json'=$ciAuditPath; 'runtime-package-surface-receipt.json'=$packageSurfacePath; 'package-manifest.json'=$manifestPath; 'signature-envelope.json'=$envelopePath;
     'production-signing-independent.json'=$productionIndependentPath; 'production-readiness-receipt.json'=$readinessPath; 'portable-stage-receipt.json'=$portableStageReceipt;
-    'portable-uninstall-receipt.json'=$portableUninstallReceipt; 'update-stage-receipt.json'=$updateStageReceipt; 'production-signer-gate.json'=$signerGatePath
+    'portable-uninstall-receipt.json'=$portableUninstallReceipt; 'update-stage-receipt.json'=$updateStageReceipt; 'predecessor-transition-stage-receipt.json'=$predecessorTransitionReceiptPath; 'production-signer-gate.json'=$signerGatePath
 }
 $evidenceManifestEntries = [Collections.Generic.List[object]]::new()
 foreach ($row in $evidenceRows.GetEnumerator()) {
@@ -726,6 +847,22 @@ $finalDownload = Invoke-NxbNative -Executable $script:Gh -ArgumentList @('releas
 Assert-Nxb ($finalDownload.exit_code -eq 0) 'Final closure receipt re-download failed.'
 $downloadedFinal = Join-Path $finalVerifyRoot ([string]$policy.final_asset)
 Assert-Nxb ((Get-NxbSha256 -Path $downloadedFinal) -ceq $finalSha) 'Final closure receipt uploaded bytes do not match local canonical bytes.'
+$finalReleaseSnapshot = Invoke-NxbGhJson -Endpoint ('repos/{0}/releases/tags/{1}' -f $script:Repository,[string]$policy.tag)
+Assert-Nxb ([long]$finalReleaseSnapshot.id -eq [long]$releaseView.databaseId) 'Final GitHub Release ID drift.'
+$expectedFinalAssets = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+foreach ($assetName in $actualAssetNames) { $expectedFinalAssets.Add([string]$assetName,(Get-NxbSha256 -Path ([string]$releaseAssetsByName[$assetName]))) }
+$expectedFinalAssets.Add([string]$policy.final_asset,$finalSha)
+$finalAssets = @($finalReleaseSnapshot.assets | ForEach-Object { [pscustomobject][ordered]@{ name=[string]$_.name; digest=[string]$_.digest } })
+Assert-Nxb ($finalAssets.Count -eq $expectedFinalAssets.Count) ('Final GitHub Release asset set drift: expected={0} actual={1}' -f $expectedFinalAssets.Count,$finalAssets.Count)
+$finalSeen = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+foreach ($asset in $finalAssets) {
+    $name = [string]$asset.name
+    Assert-Nxb (-not $finalSeen.ContainsKey($name)) ('Final GitHub Release contains duplicate asset name: {0}' -f $name)
+    Assert-Nxb ($expectedFinalAssets.ContainsKey($name)) ('Final GitHub Release contains unexpected asset: {0}' -f $name)
+    Assert-Nxb ([string]$asset.digest -ceq ('sha256:' + $expectedFinalAssets[$name])) ('Final GitHub Release asset digest drift: {0}' -f $name)
+    $finalSeen.Add($name,$true)
+}
+Assert-Nxb ($finalSeen.Count -eq $expectedFinalAssets.Count) 'Final GitHub Release asset set is incomplete.'
 
 Write-Information ''
 Write-Information '=== NXB V1.0.1 PRODUCTION RELEASE CLOSED ==='
