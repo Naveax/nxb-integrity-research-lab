@@ -53,8 +53,9 @@ Describe 'NXB v1 release integration contract' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         $prefixes = @($policy.integration.allowed_successor_paths | ForEach-Object { [string]$_ })
-        $prefixes.Count | Should -Be 9
+        $prefixes.Count | Should -Be 10
         $prefixes | Should -Contain '.github/workflows/nxb-v1-'
+        $prefixes | Should -Contain 'AGENTS.md'
         $prefixes | Should -Contain 'config/nxb-v1-'
         $prefixes | Should -Contain 'docs/NXB-V1-'
         $prefixes | Should -Contain 'schemas/nxb-v1-'

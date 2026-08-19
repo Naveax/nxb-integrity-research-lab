@@ -52,6 +52,7 @@ The v1.0.1 release-preparation authority allows only explicit successor surfaces
 
 ```text
 .github/workflows/nxb-v1-*
+AGENTS.md
 config/nxb-v1-*
 docs/NXB-V1-*
 schemas/nxb-v1-*
@@ -61,6 +62,8 @@ scripts/Test-NxbV1*
 tests/V1*
 tools/validate_v1_*
 ```
+
+`AGENTS.md` is admitted only because the live main branch carries the repository-wide bounded CI execution policy. It is an operational control, not a shipped runtime dependency.
 
 Broad `scripts/` and `config/` prefixes are deliberately not admitted. A change outside the explicit successor surfaces is not release preparation and requires a new implementation authority.
 

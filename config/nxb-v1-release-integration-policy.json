@@ -16,6 +16,7 @@
     "allow_generated_evidence_in_tree": false,
     "allowed_successor_paths": [
       ".github/workflows/nxb-v1-",
+      "AGENTS.md",
       "config/nxb-v1-",
       "docs/NXB-V1-",
       "schemas/nxb-v1-",

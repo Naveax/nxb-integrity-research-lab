@@ -14,6 +14,7 @@ TARGET_VERSION = "1.0.1"
 CANDIDATE_VERSION = "1.0.1-candidate"
 HISTORICAL_CANDIDATE_VERSION = "1.0.0-candidate"
 HISTORICAL_CERTIFIED_POINTER = "9e7e47561914f5ecbb59d1958aef695ca03a1f30"
+HISTORICAL_IMPLEMENTATION_HEAD = "a10535b294c4d7ba8a4c3683154609087bf50c4b"
 FINAL_CLOSURE_SHA256 = "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355"
 PACKAGE_SHA256 = "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78"
 SIGNER_FINGERPRINT = "1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373"
@@ -37,6 +38,8 @@ REQUIRED_DOCUMENTS = [
     "docs/NXB-V1-PRODUCTION-RELEASE.md",
 ]
 ALLOWED_PATHS = {
+    ".github/workflows/nxb-v1-ci.yml",
+    "AGENTS.md",
     "docs/NXB-V1.0.1-SUCCESSOR-BOOTSTRAP.md",
     "docs/NXB-V1.0.1-VERSION-SURFACE-INVENTORY.md",
     "docs/NXB-V1-RELEASE-INTEGRATION.md",
@@ -176,6 +179,7 @@ def validate_policy(policy):
 
 def validate_production_release_policy(policy):
     predecessor = policy.get("predecessor", {})
+    implementation = policy.get("implementation", {})
     branches = policy.get("branches", {})
     ci = policy.get("ci", {})
     safety = policy.get("safety", {})
@@ -199,6 +203,7 @@ def validate_production_release_policy(policy):
             predecessor.get("final_closure_sha256") == FINAL_CLOSURE_SHA256,
             predecessor.get("production_signer_fingerprint") == SIGNER_FINGERPRINT,
             predecessor.get("historical_certified_pointer") == HISTORICAL_CERTIFIED_POINTER,
+            implementation.get("certified_head") == HISTORICAL_IMPLEMENTATION_HEAD,
             ci.get("workflow_name") == "NXB v1 CI",
             ci.get("required_event") == "workflow_dispatch",
             ci.get("ps7_passed") == 899,

@@ -59,6 +59,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         [int]$production.release_sequence | Should -Be 2
         [string]$production.predecessor.head | Should -BeExactly $script:PredecessorHead
         [string]$production.predecessor.production_signer_fingerprint | Should -BeExactly '1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373'
+        [string]$production.implementation.certified_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
         [bool]$production.safety.require_merge_tree_identity | Should -BeTrue
         [bool]$production.safety.allow_signer_rotation | Should -BeFalse
         [bool]$production.safety.allow_production_private_key_export | Should -BeFalse
