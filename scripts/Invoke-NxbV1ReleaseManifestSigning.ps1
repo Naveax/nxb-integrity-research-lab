@@ -83,6 +83,8 @@ foreach ($packageFile in @($packageDocument.files)) {
         throw ('Signed package artifact does not match package manifest bytes/hash: {0}' -f $signedPackagePath)
     }
 }
+$signedPackageRows = @($artifactRows | Where-Object { ([string]$_.path).StartsWith('package/',[StringComparison]::Ordinal) })
+if ($signedPackageRows.Count -ne [int]$packageDocument.file_count) { throw 'Signed package artifact set does not exactly match package manifest cardinality.' }
 
 $packageSha = Get-NxbV1ReleaseSigningFileSha256 -Path $packageFull
 $notesSha = Get-NxbV1ReleaseSigningFileSha256 -Path $notesFull
