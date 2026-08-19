@@ -1,0 +1,41 @@
+name: NXB v1.0.1 final hardening probe
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run patcher without pushing target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf ops target probe.log
+          git clone --quiet --no-tags --branch automation/nxb-v1.0.1-native-dispatch "${remote}" ops >>probe.log 2>&1
+          rc=$?
+          if [[ $rc -eq 0 ]]; then
+            git clone --quiet --no-tags --branch release/nxb-v1.0.1-release-integration-boundary-repair "${remote}" target >>probe.log 2>&1
+            rc=$?
+          fi
+          if [[ $rc -eq 0 ]]; then
+            actual="$(git -C target rev-parse HEAD 2>>probe.log)"
+            echo "target_head=${actual}" >>probe.log
+            python ops/ops/nxb-final-production-hardening-v2.py target >>probe.log 2>&1
+            rc=$?
+          fi
+          echo "rc=${rc}" >>probe.log
+          tail -c 12000 probe.log > probe-tail.log
+          body=$(printf '<!-- nxb-final-hardening-probe -->\n## Final hardening probe\n\n```text\n%s\n```' "$(cat probe-tail.log)")
+          gh api "repos/${GITHUB_REPOSITORY}/issues/42/comments" -f body="${body}" >/dev/null
+          exit 0
