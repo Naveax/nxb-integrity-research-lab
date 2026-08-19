@@ -128,7 +128,7 @@ function Get-NxbLiteralTrackedDependency {
     catch { return @() }
     $sourceDir = [IO.Path]::GetDirectoryName($RelativePath.Replace('/',[IO.Path]::DirectorySeparatorChar))
     $result = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($match in [regex]::Matches($content,'[''"](?<value>[^''"\r\n]{1,320})[''"]')) {
+    foreach ($match in [regex]::Matches($content,'[''\"](?<value>[^''\"\r\n]{1,320})[''\"]')) {
         $literal = [string]$match.Groups['value'].Value
         if ([string]::IsNullOrWhiteSpace($literal) -or $literal.Contains('$') -or $literal.Contains('*')) { continue }
         $normalized = $literal.Replace('\','/').Trim()
@@ -374,9 +374,9 @@ function Resolve-NxbExtractedPackageRoot {
     $topFiles = @(Get-ChildItem -LiteralPath $rootFull -File -Force)
     $topDirs = @(Get-ChildItem -LiteralPath $rootFull -Directory -Force)
     if ($topFiles.Count -eq 0 -and $topDirs.Count -eq 1) { $candidates.Add([IO.Path]::GetFullPath($topDirs[0].FullName)) }
-    $matches = @($candidates | Where-Object { Test-NxbPackageRootAgainstManifest -Root $_ -Manifest $Manifest })
-    Assert-Nxb ($matches.Count -eq 1) ('Frozen predecessor package root resolution failed: matches={0}' -f $matches.Count)
-    return [string]$matches[0]
+    $matchingRoots = @($candidates | Where-Object { Test-NxbPackageRootAgainstManifest -Root $_ -Manifest $Manifest })
+    Assert-Nxb ($matchingRoots.Count -eq 1) ('Frozen predecessor package root resolution failed: matches={0}' -f $matchingRoots.Count)
+    return [string]$matchingRoots[0]
 }
 
 function Test-NxbHostedReceipt {
