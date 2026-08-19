@@ -68,19 +68,17 @@ jobs:
           fi
 
           table="$(jq -r '.[] | "- run #\(.run_number) / `\(.id)` — `\(.status)` / `\(.conclusion // "null")` — \(.html_url)"' <<<"${exact_runs}")"
-          body=$(cat <<EOF
-<!-- nxb-native-dispatch-observer:${EXPECTED_HEAD} -->
-## Native dispatch observer
-
-Exact freeze: `${EXPECTED_HEAD}`
-
-Observer dispatch_performed: `${dispatch_performed}`
-
-${table}
-
-The observer refuses duplicate exact-head workflow_dispatch creation. A completed failed run requires explicit diagnosis/retry policy instead of a new full dispatch.
-EOF
-)
+          body="$(printf '%s\n' \
+            "<!-- nxb-native-dispatch-observer:${EXPECTED_HEAD} -->" \
+            "## Native dispatch observer" \
+            "" \
+            "Exact freeze: ${EXPECTED_HEAD}" \
+            "" \
+            "Observer dispatch_performed: ${dispatch_performed}" \
+            "" \
+            "${table}" \
+            "" \
+            "The observer refuses duplicate exact-head workflow_dispatch creation. A completed failed run requires explicit diagnosis/retry policy instead of a new full dispatch.")"
 
           curl -fsSL -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
