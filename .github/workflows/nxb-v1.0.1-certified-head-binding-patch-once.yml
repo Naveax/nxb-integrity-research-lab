@@ -1,0 +1,72 @@
+name: NXB v1.0.1 one-shot certified-head binding patch
+
+on:
+  push:
+    branches:
+      - automation/nxb-v1.0.1-native-dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  patch-certified-head-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: release/nxb-v1.0.1-release-integration-boundary-repair
+          fetch-depth: 0
+      - name: Bind production envelope to final certified PR head
+        shell: bash
+        env:
+          EXPECTED_HEAD: ec42cd85746ebefce4321e837d01c6660c20e21c
+          TARGET_BRANCH: release/nxb-v1.0.1-release-integration-boundary-repair
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${EXPECTED_HEAD}" ]]; then
+            echo "Target branch drift: expected=${EXPECTED_HEAD} actual=${actual}" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/Invoke-NxbV1ProductionRelease.ps1')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  '[string]$signingPolicy.certified_implementation_head -ceq [string]$policy.implementation.certified_head',
+                  '[string]$signingPolicy.certified_implementation_head -ceq [string]$policy.implementation.historical_certified_head',
+                  1,
+              ),
+              (
+                  'certified_implementation_head=[string]$policy.implementation.certified_head;',
+                  'certified_implementation_head=$certified;',
+                  1,
+              ),
+              (
+                  '-CertifiedImplementationHead ([string]$policy.implementation.certified_head)',
+                  '-CertifiedImplementationHead $certified',
+                  1,
+              ),
+              (
+                  "'--expected-certified-head',([string]$policy.implementation.certified_head)",
+                  "'--expected-certified-head',$certified",
+                  1,
+              ),
+          ]
+          for old, new, expected in replacements:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f'exact replacement cardinality drift: {old!r} expected={expected} actual={actual}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8', newline='')
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = "scripts/Invoke-NxbV1ProductionRelease.ps1"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- scripts/Invoke-NxbV1ProductionRelease.ps1
+          git commit -m 'release: bind production envelope to certified PR head'
+          git push origin HEAD:${TARGET_BRANCH}
