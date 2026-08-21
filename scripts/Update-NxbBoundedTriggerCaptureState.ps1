@@ -52,12 +52,13 @@ function Resolve-NxbBoundedSessionId {
 }
 
 function Set-NxbBoundedProperty {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)][object]$Object,
         [Parameter(Mandatory)][string]$Name,
         [Parameter()][AllowNull()][object]$Value
     )
+    if (-not $PSCmdlet.ShouldProcess($Name,'Update bounded capture state property')) { return }
     $property = $Object.PSObject.Properties[$Name]
     if ($null -eq $property) {
         $Object | Add-Member -MemberType NoteProperty -Name $Name -Value $Value
@@ -85,7 +86,7 @@ function Add-NxbBoundedHistory {
     $State.trigger_history = @($history.ToArray())
 }
 
-function Add-NxbBoundedDomains {
+function Add-NxbBoundedDomainSet {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object]$State,
@@ -225,7 +226,7 @@ switch ($Action) {
             Set-NxbBoundedProperty -Object $state -Name 'post_deadline_utc' -Value $postDeadline.ToString('o')
             Set-NxbBoundedProperty -Object $state -Name 'primary_plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
             Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
-            Add-NxbBoundedDomains -State $state -Values $domainValues
+            Add-NxbBoundedDomainSet -State $state -Values $domainValues
 
             $triggerRecord = [pscustomobject][ordered]@{
                 id = $TriggerId
@@ -262,7 +263,7 @@ switch ($Action) {
                 Set-NxbBoundedProperty -Object $state -Name 'coalesced_trigger_count' -Value ([int]$state.coalesced_trigger_count + 1)
                 $historyRecord.disposition = 'coalesced'
                 Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
-                Add-NxbBoundedDomains -State $state -Values $domainValues
+                Add-NxbBoundedDomainSet -State $state -Values $domainValues
                 $currentDeadline = ConvertTo-NxbBoundedUtc -Value $state.post_deadline_utc
                 $candidateDeadline = $now.AddSeconds([double]$state.effective_posttrigger_seconds)
                 if ($candidateDeadline -gt $hardDeadline) { $candidateDeadline = $hardDeadline }
