@@ -10,6 +10,8 @@ import sys
 
 PREDECESSOR_HEAD = "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f"
 PREDECESSOR_TREE = "34779176d9e15cd4d700d46132785c0b25f19604"
+RELEASE_HEAD = "9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85"
+RELEASE_TAG = "v1.0.1"
 TARGET_VERSION = "1.0.1"
 CANDIDATE_VERSION = "1.0.1-candidate"
 HISTORICAL_CANDIDATE_VERSION = "1.0.0-candidate"
@@ -139,6 +141,26 @@ def lower_hex(value, length):
     return isinstance(value, str) and len(value) == length and re.fullmatch(r"[0-9a-f]+", value) is not None
 
 
+def changed_paths(root, base, head):
+    diff = run_git(root, "diff", "--name-only", "--diff-filter=ACMRTUXB", base + "..." + head)
+    return sorted({line.strip().replace("\\", "/") for line in diff.stdout.splitlines() if line.strip()})
+
+
+def private_key_hits(root, paths):
+    hits = []
+    for relative in paths:
+        path = root / relative
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if any(marker in text for marker in PRIVATE_MARKERS):
+            hits.append(relative)
+    return hits
+
+
 def component_map(policy):
     vt = policy.get("version_transition", {})
     rows = vt.get("components", {}) if isinstance(vt, dict) else {}
@@ -192,7 +214,6 @@ def validate_policy(policy):
     )
 
 
-
 def predecessor_asset_map(value):
     if not isinstance(value, list): return None
     result = {}
@@ -202,6 +223,7 @@ def predecessor_asset_map(value):
         if not isinstance(name,str) or not name or name in result or not isinstance(sha,str) or not re.fullmatch(r"[0-9a-f]{64}",sha): return None
         result[name]=sha
     return result
+
 
 def validate_production_release_policy(policy):
     predecessor = policy.get("predecessor", {})
@@ -216,7 +238,7 @@ def validate_production_release_policy(policy):
             policy.get("contract_id") == "nxb-v1-production-release-v1",
             policy.get("repository") == "Naveax/nxb-integrity-research-lab",
             policy.get("target_version") == TARGET_VERSION,
-            policy.get("tag") == "v1.0.1",
+            policy.get("tag") == RELEASE_TAG,
             policy.get("release_sequence") == 2,
             policy.get("channel") == "stable",
             branches.get("main") == "main",
@@ -284,6 +306,7 @@ def main():
     for name, value, length in [
         ("predecessor_head_format", PREDECESSOR_HEAD, 40),
         ("predecessor_tree_format", PREDECESSOR_TREE, 40),
+        ("release_head_format", RELEASE_HEAD, 40),
         ("closure_hash_format", FINAL_CLOSURE_SHA256, 64),
         ("package_hash_format", PACKAGE_SHA256, 64),
         ("signer_fingerprint_format", SIGNER_FINGERPRINT, 64),
@@ -333,41 +356,60 @@ def main():
         if not checks["expected_head"]:
             failures.append("expected_head")
 
-    tree = run_git(root, "rev-parse", PREDECESSOR_HEAD + "^{tree}").stdout.strip().lower()
-    checks["predecessor_tree_exact"] = tree == PREDECESSOR_TREE
+    predecessor_tree = run_git(root, "rev-parse", PREDECESSOR_HEAD + "^{tree}").stdout.strip().lower()
+    checks["predecessor_tree_exact"] = predecessor_tree == PREDECESSOR_TREE
     if not checks["predecessor_tree_exact"]:
         failures.append("predecessor_tree_exact")
 
-    anc = run_git(root, "merge-base", "--is-ancestor", PREDECESSOR_HEAD, head, check=False)
-    checks["predecessor_is_ancestor"] = anc.returncode == 0
-    if not checks["predecessor_is_ancestor"]:
-        failures.append("predecessor_is_ancestor")
+    release_tag_head = run_git(root, "rev-parse", RELEASE_TAG + "^{}").stdout.strip().lower()
+    checks["release_tag_head_exact"] = release_tag_head == RELEASE_HEAD
+    if not checks["release_tag_head_exact"]:
+        failures.append("release_tag_head_exact")
 
-    diff = run_git(root, "diff", "--name-only", "--diff-filter=ACMRTUXB", PREDECESSOR_HEAD + "..." + head)
-    changed = sorted({line.strip().replace("\\", "/") for line in diff.stdout.splitlines() if line.strip()})
-    disallowed = [x for x in changed if x not in ALLOWED_PATHS]
-    checks["transition_paths_allowed"] = not disallowed
-    if disallowed:
+    predecessor_release_ancestor = run_git(root, "merge-base", "--is-ancestor", PREDECESSOR_HEAD, RELEASE_HEAD, check=False)
+    checks["predecessor_is_release_ancestor"] = predecessor_release_ancestor.returncode == 0
+    if not checks["predecessor_is_release_ancestor"]:
+        failures.append("predecessor_is_release_ancestor")
+
+    release_head_ancestor = run_git(root, "merge-base", "--is-ancestor", RELEASE_HEAD, head, check=False)
+    checks["release_head_is_current_ancestor"] = release_head_ancestor.returncode == 0
+    if not checks["release_head_is_current_ancestor"]:
+        failures.append("release_head_is_current_ancestor")
+
+    transition_changed = changed_paths(root, PREDECESSOR_HEAD, RELEASE_HEAD)
+    transition_disallowed = [x for x in transition_changed if x not in ALLOWED_PATHS]
+    checks["transition_paths_allowed"] = not transition_disallowed
+    if transition_disallowed:
         failures.append("transition_paths_allowed")
 
-    forbidden = [x for x in changed if x.lower().endswith(FORBIDDEN_SUFFIXES)]
-    checks["generated_artifacts_absent"] = not forbidden
-    if forbidden:
-        failures.append("generated_artifacts_absent")
+    transition_forbidden = [x for x in transition_changed if x.lower().endswith(FORBIDDEN_SUFFIXES)]
+    checks["release_generated_artifacts_absent"] = not transition_forbidden
+    if transition_forbidden:
+        failures.append("release_generated_artifacts_absent")
+    transition_private_hits = private_key_hits(root, transition_changed)
+    checks["release_private_key_material_absent"] = not transition_private_hits
+    if transition_private_hits:
+        failures.append("release_private_key_material_absent")
 
-    private_hits = []
-    for relative in changed:
-        path = root / relative
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8-sig")
-        except (UnicodeDecodeError, OSError):
-            continue
-        if any(marker in text for marker in PRIVATE_MARKERS):
-            private_hits.append(relative)
+    post_release_changed = changed_paths(root, RELEASE_HEAD, head)
+    post_release_forbidden = [x for x in post_release_changed if x.lower().endswith(FORBIDDEN_SUFFIXES)]
+    checks["post_release_generated_artifacts_absent"] = not post_release_forbidden
+    if post_release_forbidden:
+        failures.append("post_release_generated_artifacts_absent")
+    post_release_private_hits = private_key_hits(root, post_release_changed)
+    checks["post_release_private_key_material_absent"] = not post_release_private_hits
+    if post_release_private_hits:
+        failures.append("post_release_private_key_material_absent")
+
+    # Backward-compatible aggregate safety names now cover both the frozen release
+    # transition and all descendant post-release source work.
+    forbidden = sorted(set(transition_forbidden + post_release_forbidden))
+    private_hits = sorted(set(transition_private_hits + post_release_private_hits))
+    checks["generated_artifacts_absent"] = not forbidden
     checks["private_key_material_absent"] = not private_hits
-    if private_hits:
+    if forbidden and "generated_artifacts_absent" not in failures:
+        failures.append("generated_artifacts_absent")
+    if private_hits and "private_key_material_absent" not in failures:
         failures.append("private_key_material_absent")
 
     negatives = []
@@ -386,13 +428,16 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v13",
+        "authority": "nxb-v1-successor-independent-v14",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
+        "release_tag": RELEASE_TAG,
+        "release_head": RELEASE_HEAD,
         "head_sha": head,
         "target_version": TARGET_VERSION,
         "candidate_version": CANDIDATE_VERSION,
+        "validation_model": "frozen-release-transition-plus-post-release-safety",
         "components": {
             name: {
                 "policy_path": COMPONENTS[name][0],
@@ -403,10 +448,16 @@ def main():
             for name in COMPONENT_ORDER
         },
         "checks": checks,
-        "changed_paths": changed,
-        "disallowed_paths": disallowed,
+        "changed_paths": transition_changed,
+        "transition_changed_paths": transition_changed,
+        "disallowed_paths": transition_disallowed,
+        "post_release_changed_paths": post_release_changed,
         "forbidden_artifacts": forbidden,
+        "release_forbidden_artifacts": transition_forbidden,
+        "post_release_forbidden_artifacts": post_release_forbidden,
         "private_key_hits": private_hits,
+        "release_private_key_hits": transition_private_hits,
+        "post_release_private_key_hits": post_release_private_hits,
         "missing_documents": missing,
         "negative_controls_validated": sum(bool(x) for x in negatives),
         "negative_control_count": 8,
