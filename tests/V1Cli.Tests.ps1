@@ -34,6 +34,16 @@ Describe 'NXB v1 production CLI contract' {
         $p=Get-Content -LiteralPath (Get-NxbV1CliTestContext).policy -Raw | ConvertFrom-Json
         [string]$p.contract_id | Should -BeExactly 'nxb-v1-cli-v1'
         [string]$p.predecessor_update_head | Should -BeExactly '27507531154099ab28a05cfe8e4e900d72f22e7b'
+        [string]$p.status.contract_id | Should -BeExactly 'nxb-v1-cli-status-v2'
+        [string]$p.status.historical_policy_path | Should -BeExactly 'config/nxb-production-finalization-policy.json'
+        [string]$p.release_authority.state | Should -BeExactly 'released'
+        [bool]$p.release_authority.production_release | Should -BeTrue
+        [int]$p.release_authority.release_sequence | Should -Be 2
+        [string]$p.release_authority.tag | Should -BeExactly 'v1.0.1'
+        [string]$p.release_authority.head | Should -BeExactly '9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85'
+        [string]$p.release_authority.tree | Should -BeExactly '26f0c29bd8da284e0553902e18f22f759e3c907f'
+        [string]$p.release_authority.final_closure_sha256 | Should -BeExactly '1734cc2fb3717e57b70467bb361fafdd292e517726db3bcb87fd031c81cfb1a8'
+        [string]$p.release_authority.predecessor_head | Should -BeExactly 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f'
         @($p.commands).Count | Should -Be 13
         @($p.legacy_commands).Count | Should -Be 5
         @($p.mutation_commands).Count | Should -Be 4
@@ -77,12 +87,15 @@ Describe 'NXB v1 production CLI contract' {
         (Test-NxbV1CliConfigDocument -Document $document) | Should -BeTrue
     }
 
-    It 'returns stable version metadata without claiming production release' {
+    It 'returns stable released version metadata from the production closure authority' {
         $c=Get-NxbV1CliTestContext
         $result=& $c.cli -Command version
         [string]$result.version | Should -BeExactly '1.0.1'
-        [string]$result.release_state | Should -BeExactly 'candidate'
-        [bool]$result.production_release | Should -BeFalse
+        [string]$result.release_state | Should -BeExactly 'released'
+        [bool]$result.production_release | Should -BeTrue
+        [string]$result.production_release_tag | Should -BeExactly 'v1.0.1'
+        [string]$result.production_release_head | Should -BeExactly '9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85'
+        [string]$result.production_final_closure_sha256 | Should -BeExactly '1734cc2fb3717e57b70467bb361fafdd292e517726db3bcb87fd031c81cfb1a8'
         [string]$result.certified_update_head | Should -BeExactly '27507531154099ab28a05cfe8e4e900d72f22e7b'
     }
 
@@ -114,9 +127,30 @@ Describe 'NXB v1 production CLI contract' {
         foreach ($token in @("'status'","'hash'","'inspect-manifest'","'stage-update'","'certify-final'")) { $source | Should -Match ([regex]::Escape($token)) }
     }
 
-    It 'extends status without rewriting the staged-only legacy claim' {
-        $source=Get-Content -LiteralPath (Get-NxbV1CliTestContext).cli -Raw
-        foreach ($token in @("update_mode = 'staged-only'","signed_update_mode = 'explicit-stage-apply-rollback'",'certified_update_head')) { $source | Should -Match ([regex]::Escape($token)) }
+    It 'makes status successor-aware without rewriting the historical Production Final policy' {
+        $c=Get-NxbV1CliTestContext
+        $historicalPath=Join-Path $c.root 'config\nxb-production-finalization-policy.json'
+        $before=(Get-FileHash -LiteralPath $historicalPath -Algorithm SHA256).Hash
+        $result=& $c.cli -Command status
+        $after=(Get-FileHash -LiteralPath $historicalPath -Algorithm SHA256).Hash
+        $after | Should -BeExactly $before
+        [string]$result.contract_id | Should -BeExactly 'nxb-production-finalization-v1'
+        [string]$result.release_version | Should -BeExactly '1.0.0-candidate'
+        [bool]$result.production_merge_performed | Should -BeFalse
+        [string]$result.status_contract_id | Should -BeExactly 'nxb-v1-cli-status-v2'
+        [string]$result.historical_contract_id | Should -BeExactly 'nxb-production-finalization-v1'
+        [string]$result.historical_release_version | Should -BeExactly '1.0.0-candidate'
+        [bool]$result.historical_production_merge_performed | Should -BeFalse
+        [string]$result.target_version | Should -BeExactly '1.0.1'
+        [string]$result.release_state | Should -BeExactly 'released'
+        [bool]$result.production_release | Should -BeTrue
+        [string]$result.production_release_tag | Should -BeExactly 'v1.0.1'
+        [string]$result.production_release_head | Should -BeExactly '9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85'
+        [string]$result.production_release_tree | Should -BeExactly '26f0c29bd8da284e0553902e18f22f759e3c907f'
+        [string]$result.production_final_closure_sha256 | Should -BeExactly '1734cc2fb3717e57b70467bb361fafdd292e517726db3bcb87fd031c81cfb1a8'
+        [string]$result.update_mode | Should -BeExactly 'staged-only'
+        [string]$result.signed_update_mode | Should -BeExactly 'explicit-stage-apply-rollback'
+        [string]$result.certified_update_head | Should -BeExactly '27507531154099ab28a05cfe8e4e900d72f22e7b'
     }
 
     It 'uses ordinal ordering for the retained legacy stage-update path' {
