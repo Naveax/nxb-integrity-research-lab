@@ -19,6 +19,8 @@ EXPECTED_CHECKS = {
     "release_candidate": "nxb-v1 / release-candidate",
 }
 EXPECTED_NATIVE_LABELS = ["self-hosted", "Windows", "X64", "nxb-native", "wpt"]
+EXPECTED_NATIVE_REVIEW_ENTRIES = 8
+BOUNDED_NATIVE_AUTHORITY = "nxb-bounded-trigger-native-smoke-v1"
 
 
 def load_json(path):
@@ -68,6 +70,11 @@ def main():
     hosted_path = root / "scripts" / "Invoke-NxbV1CiHostedValidation.ps1"
     known_error_scanner_path = root / "scripts" / "Invoke-NxbV1CiKnownErrorScan.ps1"
     native_path = root / "scripts" / "Invoke-NxbV1CiNativeValidation.ps1"
+    bounded_native_path = root / "scripts" / "Invoke-NxbBoundedTriggerNativeSmoke.ps1"
+    bounded_state_path = root / "scripts" / "Update-NxbBoundedTriggerCaptureState.ps1"
+    bounded_start_path = root / "scripts" / "Start-NxbBoundedMemoryTrace.ps1"
+    bounded_coordinator_path = root / "scripts" / "Invoke-NxbBoundedTriggerCapture.ps1"
+    bounded_tests_path = root / "tests" / "BoundedTriggerCapture.Tests.ps1"
     tests_path = root / "tests" / "V1Ci.Tests.ps1"
 
     policy = load_json(policy_path)
@@ -77,6 +84,11 @@ def main():
     hosted_text = hosted_path.read_text(encoding="utf-8-sig")
     known_error_scanner_text = known_error_scanner_path.read_text(encoding="utf-8-sig")
     native_text = native_path.read_text(encoding="utf-8-sig")
+    bounded_native_text = bounded_native_path.read_text(encoding="utf-8-sig")
+    bounded_state_text = bounded_state_path.read_text(encoding="utf-8-sig")
+    bounded_start_text = bounded_start_path.read_text(encoding="utf-8-sig")
+    bounded_coordinator_text = bounded_coordinator_path.read_text(encoding="utf-8-sig")
+    bounded_tests_text = bounded_tests_path.read_text(encoding="utf-8-sig")
     tests_text = tests_path.read_text(encoding="utf-8-sig")
     all_tests_text = "\n".join(
         path.read_text(encoding="utf-8-sig")
@@ -88,6 +100,7 @@ def main():
             all_tests_text,
         )
     )
+    bounded_test_count = len(re.findall(r"(?m)^\s*It\s+'", bounded_tests_text))
 
     jobs = workflow.get("jobs", {}) if isinstance(workflow, dict) else {}
     triggers = workflow.get("on", {}) if isinstance(workflow, dict) else {}
@@ -134,6 +147,14 @@ def main():
         and "Invoke-NxbLocalValidation.ps1" not in workflow_text
         and "Invoke-NxbV1CiHostedValidation.ps1" in native_text
         and "Invoke-CollectorOverheadCalibration.ps1" in native_text
+        and "Invoke-NxbBoundedTriggerNativeSmoke.ps1" in native_text
+        and BOUNDED_NATIVE_AUTHORITY in native_text
+        and "bounded_trigger_smoke_valid = $true" in native_text
+        and "bounded-trigger-native-smoke.json" in native_text
+        and f"review_entries = {EXPECTED_NATIVE_REVIEW_ENTRIES}" in native_text
+        and "review_entries = 7" not in native_text
+        and BOUNDED_NATIVE_AUTHORITY in bounded_native_text
+        and "etl_retained_in_review_artifact = $false" in bounded_native_text
         and "nxb-v1-ci-native-v1" in native_text
         and "ps51_expected_excluded" in native_text
         and "$ps7Passed -ne $ps7Total" in native_text
@@ -142,7 +163,6 @@ def main():
         and "$ps51Passed -ne ($ps51Total - $expectedPs51Excluded)" in native_text
         and "'893/893'" not in native_text
         and "'886/893'" not in native_text
-        and "review_entries = 7" in native_text
         and "production_release_updated = $false" in native_text
         and "Upload native validation evidence" in workflow_text
         and "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text
@@ -193,6 +213,17 @@ def main():
         and ps7_only_count == 7
         and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17
     )
+    requirements.append(
+        bounded_test_count == 15
+        and "nxb-bounded-trigger-capture-state-v1" in bounded_state_text
+        and "bounded-memory-buffer-reuse" in bounded_start_text
+        and "MinimumFreeDiskMiB" in bounded_coordinator_text
+        and "estimated_overwritten_buffer_count" in bounded_coordinator_text
+        and "session_binding_valid" in bounded_coordinator_text
+        and "not_captured_by_minimal_wpr_primitive" in bounded_coordinator_text
+        and "review_entries = 8" in tests_text
+        and "review_entries = 7" not in tests_text
+    )
 
     negatives = []
     mutated = copy.deepcopy(policy)
@@ -210,7 +241,7 @@ def main():
     negatives.append(re.search(r"actions/checkout@v\d", workflow_text + "\nactions/checkout@v7\n") is not None)
     negatives.append("continue-on-error: true" in (workflow_text + "\ncontinue-on-error: true\n").lower())
 
-    passed = all(requirements) and len(requirements) == 12 and all(negatives) and len(negatives) == 8
+    passed = all(requirements) and len(requirements) == 13 and all(negatives) and len(negatives) == 8
     result = {
         "schema_version": 1,
         "status": "passed" if passed else "failed",
@@ -218,18 +249,21 @@ def main():
         "expected_head": args.expected_head,
         "predecessor_cli_head": EXPECTED_PREDECESSOR,
         "requirements_validated": sum(bool(value) for value in requirements),
-        "requirement_count": 12,
+        "requirement_count": 13,
         "negative_controls_validated": sum(bool(value) for value in negatives),
         "negative_count": 8,
         "job_count": len(jobs),
         "ps51_excluded_tag": "PS7Only",
         "ps51_excluded_test_count": ps7_only_count,
+        "bounded_trigger_test_count": bounded_test_count,
         "known_error_authority": "nxb-v1-ci-known-error-scan-v1",
         "ci_known_error_rules": len(known_error_config.get("rules", [])),
         "native_authority": "nxb-v1-ci-native-v1",
-        "native_review_entries": 7,
+        "bounded_native_authority": BOUNDED_NATIVE_AUTHORITY,
+        "native_review_entries": EXPECTED_NATIVE_REVIEW_ENTRIES,
         "native_cardinality_binding": "hosted-relational",
         "native_evidence_retained": "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text,
+        "bounded_native_review_json_only": "etl_retained_in_review_artifact = $false" in bounded_native_text,
         "python_dependency_versions": {"PyYAML": "6.0.3", "jsonschema": "4.26.0"},
         "production_private_key_used": False,
         "production_release_updated": False,
