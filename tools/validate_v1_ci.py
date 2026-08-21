@@ -222,7 +222,7 @@ def main():
         and "session_binding_valid" in bounded_coordinator_text
         and "not_captured_by_minimal_wpr_primitive" in bounded_coordinator_text
         and "review_entries = 8" in tests_text
-        and "review_entries = 7" not in tests_text
+        and "Should -Not -Match ([regex]::Escape('review_entries = 7'))" in tests_text
     )
 
     negatives = []
