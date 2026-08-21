@@ -48,6 +48,17 @@ function Get-NxbBoundedFreeDiskMiB {
     }
 }
 
+function Get-NxbBoundedActivationKey {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$TriggerState)
+    $id = [string]$TriggerState.id
+    $transitionUtc = [string]$TriggerState.last_transition_utc
+    if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($transitionUtc)) {
+        throw 'Activated trigger state is missing id or last_transition_utc.'
+    }
+    return ('{0}|{1}' -f $id,$transitionUtc)
+}
+
 $repositoryRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $experimentFull = Get-NxbFullPath -Path $ExperimentPath
 $signalsFull = [IO.Path]::GetFullPath($SignalsPath)
@@ -180,6 +191,7 @@ try {
         if (-not $primarySeen -and $activeSet.Contains($TriggerId)) {
             $targetState = @($adaptiveState.triggers | Where-Object { [string]$_.id -ceq $TriggerId } | Select-Object -First 1)
             if ($targetState.Count -ne 1) { throw 'Target trigger state disappeared during activation.' }
+            $targetActivationKey = Get-NxbBoundedActivationKey -TriggerState $targetState[0]
             $finalState = Invoke-NxbBoundedState -ActionName Trigger -Extra @{
                 TriggerId = $TriggerId
                 TriggerReason = ('{0}:{1}' -f [string]$targetTrigger.source,[string]$targetTrigger.signal)
@@ -188,12 +200,14 @@ try {
                 Domains = @($targetTrigger.domains | ForEach-Object { [string]$_ })
             }
             $primarySeen = $true
-            [void]$seenActivation.Add($TriggerId)
+            [void]$seenActivation.Add($targetActivationKey)
         }
-        elseif ($primarySeen -and [string]$finalState.state -ceq 'post_capture') {
+
+        if ($primarySeen -and [string]$finalState.state -ceq 'post_capture') {
             foreach ($triggerState in @($adaptiveState.triggers | Where-Object { [string]$_.transition -ceq 'activated' })) {
                 $id = [string]$triggerState.id
-                if ($seenActivation.Contains($id)) { continue }
+                $activationKey = Get-NxbBoundedActivationKey -TriggerState $triggerState
+                if ($seenActivation.Contains($activationKey)) { continue }
                 $policyRows = @($policy.triggers | Where-Object { [string]$_.id -ceq $id })
                 if ($policyRows.Count -ne 1) { throw ('Activated trigger has no unique policy row: {0}' -f $id) }
                 $row = $policyRows[0]
@@ -204,7 +218,7 @@ try {
                     PlanFingerprintSha256 = [string]$plan.plan_fingerprint_sha256
                     Domains = @($row.domains | ForEach-Object { [string]$_ })
                 }
-                [void]$seenActivation.Add($id)
+                [void]$seenActivation.Add($activationKey)
             }
         }
 
