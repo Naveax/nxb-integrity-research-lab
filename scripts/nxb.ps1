@@ -46,6 +46,28 @@ try {
         'status' {
             $policyPath = Join-Path $RepositoryRoot 'config\nxb-production-finalization-policy.json'
             $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+            $releaseAuthority = $cliPolicy.release_authority
+            $statusPolicy = $cliPolicy.status
+            if (
+                $null -eq $releaseAuthority -or
+                $null -eq $statusPolicy -or
+                [string]$statusPolicy.contract_id -cne 'nxb-v1-cli-status-v2' -or
+                [string]$statusPolicy.historical_policy_path -cne 'config/nxb-production-finalization-policy.json' -or
+                [string]$releaseAuthority.state -cne 'released' -or
+                $releaseAuthority.production_release -isnot [bool] -or
+                -not [bool]$releaseAuthority.production_release -or
+                [int]$releaseAuthority.release_sequence -ne 2 -or
+                [string]$releaseAuthority.tag -cne 'v1.0.1' -or
+                [string]$releaseAuthority.head -cnotmatch '^[0-9a-f]{40}$' -or
+                [string]$releaseAuthority.tree -cnotmatch '^[0-9a-f]{40}$' -or
+                [string]$releaseAuthority.final_closure_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                [string]$releaseAuthority.predecessor_version -cne '1.0.0' -or
+                [string]$releaseAuthority.predecessor_head -cne 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f' -or
+                [string]$policy.part10.release_version -cne '1.0.0-candidate' -or
+                [string]$cliPolicy.target_version -cne '1.0.1'
+            ) {
+                throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'trust_integrity' -Message 'Post-release CLI status authority is incomplete or inconsistent.')
+            }
             $commandData = [pscustomobject][ordered]@{
                 contract_id = [string]$policy.contract_id
                 release_version = [string]$policy.part10.release_version
@@ -53,16 +75,42 @@ try {
                 update_mode = 'staged-only'
                 signed_update_mode = 'explicit-stage-apply-rollback'
                 certified_update_head = [string]$cliPolicy.predecessor_update_head
+                status_contract_id = [string]$statusPolicy.contract_id
+                historical_contract_id = [string]$policy.contract_id
+                historical_release_version = [string]$policy.part10.release_version
+                historical_production_merge_performed = $false
+                target_version = [string]$cliPolicy.target_version
+                release_state = [string]$releaseAuthority.state
+                production_release = [bool]$releaseAuthority.production_release
+                production_release_tag = [string]$releaseAuthority.tag
+                production_release_head = [string]$releaseAuthority.head
+                production_release_tree = [string]$releaseAuthority.tree
+                production_final_closure_sha256 = [string]$releaseAuthority.final_closure_sha256
             }
             break
         }
         'version' {
+            $releaseAuthority = $cliPolicy.release_authority
+            if (
+                $null -eq $releaseAuthority -or
+                [string]$releaseAuthority.state -cne 'released' -or
+                $releaseAuthority.production_release -isnot [bool] -or
+                -not [bool]$releaseAuthority.production_release -or
+                [string]$releaseAuthority.tag -cne 'v1.0.1' -or
+                [string]$releaseAuthority.head -cnotmatch '^[0-9a-f]{40}$' -or
+                [string]$releaseAuthority.final_closure_sha256 -cnotmatch '^[0-9a-f]{64}$'
+            ) {
+                throw (Get-NxbV1CliFailure -Policy $cliPolicy -Category 'trust_integrity' -Message 'Post-release CLI version authority is incomplete or inconsistent.')
+            }
             $commandData = [pscustomobject][ordered]@{
                 version = [string]$cliPolicy.target_version
                 cli_contract = [string]$cliPolicy.contract_id
-                release_state = 'candidate'
+                release_state = [string]$releaseAuthority.state
                 certified_update_head = [string]$cliPolicy.predecessor_update_head
-                production_release = $false
+                production_release = [bool]$releaseAuthority.production_release
+                production_release_tag = [string]$releaseAuthority.tag
+                production_release_head = [string]$releaseAuthority.head
+                production_final_closure_sha256 = [string]$releaseAuthority.final_closure_sha256
             }
             break
         }
