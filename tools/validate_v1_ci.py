@@ -75,6 +75,7 @@ def main():
     bounded_start_path = root / "scripts" / "Start-NxbBoundedMemoryTrace.ps1"
     bounded_coordinator_path = root / "scripts" / "Invoke-NxbBoundedTriggerCapture.ps1"
     bounded_tests_path = root / "tests" / "BoundedTriggerCapture.Tests.ps1"
+    bounded_activation_tests_path = root / "tests" / "BoundedTriggerActivation.Tests.ps1"
     tests_path = root / "tests" / "V1Ci.Tests.ps1"
 
     policy = load_json(policy_path)
@@ -89,6 +90,7 @@ def main():
     bounded_start_text = bounded_start_path.read_text(encoding="utf-8-sig")
     bounded_coordinator_text = bounded_coordinator_path.read_text(encoding="utf-8-sig")
     bounded_tests_text = bounded_tests_path.read_text(encoding="utf-8-sig")
+    bounded_activation_tests_text = bounded_activation_tests_path.read_text(encoding="utf-8-sig")
     tests_text = tests_path.read_text(encoding="utf-8-sig")
     all_tests_text = "\n".join(
         path.read_text(encoding="utf-8-sig")
@@ -100,7 +102,10 @@ def main():
             all_tests_text,
         )
     )
-    bounded_test_count = len(re.findall(r"(?m)^\s*It\s+'", bounded_tests_text))
+    bounded_test_count = sum(
+        len(re.findall(r"(?m)^\s*It\s+'", text))
+        for text in (bounded_tests_text, bounded_activation_tests_text)
+    )
 
     jobs = workflow.get("jobs", {}) if isinstance(workflow, dict) else {}
     triggers = workflow.get("on", {}) if isinstance(workflow, dict) else {}
@@ -214,13 +219,21 @@ def main():
         and len(re.findall(r"(?m)^\s*It\s+'", tests_text)) == 17
     )
     requirements.append(
-        bounded_test_count == 15
+        bounded_test_count == 16
         and "nxb-bounded-trigger-capture-state-v1" in bounded_state_text
         and "bounded-memory-buffer-reuse" in bounded_start_text
         and "MinimumFreeDiskMiB" in bounded_coordinator_text
         and "estimated_overwritten_buffer_count" in bounded_coordinator_text
         and "session_binding_valid" in bounded_coordinator_text
         and "not_captured_by_minimal_wpr_primitive" in bounded_coordinator_text
+        and "Get-NxbBoundedActivationKey" in bounded_coordinator_text
+        and "last_transition_utc" in bounded_coordinator_text
+        and "$seenActivation.Add($activationKey)" in bounded_coordinator_text
+        and "$seenActivation.Add($TriggerId)" not in bounded_coordinator_text
+        and "$seenActivation.Add($id)" not in bounded_coordinator_text
+        and "[IO.File]::Move($tempPath,$using:signalsPath,$true)" in bounded_native_text
+        and "-EmergencyStopPath $emergencyStopPath" in bounded_native_text
+        and "preserves activation instances and atomically publishes the native trigger signal" in bounded_activation_tests_text
         and "review_entries = 8" in tests_text
         and "Should -Not -Match ([regex]::Escape('review_entries = 7'))" in tests_text
     )
