@@ -14,7 +14,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $script:T0 = [DateTime]::Parse('2026-08-21T12:00:00Z').ToUniversalTime()
         $script:Frequency = 1000L
 
-        function New-NxbBoundedTestState {
+        function Invoke-NxbBoundedTestStateSetup {
             param(
                 [Parameter(Mandatory)][string]$Name,
                 [Parameter()][int]$Pre = 15,
@@ -86,7 +86,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'clamps oversized requested windows to policy maxima' {
-        $c = New-NxbBoundedTestState -Name 'clamp' -Pre 999 -Post 9999
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'clamp' -Pre 999 -Post 9999
         [int]$c.State.requested_pretrigger_seconds | Should -Be 999
         [int]$c.State.requested_posttrigger_seconds | Should -Be 9999
         [int]$c.State.effective_pretrigger_seconds | Should -Be 15
@@ -95,7 +95,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'supports a zero-length post-trigger window without becoming unbounded' {
-        $c = New-NxbBoundedTestState -Name 'zero' -Pre 0 -Post 0
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'zero' -Pre 0 -Post 0
         $state = Invoke-NxbBoundedTestTrigger -Context $c
         [string]$state.state | Should -BeExactly 'finalizing'
         [string]$state.termination_reason | Should -BeExactly 'zero_post_window'
@@ -104,7 +104,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
 
     It 'binds trigger reason timestamp session policy plan and domains' {
         $sessionId = [Guid]::NewGuid().ToString('D')
-        $c = New-NxbBoundedTestState -Name 'binding' -SessionId $sessionId
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'binding' -SessionId $sessionId
         $state = Invoke-NxbBoundedTestTrigger -Context $c -Domains @('cpu','kernel')
         [string]$state.session_id | Should -BeExactly $sessionId
         [string]$state.expected_head | Should -BeExactly $script:ExpectedHead
@@ -120,7 +120,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'coalesces an overlapping trigger even when the adaptive plan fingerprint evolves' {
-        $c = New-NxbBoundedTestState -Name 'overlap' -Post 10
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'overlap' -Post 10
         [void](Invoke-NxbBoundedTestTrigger -Context $c -Priority 700 -Plan $script:PlanA -Domains @('cpu') -Now $script:T0.AddSeconds(1) -Ticks 2000)
         $state = Invoke-NxbBoundedTestTrigger `
             -Context $c `
@@ -141,7 +141,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'bounds a trigger storm with coalescing and explicit rejection accounting' {
-        $c = New-NxbBoundedTestState -Name 'storm' -Post 10 -MaxCoalesced 1
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'storm' -Post 10 -MaxCoalesced 1
         [void](Invoke-NxbBoundedTestTrigger -Context $c -Now $script:T0.AddSeconds(1) -Ticks 2000)
         [void](Invoke-NxbBoundedTestTrigger -Context $c -Id 'second' -Priority 1 -Plan $script:PlanB -Now $script:T0.AddSeconds(2) -Ticks 3000)
         $state = Invoke-NxbBoundedTestTrigger -Context $c -Id 'third' -Priority 2 -Plan $script:PlanB -Now $script:T0.AddSeconds(3) -Ticks 4000
@@ -151,7 +151,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'rejects backwards monotonic ordering' {
-        $c = New-NxbBoundedTestState -Name 'monotonic'
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'monotonic'
         [void](Invoke-NxbBoundedTestTrigger -Context $c -Ticks 3000)
         {
             & $script:StateScript `
@@ -167,7 +167,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'rejects stale exact-head and session bindings' {
-        $c = New-NxbBoundedTestState -Name 'stale-session'
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'stale-session'
         {
             & $script:StateScript `
                 -PolicyPath $c.PolicyPath `
@@ -195,7 +195,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     It 'rejects a policy mutation after the session is armed' {
         $policyCopy = Join-Path $TestDrive 'stale-policy.json'
         Copy-Item -LiteralPath $script:PolicyPath -Destination $policyCopy
-        $c = New-NxbBoundedTestState -Name 'stale-policy-state' -PolicyPath $policyCopy
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'stale-policy-state' -PolicyPath $policyCopy
         $policy = Get-Content -LiteralPath $policyCopy -Raw | ConvertFrom-Json
         $policy.budgets.posttrigger_seconds = 59
         [IO.File]::WriteAllText($policyCopy,(($policy | ConvertTo-Json -Depth 32) + [Environment]::NewLine),[Text.UTF8Encoding]::new($false))
@@ -213,7 +213,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'terminates an untriggered session at the hard session deadline' {
-        $c = New-NxbBoundedTestState -Name 'timeout'
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'timeout'
         $state = & $script:StateScript `
             -PolicyPath $c.PolicyPath `
             -StatePath $c.Path `
@@ -231,7 +231,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'records emergency-stop termination during post-trigger capture' {
-        $c = New-NxbBoundedTestState -Name 'emergency'
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'emergency'
         [void](Invoke-NxbBoundedTestTrigger -Context $c)
         $state = & $script:StateScript `
             -PolicyPath $c.PolicyPath `
@@ -250,7 +250,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'records budget-aware termination during post-trigger capture' {
-        $c = New-NxbBoundedTestState -Name 'budget'
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'budget'
         [void](Invoke-NxbBoundedTestTrigger -Context $c)
         $state = & $script:StateScript `
             -PolicyPath $c.PolicyPath `
@@ -270,7 +270,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'bounds trigger-history retention independently of storm counters' {
-        $c = New-NxbBoundedTestState -Name 'history' -Post 10 -MaxCoalesced 4 -MaxHistory 1
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'history' -Post 10 -MaxCoalesced 4 -MaxHistory 1
         [void](Invoke-NxbBoundedTestTrigger -Context $c -Now $script:T0.AddSeconds(1) -Ticks 2000)
         $state = Invoke-NxbBoundedTestTrigger -Context $c -Id 'second' -Plan $script:PlanB -Now $script:T0.AddSeconds(2) -Ticks 3000
         @($state.trigger_history).Count | Should -Be 1
@@ -279,7 +279,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'binds completion evidence without permitting a completed state rewrite' {
-        $c = New-NxbBoundedTestState -Name 'complete' -Post 0
+        $c = Invoke-NxbBoundedTestStateSetup -Name 'complete' -Post 0
         [void](Invoke-NxbBoundedTestTrigger -Context $c)
         $state = & $script:StateScript `
             -PolicyPath $c.PolicyPath `
