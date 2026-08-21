@@ -55,13 +55,17 @@ The v1.0.1 release-preparation authority allows only explicit successor surfaces
 AGENTS.md
 config/nxb-v1-*
 docs/NXB-V1-*
+docs/NXB-V1.0.1-*
 schemas/nxb-v1-*
+scripts/Export-NxbV1*
 scripts/Invoke-NxbV1*
 scripts/NxbV1*
 scripts/Test-NxbV1*
 tests/V1*
 tools/validate_v1_*
 ```
+
+`docs/NXB-V1.0.1-*` is admitted specifically for the successor bootstrap/version-surface records. `scripts/Export-NxbV1*` is admitted specifically because the v1.0.1 package-manifest exporter is a shipped release identity surface. Neither admission broadens the boundary to arbitrary documentation or scripts.
 
 `AGENTS.md` is admitted only because the live main branch carries the repository-wide bounded CI execution policy. It is an operational control, not a shipped runtime dependency.
 
