@@ -53,6 +53,7 @@ $signalsFull = [IO.Path]::GetFullPath($SignalsPath)
 $policyFull = [IO.Path]::GetFullPath($PolicyPath)
 $expected = $ExpectedHead.ToLowerInvariant()
 $boundedSessionId = [Guid]::NewGuid().ToString('D')
+$configuredMaxCoalescedTriggers = $MaxCoalescedTriggers
 
 if (-not (Test-Path -LiteralPath $signalsFull -PathType Leaf)) { throw ('Signals file missing: {0}' -f $signalsFull) }
 if (-not (Test-Path -LiteralPath $policyFull -PathType Leaf)) { throw ('Policy file missing: {0}' -f $policyFull) }
@@ -101,7 +102,7 @@ function Invoke-NxbBoundedState {
         ExpectedHead = $expected
         SessionId = $boundedSessionId
         Action = $ActionName
-        MaxCoalescedTriggers = $MaxCoalescedTriggers
+        MaxCoalescedTriggers = $configuredMaxCoalescedTriggers
         PassThru = $true
     }
     foreach ($key in $Extra.Keys) { $arguments[$key] = $Extra[$key] }

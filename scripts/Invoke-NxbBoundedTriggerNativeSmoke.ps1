@@ -70,14 +70,13 @@ try {
     )
 
     $signalJob = Start-Job -ScriptBlock {
-        param([string]$Path)
         Start-Sleep -Milliseconds 1500
         [IO.File]::WriteAllText(
-            $Path,
+            $using:signalsPath,
             ((@{ frame_time_ms = 40 } | ConvertTo-Json -Compress) + [Environment]::NewLine),
             [Text.UTF8Encoding]::new($false)
         )
-    } -ArgumentList $signalsPath
+    }
 
     $capture = & (Join-Path $PSScriptRoot 'Invoke-NxbBoundedTriggerCapture.ps1') `
         -ExperimentPath ([string]$experiment) `
@@ -154,8 +153,18 @@ try {
 }
 finally {
     if ($null -ne $signalJob) {
-        try { Stop-Job -Job $signalJob -ErrorAction SilentlyContinue | Out-Null } catch {}
-        try { Remove-Job -Job $signalJob -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+        try {
+            Stop-Job -Job $signalJob -ErrorAction SilentlyContinue | Out-Null
+        }
+        catch {
+            Write-Warning ('Bounded native smoke Stop-Job cleanup failed: {0}' -f $_.Exception.Message)
+        }
+        try {
+            Remove-Job -Job $signalJob -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+        catch {
+            Write-Warning ('Bounded native smoke Remove-Job cleanup failed: {0}' -f $_.Exception.Message)
+        }
     }
     if (Test-Path -LiteralPath $workFull -PathType Container) {
         Remove-Item -LiteralPath $workFull -Recurse -Force
