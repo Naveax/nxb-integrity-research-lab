@@ -127,8 +127,8 @@ try {
     $traceStarted = $true
 
     $armExtra = @{}
-    if ($null -ne $RequestedPreTriggerSeconds) { $armExtra.RequestedPreTriggerSeconds = [int]$RequestedPreTriggerSeconds.Value }
-    if ($null -ne $RequestedPostTriggerSeconds) { $armExtra.RequestedPostTriggerSeconds = [int]$RequestedPostTriggerSeconds.Value }
+    if ($null -ne $RequestedPreTriggerSeconds) { $armExtra.RequestedPreTriggerSeconds = [int]$RequestedPreTriggerSeconds }
+    if ($null -ne $RequestedPostTriggerSeconds) { $armExtra.RequestedPostTriggerSeconds = [int]$RequestedPostTriggerSeconds }
     $finalState = Invoke-NxbBoundedState -ActionName Arm -Extra $armExtra
 
     if ([string]$startResult.session_id -cne [string]$finalState.session_id -or
@@ -288,7 +288,7 @@ try {
     )
     $capturedDomainCount = @($domainAccounting | Where-Object { [string]$_.status -ceq 'captured' }).Count
     $uncapturedDomainCount = @($domainAccounting | Where-Object { [string]$_.status -cne 'captured' }).Count
-    $coverageStatus = if ($capturedDomainCount -eq 0) { 'none' } elseif ($uncapturedDomainCount -eq 0) { 'complete' } else { 'partial' }
+    $coverageStatus = if ($capturedDomainCount -eq 0) { 'none' } elseif ($uncapturedDomainCount -gt 0) { 'partial' } else { 'complete' }
 
     $accountingSha = (Get-FileHash -LiteralPath $stopResult.AccountingPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $statisticsSha = (Get-FileHash -LiteralPath $stopResult.PostStopStatisticsPath -Algorithm SHA256).Hash.ToLowerInvariant()
