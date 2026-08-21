@@ -126,8 +126,8 @@ if ($Action -ceq 'Arm') {
     if (Test-Path -LiteralPath $stateFull) { throw ('Bounded capture state already exists: {0}' -f $stateFull) }
 
     $resolvedSessionId = Resolve-NxbBoundedSessionId -Value $SessionId
-    $requestedPre = if ($null -eq $RequestedPreTriggerSeconds) { $policyPre } else { [int]$RequestedPreTriggerSeconds.Value }
-    $requestedPost = if ($null -eq $RequestedPostTriggerSeconds) { $policyPost } else { [int]$RequestedPostTriggerSeconds.Value }
+    $requestedPre = if ($null -eq $RequestedPreTriggerSeconds) { $policyPre } else { [int]$RequestedPreTriggerSeconds }
+    $requestedPost = if ($null -eq $RequestedPostTriggerSeconds) { $policyPost } else { [int]$RequestedPostTriggerSeconds }
     if ($requestedPre -lt 0 -or $requestedPost -lt 0) { throw 'Requested capture windows cannot be negative.' }
 
     $effectivePre = [Math]::Min($requestedPre,$policyPre)
