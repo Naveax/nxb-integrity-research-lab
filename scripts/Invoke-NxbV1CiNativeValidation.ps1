@@ -167,6 +167,7 @@ if ($LASTEXITCODE -ne 0) { throw ('NXB v1 CI native Python dependency closure fa
 
 $profileLogPath = Join-Path $outputFull 'native-profile-parser.txt'
 $nativeCalibrationPath = Join-Path $outputFull 'native-calibration.json'
+$boundedSmokePath = Join-Path $outputFull 'bounded-trigger-native-smoke.json'
 $receiptPath = Join-Path $outputFull 'native-ci-receipt.json'
 $reviewZipPath = Join-Path $outputFull 'native-ci-review.zip'
 $hostedRoot = Join-Path $outputFull 'hosted'
@@ -217,6 +218,17 @@ try {
     if ($profileExit -ne 0 -or $profileText -notmatch 'NxbMinimalCpuScheduler') { throw 'Native WPR profile parser failed or did not expose NxbMinimalCpuScheduler.' }
     Write-NxbCiNativeTextNew -Path $profileLogPath -Text ($profileText + [Environment]::NewLine)
 
+    $boundedSmoke = & (Join-Path $PSScriptRoot 'Invoke-NxbBoundedTriggerNativeSmoke.ps1') `
+        -ExpectedHead $expected `
+        -WorkRoot (Join-Path $workRoot 'bounded-trigger-smoke') `
+        -OutputPath $boundedSmokePath `
+        -WprExecutablePath $wprPath `
+        -XperfExecutablePath $xperfPath `
+        -PassThru
+    if ([string]$boundedSmoke.status -cne 'passed' -or [string]$boundedSmoke.head_sha -cne $expected) {
+        throw 'Real bounded trigger native smoke did not return exact-head PASS.'
+    }
+
     $labRoot = Join-Path $workRoot 'native-calibration-lab'
     & (Join-Path $PSScriptRoot 'Initialize-Lab.ps1') -Root $labRoot -Role Target | Out-Null
     $parent = & (Join-Path $PSScriptRoot 'New-Experiment.ps1') `
@@ -243,7 +255,7 @@ try {
     $ps7XmlPath = Join-Path $hostedRoot 'pester-ps7.xml'
     $ps51XmlPath = Join-Path $hostedRoot 'pester-ps51.xml'
     $ps51SummaryPath = Join-Path $hostedRoot 'ps51-summary.json'
-    foreach ($requiredEvidence in @($hostedReceiptPath,$ps7XmlPath,$ps51XmlPath,$ps51SummaryPath,$nativeCalibrationPath,$profileLogPath)) {
+    foreach ($requiredEvidence in @($hostedReceiptPath,$ps7XmlPath,$ps51XmlPath,$ps51SummaryPath,$nativeCalibrationPath,$profileLogPath,$boundedSmokePath)) {
         if (-not (Test-Path -LiteralPath $requiredEvidence -PathType Leaf)) { throw ('Required native CI evidence missing: {0}' -f $requiredEvidence) }
     }
 
@@ -263,13 +275,16 @@ try {
         native_profile_parser = $true
         native_calibration_valid = $true
         native_calibration_sha256 = Get-NxbCiNativeSha256 -Path $nativeCalibrationPath
+        bounded_trigger_smoke_valid = $true
+        bounded_trigger_smoke_authority = 'nxb-bounded-trigger-native-smoke-v1'
+        bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
         repetition_count = $RepetitionCount
         warmup_count = $WarmupCount
         pester_version = '5.7.1'
         psscriptanalyzer_version = '1.25.0'
         pyyaml_version = '6.0.3'
         jsonschema_version = '4.26.0'
-        review_entries = 7
+        review_entries = 8
         production_private_key_used = $false
         production_release_updated = $false
         production_tag_created = $false
@@ -280,6 +295,7 @@ try {
     Write-NxbCiNativeJsonNew -Path $receiptPath -Value $receipt
 
     $reviewEntries = [ordered]@{
+        'bounded-trigger-native-smoke.json' = $boundedSmokePath
         'hosted-ci-receipt.json' = $hostedReceiptPath
         'native-calibration.json' = $nativeCalibrationPath
         'native-ci-receipt.json' = $receiptPath
@@ -300,11 +316,13 @@ try {
             ps51 = $ps51Summary
             ps51_not_run = $ps51NotRun
             native_calibration_valid = $true
+            bounded_trigger_smoke_valid = $true
+            bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
             receipt_path = $receiptPath
             receipt_sha256 = Get-NxbCiNativeSha256 -Path $receiptPath
             review_zip = $reviewZipPath
             review_zip_sha256 = Get-NxbCiNativeSha256 -Path $reviewZipPath
-            review_entries = 7
+            review_entries = 8
             production_release_updated = $false
         }
     }
