@@ -309,7 +309,7 @@ function Get-NxbPredecessorExpectedAssetMap {
         Assert-Nxb (-not $map.ContainsKey($name)) ('Frozen predecessor asset policy contains a duplicate: {0}' -f $name)
         $map.Add($name,$sha)
     }
-    Assert-Nxb ($map.Count -eq 4) ('Frozen predecessor asset policy count drift: {0}' -f $map.Count)
+    Assert-Nxb ($map.Count -eq 11) ('Frozen predecessor asset policy count drift: {0}' -f $map.Count)
     return $map
 }
 
