@@ -6,6 +6,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $script:StateScript = Join-Path $script:RepositoryRoot 'scripts\Update-NxbBoundedTriggerCaptureState.ps1'
         $script:StartScript = Join-Path $script:RepositoryRoot 'scripts\Start-NxbBoundedMemoryTrace.ps1'
         $script:CoordinatorScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerCapture.ps1'
+        $script:NativeSmokeScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerNativeSmoke.ps1'
         $script:PolicyPath = Join-Path $script:RepositoryRoot 'config\adaptive-observability-policy.default.json'
         $script:ExpectedHead = ('1' * 40)
         $script:PlanA = ('a' * 64)
@@ -70,7 +71,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     }
 
     It 'keeps the new runtime surface parser-clean and explicitly bounded' {
-        foreach ($path in @($script:StateScript,$script:StartScript,$script:CoordinatorScript,$PSCommandPath)) {
+        foreach ($path in @($script:StateScript,$script:StartScript,$script:CoordinatorScript,$script:NativeSmokeScript,$PSCommandPath)) {
             $tokens = $null
             $errors = $null
             [void][Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
@@ -78,8 +79,8 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         }
         $startSource = Get-Content -LiteralPath $script:StartScript -Raw
         $startSource | Should -Match ([regex]::Escape("logging_mode             = 'Memory'"))
-        $startSource | Should -Match ([regex]::Escape("memory_buffer_budget_mib = $memoryBudgetMiB"))
-        $startSource | Should -Match ([regex]::Escape("if ($memoryBudgetMiB -ne 64)"))
+        $startSource | Should -Match ([regex]::Escape('memory_buffer_budget_mib = $memoryBudgetMiB'))
+        $startSource | Should -Match ([regex]::Escape('if ($memoryBudgetMiB -ne 64)'))
         $startSource | Should -Match ([regex]::Escape("overwrite_model          = 'bounded-memory-buffer-reuse'"))
         $startSource | Should -Not -Match '(?m)^\s*\$startOutput\s*=.*-filemode'
     }
@@ -312,7 +313,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         foreach ($token in @(
             'MinimumFreeDiskMiB',
             "BudgetReason = 'disk_pressure'",
-            "domain_coverage = $coverageStatus",
+            'domain_coverage = $coverageStatus',
             'not_captured_by_minimal_wpr_primitive',
             'estimated_overwritten_buffer_count',
             'max(0,buffers_written-configured_buffer_capacity)',
