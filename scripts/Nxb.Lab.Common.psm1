@@ -214,25 +214,6 @@ function Write-NxbJsonAtomic {
     }
 }
 
-function Get-NxbCanonicalJsonHash {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [AllowNull()]
-        [object]$InputObject
-    )
-
-    $canonicalJson = $InputObject | ConvertTo-Json -Depth 100 -Compress
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try {
-        $bytes = [Text.Encoding]::UTF8.GetBytes([string]$canonicalJson)
-        return (($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
-    }
-    finally {
-        $sha.Dispose()
-    }
-}
-
 function Test-NxbStateTransition {
     [CmdletBinding()]
     param(
@@ -340,7 +321,6 @@ Export-ModuleMember -Function @(
     'Get-NxbSafeChildItem',
     'Read-NxbJson',
     'Write-NxbJsonAtomic',
-    'Get-NxbCanonicalJsonHash',
     'Test-NxbStateTransition',
     'Set-NxbExperimentState',
     'Get-NxbEvidenceFile'

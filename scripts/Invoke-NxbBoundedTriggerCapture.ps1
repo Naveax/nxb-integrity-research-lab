@@ -21,6 +21,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Nxb.Lab.Common.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Nxb.EvidenceStore.psm1') -Force
 
 function Get-NxbBoundedCounterValue {
     [CmdletBinding()]
