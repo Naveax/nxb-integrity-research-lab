@@ -24,6 +24,13 @@ PREDECESSOR_ASSETS = {
     "nxb-v1.0.0.zip": "c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78",
     "package-manifest.json": "5de097246c5d0bda633a64973491b571c8383d4ca489851f2b225e6633cbf466",
     "production-final-closure-receipt.json": "b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355",
+    "production-key-rotation-policy.txt": "2f60bde6c0cbe7891d881fd1d4915aefd03a111e0217e181402b8f2b1486b1d7",
+    "production-readiness-receipt.json": "80ba901b36906deaa8bfe47dd9a27bb8dbe706b6dc0af5dd4c45e5dc7141b0e0",
+    "production-revocation-policy.txt": "b8ab9da0489c3cf4f1bc67bd858e7b9edce9133cb170620da5b46acf755d7551",
+    "release-notes.txt": "0a5155c4f5d224ab05c717e4656e963807ee6a64457c97407ebce6c17e94fe5e",
+    "signature-envelope.json": "119150328c8cb9882332f60b9a4caf87feb38e2f80face972c46230348680f5f",
+    "update-descriptor.json": "de0d07c796b925b928eeee6e92959a3e7430cd332cfee86478746086bc266450",
+    "update-trust.json": "c27f6f7a9b35ff731a99f5c45573d490c32304fd8b1b2e8f17d2cede84ec341a",
 }
 PACKAGE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
 UPDATE_RELEASE_VERSIONS = ["1.0.0", "1.0.1"]
@@ -378,7 +385,7 @@ def main():
     result = {
         "schema_version": 1,
         "status": "passed" if not failures else "failed",
-        "authority": "nxb-v1-successor-independent-v12",
+        "authority": "nxb-v1-successor-independent-v13",
         "phase": policy.get("phase"),
         "predecessor_head": PREDECESSOR_HEAD,
         "predecessor_tree": PREDECESSOR_TREE,
