@@ -63,6 +63,7 @@ try {
         -Hypothesis 'A real Memory WPR ring preserves bounded evidence before and after an adaptive trigger'
 
     $signalsPath = Join-Path $workFull 'signals.json'
+    $emergencyStopPath = Join-Path $workFull 'native-smoke-emergency.stop'
     [IO.File]::WriteAllText(
         $signalsPath,
         ((@{ frame_time_ms = 10 } | ConvertTo-Json -Compress) + [Environment]::NewLine),
@@ -70,12 +71,43 @@ try {
     )
 
     $signalJob = Start-Job -ScriptBlock {
-        Start-Sleep -Milliseconds 1500
-        [IO.File]::WriteAllText(
-            $using:signalsPath,
-            ((@{ frame_time_ms = 40 } | ConvertTo-Json -Compress) + [Environment]::NewLine),
-            [Text.UTF8Encoding]::new($false)
-        )
+        try {
+            Start-Sleep -Milliseconds 1500
+            $tempPath = $using:signalsPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+            try {
+                [IO.File]::WriteAllText(
+                    $tempPath,
+                    ((@{ frame_time_ms = 40 } | ConvertTo-Json -Compress) + [Environment]::NewLine),
+                    [Text.UTF8Encoding]::new($false)
+                )
+                $published = $false
+                for ($attempt = 1; $attempt -le 20; $attempt++) {
+                    try {
+                        [IO.File]::Move($tempPath,$using:signalsPath,$true)
+                        $published = $true
+                        break
+                    }
+                    catch [IO.IOException] {
+                        if ($attempt -eq 20) { throw }
+                        Start-Sleep -Milliseconds 25
+                    }
+                }
+                if (-not $published) { throw 'Atomic bounded native signal publication did not complete.' }
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempPath) {
+                    Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        catch {
+            [IO.File]::WriteAllText(
+                $using:emergencyStopPath,
+                ($_.Exception.Message + [Environment]::NewLine),
+                [Text.UTF8Encoding]::new($false)
+            )
+            throw
+        }
     }
 
     $capture = & (Join-Path $PSScriptRoot 'Invoke-NxbBoundedTriggerCapture.ps1') `
@@ -87,6 +119,7 @@ try {
         -RequestedPostTriggerSeconds 1 `
         -PollMilliseconds 100 `
         -MinimumFreeDiskMiB 64 `
+        -EmergencyStopPath $emergencyStopPath `
         -WprExecutablePath $WprExecutablePath `
         -XperfExecutablePath $XperfExecutablePath `
         -PassThru
