@@ -134,11 +134,11 @@ Describe 'NXB v1 production CLI contract' {
         $result=& $c.cli -Command status
         $after=(Get-FileHash -LiteralPath $historicalPath -Algorithm SHA256).Hash
         $after | Should -BeExactly $before
-        [string]$result.contract_id | Should -BeExactly 'nxb-production-finalization-v1'
+        [string]$result.contract_id | Should -BeExactly 'nxb-irl006-part6-10-production-finalization-v1'
         [string]$result.release_version | Should -BeExactly '1.0.0-candidate'
         [bool]$result.production_merge_performed | Should -BeFalse
         [string]$result.status_contract_id | Should -BeExactly 'nxb-v1-cli-status-v2'
-        [string]$result.historical_contract_id | Should -BeExactly 'nxb-production-finalization-v1'
+        [string]$result.historical_contract_id | Should -BeExactly 'nxb-irl006-part6-10-production-finalization-v1'
         [string]$result.historical_release_version | Should -BeExactly '1.0.0-candidate'
         [bool]$result.historical_production_merge_performed | Should -BeFalse
         [string]$result.target_version | Should -BeExactly '1.0.1'
