@@ -61,11 +61,18 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$production.predecessor.production_signer_fingerprint | Should -BeExactly '1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373'
         $assetMap = @{}
         foreach ($asset in @($production.predecessor.assets)) { $assetMap[[string]$asset.name] = [string]$asset.sha256 }
-        $assetMap.Count | Should -Be 4
+        $assetMap.Count | Should -Be 11
         [string]$assetMap['nxb-v1.0.0-public-evidence.zip'] | Should -BeExactly '51caec3a66d7300ae774219f142c2a9d2351fafb613cee0c22795709b12b9d40'
         [string]$assetMap['nxb-v1.0.0.zip'] | Should -BeExactly 'c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78'
         [string]$assetMap['package-manifest.json'] | Should -BeExactly '5de097246c5d0bda633a64973491b571c8383d4ca489851f2b225e6633cbf466'
         [string]$assetMap['production-final-closure-receipt.json'] | Should -BeExactly 'b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355'
+        [string]$assetMap['production-key-rotation-policy.txt'] | Should -BeExactly '2f60bde6c0cbe7891d881fd1d4915aefd03a111e0217e181402b8f2b1486b1d7'
+        [string]$assetMap['production-readiness-receipt.json'] | Should -BeExactly '80ba901b36906deaa8bfe47dd9a27bb8dbe706b6dc0af5dd4c45e5dc7141b0e0'
+        [string]$assetMap['production-revocation-policy.txt'] | Should -BeExactly 'b8ab9da0489c3cf4f1bc67bd858e7b9edce9133cb170620da5b46acf755d7551'
+        [string]$assetMap['release-notes.txt'] | Should -BeExactly '0a5155c4f5d224ab05c717e4656e963807ee6a64457c97407ebce6c17e94fe5e'
+        [string]$assetMap['signature-envelope.json'] | Should -BeExactly '119150328c8cb9882332f60b9a4caf87feb38e2f80face972c46230348680f5f'
+        [string]$assetMap['update-descriptor.json'] | Should -BeExactly 'de0d07c796b925b928eeee6e92959a3e7430cd332cfee86478746086bc266450'
+        [string]$assetMap['update-trust.json'] | Should -BeExactly 'c27f6f7a9b35ff731a99f5c45573d490c32304fd8b1b2e8f17d2cede84ec341a'
         [string]$production.implementation.certified_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
         [string]$production.ci.native_runner_name | Should -BeExactly 'NXB-NATIVE-WPT'
         [bool]$production.safety.require_merge_tree_identity | Should -BeTrue
@@ -130,7 +137,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v12'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v13'
         [bool]$result.checks.package_release_versions | Should -BeTrue
         [bool]$result.checks.update_release_versions | Should -BeTrue
         [bool]$result.checks.production_release_policy | Should -BeTrue

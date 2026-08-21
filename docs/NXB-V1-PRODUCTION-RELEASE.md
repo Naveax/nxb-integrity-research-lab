@@ -47,7 +47,25 @@ closure     b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355
 signer      1d72e76225854e09af2552639436a508f050042e5e1c635bd7e11cc3feae4373
 ```
 
-The production authority pins the exact four-asset v1.0.0 GitHub Release set and every SHA-256 digest before successor publication, repeats that full-set check before tagging, and repeats it after v1.0.1 publication. It also downloads and re-hashes the frozen v1.0.0 package and package manifest before the successor update smoke.
+A post-merge fail-closed production preflight on 2026-08-21 independently re-audited Release ID `370629171` and proved that the frozen v1.0.0 Release contains exactly eleven canonical assets, not four. All eleven GitHub-recorded SHA-256 digests matched independently downloaded bytes; the four previously pinned anchor hashes remained unchanged; the annotated tag still peeled to the frozen predecessor head; and `production-final-closure-receipt.json` remained the immutable `nxb-v1-production-final-closure-v1` receipt with `frozen=true` and `all_asset_hashes_match=true`.
+
+The complete frozen v1.0.0 Release asset set is therefore pinned exactly:
+
+```text
+nxb-v1.0.0.zip                         c489ba417f1284bfcad4d0666e61fde93ab4ed8fab7fa4e8c0ef1df5c7e9ce78
+package-manifest.json                  5de097246c5d0bda633a64973491b571c8383d4ca489851f2b225e6633cbf466
+release-notes.txt                      0a5155c4f5d224ab05c717e4656e963807ee6a64457c97407ebce6c17e94fe5e
+signature-envelope.json                119150328c8cb9882332f60b9a4caf87feb38e2f80face972c46230348680f5f
+update-descriptor.json                 de0d07c796b925b928eeee6e92959a3e7430cd332cfee86478746086bc266450
+update-trust.json                      c27f6f7a9b35ff731a99f5c45573d490c32304fd8b1b2e8f17d2cede84ec341a
+production-readiness-receipt.json      80ba901b36906deaa8bfe47dd9a27bb8dbe706b6dc0af5dd4c45e5dc7141b0e0
+nxb-v1.0.0-public-evidence.zip         51caec3a66d7300ae774219f142c2a9d2351fafb613cee0c22795709b12b9d40
+production-key-rotation-policy.txt     2f60bde6c0cbe7891d881fd1d4915aefd03a111e0217e181402b8f2b1486b1d7
+production-revocation-policy.txt       b8ab9da0489c3cf4f1bc67bd858e7b9edce9133cb170620da5b46acf755d7551
+production-final-closure-receipt.json  b3914161cb851a600c2d79a6f1fb877766aa8af453d2a19e03a43884758f1355
+```
+
+The production authority requires this exact eleven-name/hash set before successor publication, repeats the full-set check before tagging, and repeats it after v1.0.1 publication. It also downloads and re-hashes the frozen v1.0.0 package and package manifest before the successor update smoke.
 
 The historical Phase-7 pointer remains:
 
