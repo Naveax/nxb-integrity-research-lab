@@ -25,6 +25,7 @@
       "scripts/Invoke-NxbV1",
       "scripts/NxbV1",
       "scripts/Test-NxbV1",
+      "scripts/nxb.ps1",
       "tests/V1",
       "tools/validate_v1_"
     ],

@@ -8,6 +8,10 @@ import re
 import sys
 
 EXPECTED_HEAD = "27507531154099ab28a05cfe8e4e900d72f22e7b"
+RELEASE_HEAD = "9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85"
+RELEASE_TREE = "26f0c29bd8da284e0553902e18f22f759e3c907f"
+FINAL_CLOSURE_SHA256 = "1734cc2fb3717e57b70467bb361fafdd292e517726db3bcb87fd031c81cfb1a8"
+PREDECESSOR_HEAD = "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f"
 EXPECTED_COMMANDS = [
     "status","hash","inspect-manifest","stage-update","certify-final",
     "version","doctor","config-validate","evidence-verify",
@@ -33,11 +37,24 @@ def sha256_file(path):
 
 
 def validate_policy(policy):
+    status = policy.get("status", {})
+    release = policy.get("release_authority", {})
     return (
         policy.get("schema_version") == 1
         and policy.get("contract_id") == "nxb-v1-cli-v1"
         and policy.get("target_version") == "1.0.1"
         and policy.get("predecessor_update_head") == EXPECTED_HEAD
+        and status.get("contract_id") == "nxb-v1-cli-status-v2"
+        and status.get("historical_policy_path") == "config/nxb-production-finalization-policy.json"
+        and release.get("state") == "released"
+        and release.get("production_release") is True
+        and release.get("release_sequence") == 2
+        and release.get("tag") == "v1.0.1"
+        and release.get("head") == RELEASE_HEAD
+        and release.get("tree") == RELEASE_TREE
+        and release.get("final_closure_sha256") == FINAL_CLOSURE_SHA256
+        and release.get("predecessor_version") == "1.0.0"
+        and release.get("predecessor_head") == PREDECESSOR_HEAD
     )
 
 
@@ -119,7 +136,7 @@ def main():
     req.append(policy.get("delegation",{}).get("signed_update") == "scripts/Invoke-NxbV1Updater.ps1" and "Invoke-NxbV1CliSignedUpdate" in common)
     req.append(policy.get("delegation",{}).get("doctor") == "scripts/Test-NxbV1InstallerHost.ps1" and policy.get("delegation",{}).get("evidence_verify") == "scripts/Test-EvidenceBundle.ps1")
     req.append(all(x in cli for x in ["$Host.SetShouldExit","ConvertTo-Json -Depth 32 -Compress","[Console]::Error.WriteLine","$envelope.mutation_performed = $mutationPerformed","$finalPipeline = @(& $finalAuthority","-PassThru 3>$null 4>$null 5>$null 6>$null"]))
-    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun.","$null = Invoke-NxbV1CliSignedUpdate","$mutationPerformed = $true"]) and len(errors.get("rules",[])) == 5)
+    req.append(all(x in cli for x in ["update-stage requires -ConfirmMutation or -DryRun.","update-apply requires -ConfirmMutation or -DryRun.","update-rollback requires -ConfirmMutation or -DryRun.","$null = Invoke-NxbV1CliSignedUpdate","$mutationPerformed = $true","nxb-v1-cli-status-v2","production_final_closure_sha256"]) and len(errors.get("rules",[])) == 5)
 
     negatives = []
     p = copy.deepcopy(policy); p["predecessor_update_head"] = "0" * 40; negatives.append(not validate_policy(p))
@@ -130,13 +147,23 @@ def main():
     s = copy.deepcopy(output_schema); s["additionalProperties"] = True; negatives.append(s["additionalProperties"] is not False)
     s = copy.deepcopy(config_schema); s["additionalProperties"] = True; negatives.append(s["additionalProperties"] is not False)
     bad = copy.deepcopy(example); bad["unexpected"] = True; negatives.append(not validate_config(bad))
-    negatives.append("Test-NxbV1SignedReleaseEnvelope" not in cli and "Test-NxbV1SignedReleaseEnvelope" not in common)
+    p = copy.deepcopy(policy); p["release_authority"]["final_closure_sha256"] = "0" * 64
+    negatives.append(not validate_policy(p) and "Test-NxbV1SignedReleaseEnvelope" not in cli and "Test-NxbV1SignedReleaseEnvelope" not in common)
     negatives.append("Sort-Object path" not in cli and "update-apply requires -ConfirmMutation or -DryRun." in cli and "$commandData = & $finalAuthority" not in cli)
 
     artifacts = {}
     if args.version_json:
         doc = load_json(args.version_json)
-        artifacts["version_json"] = validate_output(doc,"version",0,"passed") and doc.get("data",{}).get("certified_update_head") == EXPECTED_HEAD
+        data = doc.get("data", {})
+        artifacts["version_json"] = (
+            validate_output(doc,"version",0,"passed")
+            and data.get("certified_update_head") == EXPECTED_HEAD
+            and data.get("release_state") == "released"
+            and data.get("production_release") is True
+            and data.get("production_release_tag") == "v1.0.1"
+            and data.get("production_release_head") == RELEASE_HEAD
+            and data.get("production_final_closure_sha256") == FINAL_CLOSURE_SHA256
+        )
     if args.usage_json:
         doc = load_json(args.usage_json)
         artifacts["usage_json"] = validate_output(doc,"hash",2,"failed")
