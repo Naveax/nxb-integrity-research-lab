@@ -53,7 +53,7 @@ Describe 'NXB v1 release integration contract' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         $prefixes = @($policy.integration.allowed_successor_paths | ForEach-Object { [string]$_ })
-        $prefixes.Count | Should -Be 12
+        $prefixes.Count | Should -Be 13
         $prefixes | Should -Contain '.github/workflows/nxb-v1-'
         $prefixes | Should -Contain 'AGENTS.md'
         $prefixes | Should -Contain 'config/nxb-v1-'
@@ -64,6 +64,7 @@ Describe 'NXB v1 release integration contract' {
         $prefixes | Should -Contain 'scripts/Invoke-NxbV1'
         $prefixes | Should -Contain 'scripts/NxbV1'
         $prefixes | Should -Contain 'scripts/Test-NxbV1'
+        $prefixes | Should -Contain 'scripts/nxb.ps1'
         $prefixes | Should -Contain 'tests/V1'
         $prefixes | Should -Contain 'tools/validate_v1_'
         $prefixes | Should -Not -Contain 'scripts/'
