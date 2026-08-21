@@ -66,6 +66,7 @@ ALLOWED_PATHS = {
     "config/nxb-v1-cli-policy.json",
     "tools/validate_v1_cli.py",
     "tests/V1Cli.Tests.ps1",
+    "scripts/nxb.ps1",
     "config/nxb-v1-installer-policy.json",
     "schemas/nxb-v1-package-manifest.schema.json",
     "schemas/nxb-v1-install-state.schema.json",
