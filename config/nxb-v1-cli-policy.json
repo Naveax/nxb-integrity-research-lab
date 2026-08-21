@@ -4,6 +4,21 @@
   "target_version": "1.0.1",
   "predecessor_update_head": "27507531154099ab28a05cfe8e4e900d72f22e7b",
   "certified_update_pointer": "certified/nxb-v1-update",
+  "status": {
+    "contract_id": "nxb-v1-cli-status-v2",
+    "historical_policy_path": "config/nxb-production-finalization-policy.json"
+  },
+  "release_authority": {
+    "state": "released",
+    "production_release": true,
+    "release_sequence": 2,
+    "tag": "v1.0.1",
+    "head": "9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85",
+    "tree": "26f0c29bd8da284e0553902e18f22f759e3c907f",
+    "final_closure_sha256": "1734cc2fb3717e57b70467bb361fafdd292e517726db3bcb87fd031c81cfb1a8",
+    "predecessor_version": "1.0.0",
+    "predecessor_head": "a4f1b242c003333b1f34b1cd54ca37cab33fbf4f"
+  },
   "commands": [
     "status",
     "hash",
