@@ -101,6 +101,8 @@ Describe 'NXB v1.0.1 successor version transition' {
         )) {
             $productionSource | Should -Match ([regex]::Escape($token))
         }
+        $productionSource | Should -Match ([regex]::Escape('$map.Count -eq 11'))
+        $productionSource | Should -Not -Match ([regex]::Escape('$map.Count -eq 4'))
         $productionSource | Should -Not -Match ([regex]::Escape("@('update-ref'"))
         $productionSource | Should -Not -Match ([regex]::Escape("-Action Apply"))
         $productionSource | Should -Not -Match '(?im)\[(?:Parameter[^\]]*)\][^\r\n]*(?:Pfx|Pem|PrivateKey)(?:Path|Bytes)'
