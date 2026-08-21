@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedHead,
     [Parameter(Mandatory)][ValidateSet('Arm','Trigger','Tick','EmergencyStop','BudgetExhausted','Complete','Fail')][string]$Action,
 
+    [Parameter()][string]$SessionId,
     [Parameter()][AllowNull()][Nullable[int]]$RequestedPreTriggerSeconds,
     [Parameter()][AllowNull()][Nullable[int]]$RequestedPostTriggerSeconds,
     [Parameter()][ValidateRange(1,128)][int]$MaxCoalescedTriggers = 32,
@@ -15,7 +16,7 @@ param(
     [Parameter()][ValidateRange(0,1000)][int]$TriggerPriority = 0,
     [Parameter()][string]$PlanFingerprintSha256,
     [Parameter()][string[]]$Domains = @(),
-    [Parameter()][string]$BudgetReason = 'budget_exhausted',
+    [Parameter()][ValidateNotNullOrEmpty()][string]$BudgetReason = 'budget_exhausted',
     [Parameter()][string]$EvidenceSha256,
     [Parameter()][string]$FailureReason,
 
@@ -41,17 +42,13 @@ function ConvertTo-NxbBoundedUtc {
     ).ToUniversalTime()
 }
 
-function Add-NxbBoundedHistory {
+function Resolve-NxbBoundedSessionId {
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][object]$State,
-        [Parameter(Mandatory)][object]$Entry,
-        [Parameter(Mandatory)][int]$Maximum
-    )
-    $history = [Collections.Generic.List[object]]::new()
-    foreach ($item in @($State.trigger_history)) { $history.Add($item) }
-    if ($history.Count -lt $Maximum) { $history.Add($Entry) }
-    $State.trigger_history = @($history.ToArray())
+    param([Parameter()][AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return [Guid]::NewGuid().ToString('D') }
+    $parsed = [Guid]::Empty
+    if (-not [Guid]::TryParse($Value,[ref]$parsed)) { throw 'Bounded capture SessionId is not a valid GUID.' }
+    return $parsed.ToString('D')
 }
 
 function Set-NxbBoundedProperty {
@@ -68,6 +65,40 @@ function Set-NxbBoundedProperty {
     else {
         $property.Value = $Value
     }
+}
+
+function Add-NxbBoundedHistory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$State,
+        [Parameter(Mandatory)][object]$Entry,
+        [Parameter(Mandatory)][int]$Maximum
+    )
+    $history = [Collections.Generic.List[object]]::new()
+    foreach ($item in @($State.trigger_history)) { $history.Add($item) }
+    if ($history.Count -lt $Maximum) {
+        $history.Add($Entry)
+    }
+    else {
+        Set-NxbBoundedProperty -Object $State -Name 'history_dropped_count' -Value ([int]$State.history_dropped_count + 1)
+    }
+    $State.trigger_history = @($history.ToArray())
+}
+
+function Add-NxbBoundedDomains {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$State,
+        [Parameter(Mandatory)][string[]]$Values
+    )
+    $set = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($existing in @($State.active_domains)) { [void]$set.Add([string]$existing) }
+    foreach ($value in $Values) {
+        if ([string]::IsNullOrWhiteSpace($value)) { throw 'Trigger domains cannot contain empty values.' }
+        [void]$set.Add($value)
+    }
+    if ($set.Count -eq 0) { throw 'At least one trigger domain is required.' }
+    Set-NxbBoundedProperty -Object $State -Name 'active_domains' -Value @($set)
 }
 
 $policyFull = [IO.Path]::GetFullPath($PolicyPath)
@@ -93,6 +124,7 @@ if ($MonotonicFrequency -le 0 -or $MonotonicTicks -lt 0) { throw 'Monotonic cloc
 if ($Action -ceq 'Arm') {
     if (Test-Path -LiteralPath $stateFull) { throw ('Bounded capture state already exists: {0}' -f $stateFull) }
 
+    $resolvedSessionId = Resolve-NxbBoundedSessionId -Value $SessionId
     $requestedPre = if ($null -eq $RequestedPreTriggerSeconds) { $policyPre } else { [int]$RequestedPreTriggerSeconds.Value }
     $requestedPost = if ($null -eq $RequestedPostTriggerSeconds) { $policyPost } else { [int]$RequestedPostTriggerSeconds.Value }
     if ($requestedPre -lt 0 -or $requestedPost -lt 0) { throw 'Requested capture windows cannot be negative.' }
@@ -106,7 +138,7 @@ if ($Action -ceq 'Arm') {
         authority = 'nxb-bounded-trigger-capture-state-v1'
         state = 'armed'
         expected_head = $ExpectedHead.ToLowerInvariant()
-        session_id = [Guid]::NewGuid().ToString('D')
+        session_id = $resolvedSessionId
         policy_id = [string]$policy.policy_id
         policy_fingerprint_sha256 = $policyFingerprint
         requested_pretrigger_seconds = $requestedPre
@@ -127,6 +159,7 @@ if ($Action -ceq 'Arm') {
         post_deadline_utc = $null
         primary_trigger = $null
         selected_trigger = $null
+        primary_plan_fingerprint_sha256 = $null
         plan_fingerprint_sha256 = $null
         active_domains = @()
         coalesced_trigger_count = 0
@@ -134,6 +167,7 @@ if ($Action -ceq 'Arm') {
         max_coalesced_triggers = $MaxCoalescedTriggers
         max_trigger_history = $MaxTriggerHistory
         trigger_history = @()
+        history_dropped_count = 0
         truncation = $false
         budget_state = 'normal'
         termination_reason = $null
@@ -157,6 +191,10 @@ if ([int]$state.schema_version -ne 1 -or [string]$state.authority -cne 'nxb-boun
 }
 if ([string]$state.expected_head -cne $ExpectedHead.ToLowerInvariant()) { throw 'Bounded capture exact-head binding is stale.' }
 if ([string]$state.policy_fingerprint_sha256 -cne $policyFingerprint) { throw 'Bounded capture policy fingerprint is stale.' }
+if (-not [string]::IsNullOrWhiteSpace($SessionId)) {
+    $resolvedExpectedSessionId = Resolve-NxbBoundedSessionId -Value $SessionId
+    if ([string]$state.session_id -cne $resolvedExpectedSessionId) { throw 'Bounded capture session binding is stale.' }
+}
 if ([long]$state.monotonic_frequency -ne $MonotonicFrequency) { throw 'Bounded capture monotonic clock frequency drifted.' }
 if ($MonotonicTicks -lt [long]$state.last_monotonic_ticks) { throw 'Bounded capture monotonic timestamp ordering violation.' }
 Set-NxbBoundedProperty -Object $state -Name 'last_monotonic_ticks' -Value $MonotonicTicks
@@ -169,12 +207,8 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($TriggerReason)) { throw 'TriggerReason is required for Trigger action.' }
         if ([string]$PlanFingerprintSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'PlanFingerprintSha256 is required for Trigger action.' }
         $normalizedPlanFingerprint = $PlanFingerprintSha256.ToLowerInvariant()
-        $domainSet = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
-        foreach ($domain in @($Domains)) {
-            if ([string]::IsNullOrWhiteSpace([string]$domain)) { throw 'Trigger domains cannot contain empty values.' }
-            [void]$domainSet.Add([string]$domain)
-        }
-        if ($domainSet.Count -eq 0) { throw 'At least one trigger domain is required.' }
+        $domainValues = @($Domains | ForEach-Object { [string]$_ })
+        if ($domainValues.Count -eq 0) { throw 'At least one trigger domain is required.' }
 
         if ([string]$state.state -ceq 'armed') {
             $armedTicks = [long]$state.armed_monotonic_ticks
@@ -189,8 +223,9 @@ switch ($Action) {
             Set-NxbBoundedProperty -Object $state -Name 'trigger_monotonic_ticks' -Value $MonotonicTicks
             Set-NxbBoundedProperty -Object $state -Name 'observed_pretrigger_seconds' -Value $observedPre
             Set-NxbBoundedProperty -Object $state -Name 'post_deadline_utc' -Value $postDeadline.ToString('o')
+            Set-NxbBoundedProperty -Object $state -Name 'primary_plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
             Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
-            Set-NxbBoundedProperty -Object $state -Name 'active_domains' -Value @($domainSet)
+            Add-NxbBoundedDomains -State $state -Values $domainValues
 
             $triggerRecord = [pscustomobject][ordered]@{
                 id = $TriggerId
@@ -198,6 +233,7 @@ switch ($Action) {
                 priority = $TriggerPriority
                 utc = $now.ToString('o')
                 monotonic_ticks = $MonotonicTicks
+                plan_fingerprint_sha256 = $normalizedPlanFingerprint
                 disposition = 'primary'
             }
             Set-NxbBoundedProperty -Object $state -Name 'primary_trigger' -Value $triggerRecord
@@ -213,18 +249,20 @@ switch ($Action) {
             }
         }
         elseif ([string]$state.state -ceq 'post_capture') {
-            if ([string]$state.plan_fingerprint_sha256 -cne $normalizedPlanFingerprint) { throw 'Bounded capture plan fingerprint is stale during overlap.' }
             $historyRecord = [pscustomobject][ordered]@{
                 id = $TriggerId
                 reason = $TriggerReason
                 priority = $TriggerPriority
                 utc = $now.ToString('o')
                 monotonic_ticks = $MonotonicTicks
+                plan_fingerprint_sha256 = $normalizedPlanFingerprint
                 disposition = $null
             }
             if ([int]$state.coalesced_trigger_count -lt [int]$state.max_coalesced_triggers) {
                 Set-NxbBoundedProperty -Object $state -Name 'coalesced_trigger_count' -Value ([int]$state.coalesced_trigger_count + 1)
                 $historyRecord.disposition = 'coalesced'
+                Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
+                Add-NxbBoundedDomains -State $state -Values $domainValues
                 $currentDeadline = ConvertTo-NxbBoundedUtc -Value $state.post_deadline_utc
                 $candidateDeadline = $now.AddSeconds([double]$state.effective_posttrigger_seconds)
                 if ($candidateDeadline -gt $hardDeadline) { $candidateDeadline = $hardDeadline }
@@ -302,7 +340,12 @@ switch ($Action) {
     }
 
     'Fail' {
+        if ([string]$state.state -ceq 'completed') { throw 'Fail cannot rewrite a completed bounded capture state.' }
         if ([string]::IsNullOrWhiteSpace($FailureReason)) { throw 'FailureReason is required for Fail action.' }
+        if (-not [string]::IsNullOrWhiteSpace($EvidenceSha256)) {
+            if ($EvidenceSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'EvidenceSha256 is invalid for Fail action.' }
+            Set-NxbBoundedProperty -Object $state -Name 'evidence_sha256' -Value $EvidenceSha256.ToLowerInvariant()
+        }
         Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'failed'
         Set-NxbBoundedProperty -Object $state -Name 'truncation' -Value $true
         Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'failure'
