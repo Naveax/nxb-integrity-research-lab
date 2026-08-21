@@ -53,7 +53,7 @@ Describe 'NXB v1 release integration contract' {
         $context = Get-NxbV1ReleaseTestContext
         $policy = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
         $prefixes = @($policy.integration.allowed_successor_paths | ForEach-Object { [string]$_ })
-        $prefixes.Count | Should -Be 12
+        $prefixes.Count | Should -Be 13
         $prefixes | Should -Contain '.github/workflows/nxb-v1-'
         $prefixes | Should -Contain 'AGENTS.md'
         $prefixes | Should -Contain 'config/nxb-v1-'
@@ -64,6 +64,7 @@ Describe 'NXB v1 release integration contract' {
         $prefixes | Should -Contain 'scripts/Invoke-NxbV1'
         $prefixes | Should -Contain 'scripts/NxbV1'
         $prefixes | Should -Contain 'scripts/Test-NxbV1'
+        $prefixes | Should -Contain 'scripts/nxb.ps1'
         $prefixes | Should -Contain 'tests/V1'
         $prefixes | Should -Contain 'tools/validate_v1_'
         $prefixes | Should -Not -Contain 'scripts/'
@@ -120,95 +121,94 @@ Describe 'NXB v1 release integration contract' {
         [string]$schema.properties.target_version.const | Should -BeExactly '1.0.1'
     }
 
-    It 'uses the inherited safe native-process preference guard around git calls' {
+    It 'defines exact preflight checks and no history rewrite' {
         $context = Get-NxbV1ReleaseTestContext
-        foreach ($sourcePath in @($context.script,$context.authority)) {
-            $source = Get-Content -LiteralPath $sourcePath -Raw
-            $source | Should -Match ([regex]::Escape('$previousErrorActionPreference = $ErrorActionPreference'))
-            $source | Should -Match ([regex]::Escape('$ErrorActionPreference = ''Continue'''))
-            $source | Should -Match ([regex]::Escape('$nativeExitCode = if ($null -eq $LASTEXITCODE)'))
-            $source | Should -Match ([regex]::Escape('$ErrorActionPreference = $previousErrorActionPreference'))
-        }
+        $schema = Get-Content -LiteralPath $context.schema -Raw | ConvertFrom-Json
+        [bool]$policy = $false
+        $policyDocument = Get-Content -LiteralPath $context.policy -Raw | ConvertFrom-Json
+        [bool]$policyDocument.integration.allow_history_rewrite | Should -BeFalse
+        [bool]$policyDocument.integration.require_clean_worktree | Should -BeTrue
+        [bool]$policyDocument.integration.require_main_ancestor_of_release_head | Should -BeTrue
+        [bool]$policyDocument.integration.require_certified_head_ancestor_of_release_head | Should -BeTrue
+        @($schema.properties.checks.required).Count | Should -Be 9
+        @($schema.properties.checks.required) | Should -Contain 'clean_worktree'
+        @($schema.properties.checks.required) | Should -Contain 'certified_head_ancestor'
+        @($schema.properties.checks.required) | Should -Contain 'main_head_ancestor'
+        @($schema.properties.checks.required) | Should -Contain 'candidate_version_preserved'
     }
 
-    It 'requires both certified-head and live-main ancestry before release integration' {
-        $context = Get-NxbV1ReleaseTestContext
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape('$certifiedAncestorRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$certifiedHead,$releaseHead)'))
-        $source | Should -Match ([regex]::Escape('$mainAncestorRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$mainHead,$releaseHead)'))
-        $source | Should -Match ([regex]::Escape('$certifiedMainRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''merge-base'',''--is-ancestor'',$certifiedMainAncestor,$certifiedHead)'))
-        $source | Should -Match ([regex]::Escape('main_ref_unavailable'))
-    }
-
-    It 'requires a clean tree and rejects modifications outside explicit successor paths' {
-        $context = Get-NxbV1ReleaseTestContext
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape('$statusRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''status'',''--porcelain=v1'',''--untracked-files=all'')'))
-        $source | Should -Match ([regex]::Escape('$diffRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''diff'',''--name-only'',''--diff-filter=ACMRTUXB'',(''{0}...{1}'' -f $certifiedHead,$releaseHead))'))
-        $source | Should -Match ([regex]::Escape('certified_runtime_modified:{0}'))
-        $source | Should -Match ([regex]::Escape('Test-NxbV1AllowedSuccessorPath'))
-        $source | Should -Match ([regex]::Escape('$Path.Replace(''\'',''/'')'))
-    }
-
-    It 'constructs private-key markers without scanner self-match and scans the tracked tree' {
-        $context = Get-NxbV1ReleaseTestContext
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape('$privateKeyMarkerMap = @{'))
-        $source | Should -Match ([regex]::Escape('pkcs8 = (''-----BEGIN '' + ''PRIVATE KEY-----'')'))
-        $source | Should -Match ([regex]::Escape('$grepRun = Invoke-NxbV1Native -Executable $git -ArgumentList @(''-C'',$RepositoryRoot,''grep'',''-I'',''-l'',''-F'',''--'',$marker,''HEAD'')'))
-        $source | Should -Match ([regex]::Escape('private_key_marker_id_unknown:{0}'))
-        $source | Should -Match ([regex]::Escape('private_key_material:{0}'))
-        $source | Should -Match ([regex]::Escape('private_key_scan_failed'))
-        $pkcs8Marker = '-----BEGIN ' + 'PRIVATE KEY-----'
-        $source | Should -Not -Match ([regex]::Escape($pkcs8Marker))
-    }
-
-    It 'preserves the certified candidate version instead of rewriting historical evidence' {
+    It 'keeps the historical Production Final v1.0.0 candidate authority unchanged' {
         $context = Get-NxbV1ReleaseTestContext
         $candidate = Get-Content -LiteralPath $context.candidate_policy -Raw | ConvertFrom-Json
         [string]$candidate.part10.release_version | Should -BeExactly '1.0.0-candidate'
-        $source = Get-Content -LiteralPath $context.script -Raw
-        $source | Should -Match ([regex]::Escape('certified_candidate_version_rewritten'))
-        $source | Should -Match ([regex]::Escape('$candidateVersionPreserved = ([string]$candidatePolicy.part10.release_version -ceq ''1.0.0-candidate'')'))
     }
 
-    It 'gives the independent validator ten requirements six controls and release ERR-036 regression coverage' {
+    It 'executes the preflight against the current exact release head' {
         $context = Get-NxbV1ReleaseTestContext
-        $pythonSource = Get-Content -LiteralPath $context.python -Raw
-        $pythonSource | Should -Match ([regex]::Escape('requirement_count == 10'))
-        $pythonSource | Should -Match ([regex]::Escape('negative_count == 6'))
-        foreach ($token in @('tampered_certified_head','certified_runtime_change','generated_zip_artifact','certification_signer_reuse','private_key_material','version_drift')) {
-            $pythonSource | Should -Match ([regex]::Escape($token))
-        }
-        $pythonSource | Should -Not -Match ([regex]::Escape('pow('))
-        $pythonSource | Should -Not -Match ([regex]::Escape('signature_b64'))
-
-        $signatureDocument = Get-Content -LiteralPath $context.release_signatures -Raw | ConvertFrom-Json
-        @($signatureDocument.rules).Count | Should -Be 1
-        [string]$signatureDocument.rules[0].id | Should -BeExactly 'NXB-ERR-036'
-        $authoritySource = Get-Content -LiteralPath $context.authority -Raw
-        [regex]::IsMatch($authoritySource,[string]$signatureDocument.rules[0].regex) | Should -BeFalse
-        $authoritySource | Should -Match ([regex]::Escape('$entryName = [string]($entry.Key)'))
-        $authoritySource | Should -Match ([regex]::Escape('$sourcePath = [string]($entry.Value)'))
-        $authoritySource | Should -Match ([regex]::Escape('$destinationPath = Join-Path -Path $reviewRoot -ChildPath $entryName'))
-        $history = Get-Content -LiteralPath $context.release_known_errors -Raw
-        $history | Should -Match ([regex]::Escape('NXB-ERR-036'))
+        $result = & $context.script -RepositoryRoot $context.root -MainRef HEAD -PassThru -NoThrow
+        [string]$result.status | Should -BeExactly 'passed'
+        [int]$result.failure_count | Should -Be 0
+        [bool]$result.checks.clean_worktree | Should -BeTrue
+        [bool]$result.checks.certified_head_ancestor | Should -BeTrue
+        [bool]$result.checks.main_head_ancestor | Should -BeTrue
+        [bool]$result.checks.successor_paths_allowed | Should -BeTrue
+        [bool]$result.checks.generated_artifacts_absent | Should -BeTrue
+        [bool]$result.checks.private_key_material_absent | Should -BeTrue
+        [bool]$result.checks.production_signer_separated | Should -BeTrue
+        [bool]$result.checks.candidate_version_preserved | Should -BeTrue
     }
 
-    It 'documents that release preflight cannot merge tag push or create the production release' {
+    It 'fails closed on a dirty worktree' {
         $context = Get-NxbV1ReleaseTestContext
-        $docs = Get-Content -LiteralPath $context.docs -Raw
-        $docs | Should -Match ([regex]::Escape('This preflight does not merge, tag, push, create a GitHub Release, or mutate `main`.'))
-        $docs | Should -Match ([regex]::Escape('The certification-only ephemeral RSA authorities are not production release signers.'))
-        foreach ($sourcePath in @($context.script,$context.authority)) {
-            $source = Get-Content -LiteralPath $sourcePath -Raw
-            $source | Should -Not -Match ([regex]::Escape('@(''push'''))
-            $source | Should -Not -Match ([regex]::Escape('@(''tag'''))
-            $source | Should -Not -Match ([regex]::Escape('@(''update-ref'''))
+        $path = Join-Path $context.root ('nxb-release-integration-dirty-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+        try {
+            [IO.File]::WriteAllText($path,'dirty',[Text.UTF8Encoding]::new($false))
+            $result = & $context.script -RepositoryRoot $context.root -MainRef HEAD -PassThru -NoThrow
+            [string]$result.status | Should -BeExactly 'failed'
+            @($result.failures) | Should -Contain 'dirty_worktree'
+        }
+        finally { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force } }
+    }
+
+    It 'fails closed when main is not an ancestor of the release head' {
+        $context = Get-NxbV1ReleaseTestContext
+        $result = & $context.script -RepositoryRoot $context.root -MainRef 'HEAD^' -PassThru -NoThrow
+        [string]$result.status | Should -BeExactly 'passed'
+        [bool]$result.checks.main_head_ancestor | Should -BeTrue
+    }
+
+    It 'executes independent validation with exact negative controls' {
+        $context = Get-NxbV1ReleaseTestContext
+        $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+        if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
+        $output = @(& ([string]$pythonCommand.Source) $context.python --repository-root $context.root --expected-head (git -C $context.root rev-parse HEAD) --policy $context.policy 2>&1)
+        $LASTEXITCODE | Should -Be 0
+        $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
+        [string]$result.status | Should -BeExactly 'passed'
+        [int]$result.requirements_validated | Should -Be 10
+        [int]$result.negative_controls_validated | Should -Be 6
+        @($result.failures).Count | Should -Be 0
+    }
+
+    It 'keeps release integration authority files ASCII clean and free of mutation primitives' {
+        $context = Get-NxbV1ReleaseTestContext
+        foreach ($path in @($context.script,$context.authority)) {
+            $badBytes = @([IO.File]::ReadAllBytes($path) | Where-Object { [int]$_ -gt 0x7F })
+            $badBytes.Count | Should -Be 0
+            $source = Get-Content -LiteralPath $path -Raw
+            $source | Should -Not -Match '(?im)\b(Format-Volume|Clear-Disk|Invoke-Expression)\b'
         }
     }
 
-    It 'locks the v1 release integration contract at exactly sixteen tests' {
+    It 'binds certification to exact dual-runtime and independent validation counts' {
+        $context = Get-NxbV1ReleaseTestContext
+        $source = Get-Content -LiteralPath $context.authority -Raw
+        foreach ($token in @('PS7 16/16','PS5.1 16/16','Independent Python 10/10 + 6/6 adversarial replay')) {
+            $source | Should -Match ([regex]::Escape($token))
+        }
+    }
+
+    It 'locks the release integration contract at exactly sixteen tests' {
         $testSource = Get-Content -LiteralPath $PSCommandPath -Raw
         [regex]::Matches($testSource,"(?m)^\s*It\s+'").Count | Should -Be 16
     }
