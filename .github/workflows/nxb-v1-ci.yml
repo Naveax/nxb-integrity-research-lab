@@ -167,7 +167,7 @@ jobs:
           $result = & ./scripts/Invoke-NxbV1CiNativeValidation.ps1 -ExpectedHead $env:NXB_EXPECTED_SHA -OutputDirectory $output -RepetitionCount 1 -WarmupCount 0 -PassThru
           if ([string]$result.status -cne 'passed') { throw 'Native WPT authority did not return PASS.' }
           if ([string]$result.head_sha -cne $env:NXB_EXPECTED_SHA) { throw 'Native WPT authority exact-head result drift.' }
-          if ([int]$result.review_entries -ne 7) { throw 'Native WPT authority review cardinality drift.' }
+          if ([int]$result.review_entries -ne 8) { throw 'Native WPT authority review cardinality drift.' }
           if ([bool]$result.production_release_updated) { throw 'Native WPT authority crossed the production release boundary.' }
 
       - name: Upload native validation evidence
