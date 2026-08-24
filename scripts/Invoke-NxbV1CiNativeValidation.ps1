@@ -99,11 +99,18 @@ function Write-NxbCiNativeReviewZip {
         )
         try {
             foreach ($entryName in @($Entries.Keys | Sort-Object)) {
+                $entryNameText = [string]$entryName
+                if ([string]::IsNullOrWhiteSpace($entryNameText) -or
+                    [IO.Path]::IsPathRooted($entryNameText) -or
+                    $entryNameText -match '[\\/]' -or
+                    $entryNameText -in @('.','..')) {
+                    throw ('Native review entry name is not a safe flat path: {0}' -f $entryNameText)
+                }
                 $sourcePath = [string]$Entries[$entryName]
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                     throw ('Native review source missing: {0}' -f $sourcePath)
                 }
-                $entry = $archive.CreateEntry([string]$entryName,[IO.Compression.CompressionLevel]::Optimal)
+                $entry = $archive.CreateEntry($entryNameText,[IO.Compression.CompressionLevel]::Optimal)
                 $entryStream = $entry.Open()
                 try {
                     $sourceStream = [IO.File]::Open(
@@ -259,6 +266,31 @@ try {
         if (-not (Test-Path -LiteralPath $requiredEvidence -PathType Leaf)) { throw ('Required native CI evidence missing: {0}' -f $requiredEvidence) }
     }
 
+    $postRunHead = (@(& $gitPath -C $repositoryRoot rev-parse HEAD 2>&1) -join [Environment]::NewLine).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $postRunHead -cne $expected) {
+        throw ('Native post-run exact-head mismatch: expected={0} actual={1}' -f $expected,$postRunHead)
+    }
+    $postRunDirty = @(& $gitPath -C $repositoryRoot status --porcelain=v1 --untracked-files=all 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw 'Native post-run git status failed.' }
+    if ($postRunDirty.Count -gt 0) {
+        throw ('Native post-run worktree is dirty: {0}' -f ($postRunDirty -join '; '))
+    }
+    $postRunRepositoryIntegrityValid = $true
+
+    $reviewEntries = [ordered]@{
+        'bounded-trigger-native-smoke.json' = $boundedSmokePath
+        'hosted-ci-receipt.json' = $hostedReceiptPath
+        'native-calibration.json' = $nativeCalibrationPath
+        'native-ci-receipt.json' = $receiptPath
+        'native-profile-parser.txt' = $profileLogPath
+        'pester-ps51.xml' = $ps51XmlPath
+        'pester-ps7.xml' = $ps7XmlPath
+        'ps51-summary.json' = $ps51SummaryPath
+    }
+    if ($reviewEntries.Count -ne 8) {
+        throw ('Native review cardinality drift before receipt publication: expected=8 actual={0}' -f $reviewEntries.Count)
+    }
+
     $receipt = [pscustomobject][ordered]@{
         schema_version = 1
         status = 'passed'
@@ -278,13 +310,14 @@ try {
         bounded_trigger_smoke_valid = $true
         bounded_trigger_smoke_authority = 'nxb-bounded-trigger-native-smoke-v1'
         bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
+        post_run_repository_integrity_valid = $postRunRepositoryIntegrityValid
         repetition_count = $RepetitionCount
         warmup_count = $WarmupCount
         pester_version = '5.7.1'
         psscriptanalyzer_version = '1.25.0'
         pyyaml_version = '6.0.3'
         jsonschema_version = '4.26.0'
-        review_entries = 8
+        review_entries = [int]$reviewEntries.Count
         production_private_key_used = $false
         production_release_updated = $false
         production_tag_created = $false
@@ -294,16 +327,6 @@ try {
     }
     Write-NxbCiNativeJsonNew -Path $receiptPath -Value $receipt
 
-    $reviewEntries = [ordered]@{
-        'bounded-trigger-native-smoke.json' = $boundedSmokePath
-        'hosted-ci-receipt.json' = $hostedReceiptPath
-        'native-calibration.json' = $nativeCalibrationPath
-        'native-ci-receipt.json' = $receiptPath
-        'native-profile-parser.txt' = $profileLogPath
-        'pester-ps51.xml' = $ps51XmlPath
-        'pester-ps7.xml' = $ps7XmlPath
-        'ps51-summary.json' = $ps51SummaryPath
-    }
     Write-NxbCiNativeReviewZip -Path $reviewZipPath -Entries $reviewEntries
     $completed = $true
 
@@ -318,11 +341,12 @@ try {
             native_calibration_valid = $true
             bounded_trigger_smoke_valid = $true
             bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
+            post_run_repository_integrity_valid = $postRunRepositoryIntegrityValid
             receipt_path = $receiptPath
             receipt_sha256 = Get-NxbCiNativeSha256 -Path $receiptPath
             review_zip = $reviewZipPath
             review_zip_sha256 = Get-NxbCiNativeSha256 -Path $reviewZipPath
-            review_entries = 8
+            review_entries = [int]$reviewEntries.Count
             production_release_updated = $false
         }
     }
