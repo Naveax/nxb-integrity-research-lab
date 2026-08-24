@@ -143,6 +143,10 @@ Describe 'NXB v1.0.1 successor version transition' {
     }
 
     It 'passes the frozen-release successor validator with post-release safety and eight negative controls' {
+        $validatorSource = Get-Content -LiteralPath $script:ValidatorPath -Raw
+        $validatorSource | Should -Match ([regex]::Escape('def read_git_text(root, ref, relative):'))
+        $validatorSource | Should -Match ([regex]::Escape('transition_private_hits = private_key_hits(root, transition_changed, ref=RELEASE_HEAD)'))
+
         $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
         if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
         $python = [string]$pythonCommand.Source
@@ -155,6 +159,8 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$result.release_tag | Should -BeExactly 'v1.0.1'
         [string]$result.release_head | Should -BeExactly $script:ReleaseHead
         [string]$result.validation_model | Should -BeExactly 'frozen-release-transition-plus-post-release-safety'
+        [string]$result.release_private_key_scan_ref | Should -BeExactly $script:ReleaseHead
+        [string]$result.post_release_private_key_scan_ref | Should -BeExactly 'worktree'
         [bool]$result.checks.release_tag_head_exact | Should -BeTrue
         [bool]$result.checks.predecessor_is_release_ancestor | Should -BeTrue
         [bool]$result.checks.release_head_is_current_ancestor | Should -BeTrue

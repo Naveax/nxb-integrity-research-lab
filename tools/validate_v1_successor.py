@@ -137,6 +137,25 @@ def run_git(root, *args, check=True):
     return p
 
 
+def read_git_text(root, ref, relative):
+    p = subprocess.run(
+        ["git", "show", "{}:{}".format(ref, relative)],
+        cwd=str(root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if p.returncode != 0:
+        raise RuntimeError(
+            "git show {}:{} failed ({}): {}".format(
+                ref,
+                relative,
+                p.returncode,
+                p.stderr.decode("utf-8", errors="replace").strip(),
+            )
+        )
+    return p.stdout.decode("utf-8-sig", errors="replace")
+
+
 def lower_hex(value, length):
     return isinstance(value, str) and len(value) == length and re.fullmatch(r"[0-9a-f]+", value) is not None
 
@@ -146,16 +165,19 @@ def changed_paths(root, base, head):
     return sorted({line.strip().replace("\\", "/") for line in diff.stdout.splitlines() if line.strip()})
 
 
-def private_key_hits(root, paths):
+def private_key_hits(root, paths, ref=None):
     hits = []
     for relative in paths:
-        path = root / relative
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8-sig")
-        except (UnicodeDecodeError, OSError):
-            continue
+        if ref is not None:
+            text = read_git_text(root, ref, relative)
+        else:
+            path = root / relative
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8-sig")
+            except (UnicodeDecodeError, OSError):
+                continue
         if any(marker in text for marker in PRIVATE_MARKERS):
             hits.append(relative)
     return hits
@@ -386,7 +408,7 @@ def main():
     checks["release_generated_artifacts_absent"] = not transition_forbidden
     if transition_forbidden:
         failures.append("release_generated_artifacts_absent")
-    transition_private_hits = private_key_hits(root, transition_changed)
+    transition_private_hits = private_key_hits(root, transition_changed, ref=RELEASE_HEAD)
     checks["release_private_key_material_absent"] = not transition_private_hits
     if transition_private_hits:
         failures.append("release_private_key_material_absent")
@@ -438,6 +460,8 @@ def main():
         "target_version": TARGET_VERSION,
         "candidate_version": CANDIDATE_VERSION,
         "validation_model": "frozen-release-transition-plus-post-release-safety",
+        "release_private_key_scan_ref": RELEASE_HEAD,
+        "post_release_private_key_scan_ref": "worktree",
         "components": {
             name: {
                 "policy_path": COMPONENTS[name][0],
