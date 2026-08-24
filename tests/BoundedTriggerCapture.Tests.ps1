@@ -83,6 +83,20 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $startSource | Should -Match ([regex]::Escape('if ($memoryBudgetMiB -ne 64)'))
         $startSource | Should -Match ([regex]::Escape("overwrite_model          = 'bounded-memory-buffer-reuse'"))
         $startSource | Should -Not -Match '(?m)^\s*\$startOutput\s*=.*-filemode'
+
+        $stateSource = Get-Content -LiteralPath $script:StateScript -Raw
+        $stateSource | Should -Match ([regex]::Escape('hard_deadline_monotonic_ticks'))
+        $stateSource | Should -Match ([regex]::Escape('post_deadline_monotonic_ticks'))
+        $stateSource | Should -Match ([regex]::Escape('$MonotonicTicks -ge $hardDeadlineMonotonicTicks'))
+        $stateSource | Should -Match ([regex]::Escape('$MonotonicTicks -ge $postDeadlineMonotonicTicks'))
+
+        $nativeSource = Get-Content -LiteralPath $script:NativeSmokeScript -Raw
+        $nativeSource | Should -Match "termination_reason.*post_window_complete"
+        $nativeSource | Should -Match "normal_window_termination"
+        $nativeSource | Should -Match "state_budget.*normal"
+        $nativeSource | Should -Match "disk_state.*within_budget"
+        $nativeSource | Should -Match "requested_pretrigger_seconds.*3"
+        $nativeSource | Should -Match "requested_posttrigger_seconds.*1"
     }
 
     It 'clamps oversized requested windows to policy maxima' {
@@ -138,6 +152,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         @($state.active_domains) | Should -Contain 'kernel'
         @($state.active_domains) | Should -Contain 'security'
         [DateTime]::Parse([string]$state.post_deadline_utc).ToUniversalTime() | Should -Be $script:T0.AddSeconds(14)
+        [long]$state.post_deadline_monotonic_ticks | Should -Be 15000
     }
 
     It 'bounds a trigger storm with coalescing and explicit rejection accounting' {
@@ -164,6 +179,20 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
                 -MonotonicTicks 2999 `
                 -MonotonicFrequency $script:Frequency
         } | Should -Throw '*monotonic timestamp ordering violation*'
+
+        $rewoundWallClockState = & $script:StateScript `
+            -PolicyPath $c.PolicyPath `
+            -StatePath $c.Path `
+            -ExpectedHead $script:ExpectedHead `
+            -SessionId $c.SessionId `
+            -Action Tick `
+            -NowUtc $script:T0.AddHours(-4) `
+            -MonotonicTicks 63000 `
+            -MonotonicFrequency $script:Frequency `
+            -PassThru
+        [string]$rewoundWallClockState.state | Should -BeExactly 'finalizing'
+        [string]$rewoundWallClockState.termination_reason | Should -BeExactly 'post_window_complete'
+        [double]$rewoundWallClockState.observed_posttrigger_seconds | Should -Be 60
     }
 
     It 'rejects stale exact-head and session bindings' {
@@ -214,13 +243,14 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
 
     It 'terminates an untriggered session at the hard session deadline' {
         $c = Invoke-NxbBoundedTestStateSetup -Name 'timeout'
+        [long]$c.State.hard_deadline_monotonic_ticks | Should -Be 1801000
         $state = & $script:StateScript `
             -PolicyPath $c.PolicyPath `
             -StatePath $c.Path `
             -ExpectedHead $script:ExpectedHead `
             -SessionId $c.SessionId `
             -Action Tick `
-            -NowUtc $script:T0.AddSeconds(1800) `
+            -NowUtc $script:T0.AddHours(-4) `
             -MonotonicTicks 1801000 `
             -MonotonicFrequency $script:Frequency `
             -PassThru

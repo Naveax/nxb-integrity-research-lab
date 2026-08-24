@@ -151,6 +151,12 @@ try {
     }
 
     while ([string]$finalState.state -notin @('finalizing','completed','failed')) {
+        # Enforce hard/post capture deadlines before processing newly observed signals.
+        # This prevents a trigger that arrives after the monotonic deadline from being
+        # admitted as a zero-post-window success merely because Tick had not run yet.
+        $finalState = Invoke-NxbBoundedState -ActionName Tick
+        if ([string]$finalState.state -ceq 'finalizing') { break }
+
         if (-not [string]::IsNullOrWhiteSpace($EmergencyStopPath) -and (Test-Path -LiteralPath $EmergencyStopPath -PathType Leaf)) {
             $finalState = Invoke-NxbBoundedState -ActionName EmergencyStop
             break

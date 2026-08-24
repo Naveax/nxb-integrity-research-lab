@@ -137,11 +137,20 @@ try {
     if ([string]$capture.status -cne 'passed' -or [string]$receipt.status -cne 'passed') { throw 'Bounded native smoke capture did not return PASS.' }
     if ([string]$receipt.head_sha -cne $expected) { throw 'Bounded native smoke receipt exact-head mismatch.' }
     if (-not [bool]$receipt.session_binding_valid) { throw 'Bounded native smoke session binding is invalid.' }
+    if ([int]$receipt.requested_pretrigger_seconds -ne 3 -or [int]$receipt.requested_posttrigger_seconds -ne 1) { throw 'Bounded native smoke requested-window contract drift.' }
+    if ([bool]$receipt.window_clamped) { throw 'Bounded native smoke unexpectedly clamped the positive-control windows.' }
     if ([int]$receipt.budgets.memory_buffer_budget_mib -ne 64) { throw 'Bounded native smoke memory budget drift.' }
     if ([double]$receipt.observed_pretrigger_seconds -le 0) { throw 'Bounded native smoke did not observe a real pre-trigger window.' }
     if ([double]$receipt.observed_posttrigger_seconds -le 0) { throw 'Bounded native smoke did not observe a real post-trigger window.' }
     if ([uint64]$receipt.sample_accounting.observed_buffers_written -lt 1) { throw 'Bounded native smoke observed no ETW buffers.' }
     if ([string]$state.state -cne 'completed') { throw 'Bounded native smoke state did not complete.' }
+    if ([string]$receipt.termination_reason -cne 'post_window_complete' -or -not [bool]$receipt.normal_window_termination) {
+        throw 'Bounded native smoke positive control did not terminate through the normal post window.'
+    }
+    if ([string]$state.termination_reason -cne [string]$receipt.termination_reason) { throw 'Bounded native smoke state/receipt termination reason drift.' }
+    if ([bool]$receipt.truncation) { throw 'Bounded native smoke positive control was truncated.' }
+    if ([string]$receipt.budgets.state_budget -cne 'normal') { throw 'Bounded native smoke positive control exhausted a state budget.' }
+    if ([string]$receipt.budgets.disk_state -cne 'within_budget') { throw 'Bounded native smoke positive control did not remain within disk budget.' }
     if ([string]$receipt.capture_mode_before_trigger -cne 'Memory' -or [string]$receipt.capture_mode_after_trigger -cne 'Memory') {
         throw 'Bounded native smoke capture mode drifted.'
     }
@@ -161,6 +170,9 @@ try {
         requested_posttrigger_seconds = [int]$receipt.requested_posttrigger_seconds
         observed_pretrigger_seconds = [double]$receipt.observed_pretrigger_seconds
         observed_posttrigger_seconds = [double]$receipt.observed_posttrigger_seconds
+        window_clamped = [bool]$receipt.window_clamped
+        termination_reason = [string]$receipt.termination_reason
+        normal_window_termination = [bool]$receipt.normal_window_termination
         memory_buffer_budget_mib = [int]$receipt.budgets.memory_buffer_budget_mib
         configured_buffer_capacity = [int]$receipt.sample_accounting.configured_buffer_capacity
         observed_buffers_written = [uint64]$receipt.sample_accounting.observed_buffers_written

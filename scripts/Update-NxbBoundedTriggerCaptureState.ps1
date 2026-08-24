@@ -52,6 +52,33 @@ function Resolve-NxbBoundedSessionId {
     return $parsed.ToString('D')
 }
 
+function ConvertTo-NxbBoundedDurationTicks {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][double]$Seconds,
+        [Parameter(Mandatory)][long]$Frequency
+    )
+    if ($Seconds -lt 0 -or $Frequency -le 0) { throw 'Bounded monotonic duration metadata is invalid.' }
+    $ticksDouble = [Math]::Ceiling($Seconds * [double]$Frequency)
+    if ([double]::IsNaN($ticksDouble) -or [double]::IsInfinity($ticksDouble) -or $ticksDouble -gt [double][long]::MaxValue) {
+        throw 'Bounded monotonic duration exceeds Int64 capacity.'
+    }
+    return [long]$ticksDouble
+}
+
+function Add-NxbBoundedDeadlineTicks {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][long]$BaseTicks,
+        [Parameter(Mandatory)][long]$DurationTicks,
+        [Parameter()][long]$HardLimitTicks = [long]::MaxValue
+    )
+    if ($BaseTicks -lt 0 -or $DurationTicks -lt 0 -or $HardLimitTicks -lt 0) { throw 'Bounded monotonic deadline metadata is invalid.' }
+    $candidate = if ($BaseTicks -gt ([long]::MaxValue - $DurationTicks)) { [long]::MaxValue } else { [long]($BaseTicks + $DurationTicks) }
+    if ($candidate -gt $HardLimitTicks) { return $HardLimitTicks }
+    return $candidate
+}
+
 function Set-NxbBoundedProperty {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
@@ -134,6 +161,8 @@ if ($Action -ceq 'Arm') {
     $effectivePre = [Math]::Min($requestedPre,$policyPre)
     $effectivePost = [Math]::Min($requestedPost,$policyPost)
     $windowClamped = ($effectivePre -ne $requestedPre -or $effectivePost -ne $requestedPost)
+    $hardDurationTicks = ConvertTo-NxbBoundedDurationTicks -Seconds ([double]$policySession) -Frequency $MonotonicFrequency
+    $hardDeadlineMonotonicTicks = Add-NxbBoundedDeadlineTicks -BaseTicks $MonotonicTicks -DurationTicks $hardDurationTicks
 
     $state = [pscustomobject][ordered]@{
         schema_version = 1
@@ -154,11 +183,13 @@ if ($Action -ceq 'Arm') {
         monotonic_frequency = $MonotonicFrequency
         last_monotonic_ticks = $MonotonicTicks
         hard_deadline_utc = $now.AddSeconds($policySession).ToString('o')
+        hard_deadline_monotonic_ticks = $hardDeadlineMonotonicTicks
         trigger_utc = $null
         trigger_monotonic_ticks = $null
         observed_pretrigger_seconds = 0.0
         observed_posttrigger_seconds = 0.0
         post_deadline_utc = $null
+        post_deadline_monotonic_ticks = $null
         primary_trigger = $null
         selected_trigger = $null
         primary_plan_fingerprint_sha256 = $null
@@ -198,10 +229,11 @@ if (-not [string]::IsNullOrWhiteSpace($SessionId)) {
     if ([string]$state.session_id -cne $resolvedExpectedSessionId) { throw 'Bounded capture session binding is stale.' }
 }
 if ([long]$state.monotonic_frequency -ne $MonotonicFrequency) { throw 'Bounded capture monotonic clock frequency drifted.' }
+if ($null -eq $state.PSObject.Properties['hard_deadline_monotonic_ticks']) { throw 'Bounded capture monotonic hard deadline is missing.' }
+$hardDeadlineMonotonicTicks = [long]$state.hard_deadline_monotonic_ticks
+if ($hardDeadlineMonotonicTicks -lt [long]$state.armed_monotonic_ticks) { throw 'Bounded capture monotonic hard deadline is invalid.' }
 if ($MonotonicTicks -lt [long]$state.last_monotonic_ticks) { throw 'Bounded capture monotonic timestamp ordering violation.' }
 Set-NxbBoundedProperty -Object $state -Name 'last_monotonic_ticks' -Value $MonotonicTicks
-
-$hardDeadline = ConvertTo-NxbBoundedUtc -Value $state.hard_deadline_utc
 
 switch ($Action) {
     'Trigger' {
@@ -217,14 +249,19 @@ switch ($Action) {
             $elapsedPre = [double]($MonotonicTicks - $armedTicks) / [double]$MonotonicFrequency
             if ($elapsedPre -lt 0) { throw 'Observed pre-trigger duration cannot be negative.' }
             $observedPre = [Math]::Min([double]$state.effective_pretrigger_seconds,$elapsedPre)
-            $remainingSession = [Math]::Max(0.0,($hardDeadline - $now).TotalSeconds)
+            $remainingTicks = [long]($hardDeadlineMonotonicTicks - $MonotonicTicks)
+            if ($remainingTicks -lt 0) { $remainingTicks = 0 }
+            $remainingSession = [double]$remainingTicks / [double]$MonotonicFrequency
             $effectivePost = [Math]::Min([double]$state.effective_posttrigger_seconds,$remainingSession)
-            $postDeadline = $now.AddSeconds($effectivePost)
+            $postDurationTicks = ConvertTo-NxbBoundedDurationTicks -Seconds $effectivePost -Frequency $MonotonicFrequency
+            $postDeadlineMonotonicTicks = Add-NxbBoundedDeadlineTicks -BaseTicks $MonotonicTicks -DurationTicks $postDurationTicks -HardLimitTicks $hardDeadlineMonotonicTicks
+            $postDeadline = $now.AddSeconds([double]($postDeadlineMonotonicTicks - $MonotonicTicks) / [double]$MonotonicFrequency)
 
             Set-NxbBoundedProperty -Object $state -Name 'trigger_utc' -Value $now.ToString('o')
             Set-NxbBoundedProperty -Object $state -Name 'trigger_monotonic_ticks' -Value $MonotonicTicks
             Set-NxbBoundedProperty -Object $state -Name 'observed_pretrigger_seconds' -Value $observedPre
             Set-NxbBoundedProperty -Object $state -Name 'post_deadline_utc' -Value $postDeadline.ToString('o')
+            Set-NxbBoundedProperty -Object $state -Name 'post_deadline_monotonic_ticks' -Value $postDeadlineMonotonicTicks
             Set-NxbBoundedProperty -Object $state -Name 'primary_plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
             Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
             Add-NxbBoundedDomainSet -State $state -Values $domainValues
@@ -265,10 +302,15 @@ switch ($Action) {
                 $historyRecord.disposition = 'coalesced'
                 Set-NxbBoundedProperty -Object $state -Name 'plan_fingerprint_sha256' -Value $normalizedPlanFingerprint
                 Add-NxbBoundedDomainSet -State $state -Values $domainValues
-                $currentDeadline = ConvertTo-NxbBoundedUtc -Value $state.post_deadline_utc
-                $candidateDeadline = $now.AddSeconds([double]$state.effective_posttrigger_seconds)
-                if ($candidateDeadline -gt $hardDeadline) { $candidateDeadline = $hardDeadline }
-                if ($candidateDeadline -gt $currentDeadline) {
+                if ($null -eq $state.PSObject.Properties['post_deadline_monotonic_ticks'] -or $null -eq $state.post_deadline_monotonic_ticks) {
+                    throw 'Bounded capture monotonic post deadline is missing.'
+                }
+                $currentDeadlineMonotonicTicks = [long]$state.post_deadline_monotonic_ticks
+                $extensionDurationTicks = ConvertTo-NxbBoundedDurationTicks -Seconds ([double]$state.effective_posttrigger_seconds) -Frequency $MonotonicFrequency
+                $candidateDeadlineMonotonicTicks = Add-NxbBoundedDeadlineTicks -BaseTicks $MonotonicTicks -DurationTicks $extensionDurationTicks -HardLimitTicks $hardDeadlineMonotonicTicks
+                if ($candidateDeadlineMonotonicTicks -gt $currentDeadlineMonotonicTicks) {
+                    $candidateDeadline = $now.AddSeconds([double]($candidateDeadlineMonotonicTicks - $MonotonicTicks) / [double]$MonotonicFrequency)
+                    Set-NxbBoundedProperty -Object $state -Name 'post_deadline_monotonic_ticks' -Value $candidateDeadlineMonotonicTicks
                     Set-NxbBoundedProperty -Object $state -Name 'post_deadline_utc' -Value $candidateDeadline.ToString('o')
                 }
                 if ($TriggerPriority -gt [int]$state.selected_trigger.priority) {
@@ -287,23 +329,27 @@ switch ($Action) {
     }
 
     'Tick' {
-        if ([string]$state.state -ceq 'armed' -and $now -ge $hardDeadline) {
+        if ([string]$state.state -ceq 'armed' -and $MonotonicTicks -ge $hardDeadlineMonotonicTicks) {
             Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
             Set-NxbBoundedProperty -Object $state -Name 'truncation' -Value $true
             Set-NxbBoundedProperty -Object $state -Name 'budget_state' -Value 'session_budget_exhausted'
             Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'trigger_timeout'
         }
         elseif ([string]$state.state -ceq 'post_capture') {
+            if ($null -eq $state.PSObject.Properties['post_deadline_monotonic_ticks'] -or $null -eq $state.post_deadline_monotonic_ticks) {
+                throw 'Bounded capture monotonic post deadline is missing.'
+            }
             $triggerTicks = [long]$state.trigger_monotonic_ticks
+            $postDeadlineMonotonicTicks = [long]$state.post_deadline_monotonic_ticks
             $observedPost = [Math]::Max(0.0,[double]($MonotonicTicks - $triggerTicks) / [double]$MonotonicFrequency)
             Set-NxbBoundedProperty -Object $state -Name 'observed_posttrigger_seconds' -Value $observedPost
-            if ($now -ge $hardDeadline) {
+            if ($MonotonicTicks -ge $hardDeadlineMonotonicTicks) {
                 Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
                 Set-NxbBoundedProperty -Object $state -Name 'truncation' -Value $true
                 Set-NxbBoundedProperty -Object $state -Name 'budget_state' -Value 'session_budget_exhausted'
                 Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'session_budget_exhausted'
             }
-            elseif ($now -ge (ConvertTo-NxbBoundedUtc -Value $state.post_deadline_utc)) {
+            elseif ($MonotonicTicks -ge $postDeadlineMonotonicTicks) {
                 Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
                 Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'post_window_complete'
             }
