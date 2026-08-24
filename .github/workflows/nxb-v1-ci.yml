@@ -170,6 +170,21 @@ jobs:
           if ([int]$result.review_entries -ne 8) { throw 'Native WPT authority review cardinality drift.' }
           if ([bool]$result.production_release_updated) { throw 'Native WPT authority crossed the production release boundary.' }
 
+      - name: Reverify native exact head and clean worktree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualHead = (& git.exe rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($LASTEXITCODE -ne 0 -or $actualHead -cne $env:NXB_EXPECTED_SHA) {
+            throw ('Native post-run exact-head mismatch: expected=' + $env:NXB_EXPECTED_SHA + ' actual=' + $actualHead)
+          }
+          $dirty = @(& git.exe status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) { throw 'Native post-run git status failed.' }
+          if ($dirty.Count -ne 0) {
+            throw ('Native post-run worktree is dirty: ' + ($dirty -join '; '))
+          }
+          Write-Output 'Native post-run repository integrity PASS.'
+
       - name: Upload native validation evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
