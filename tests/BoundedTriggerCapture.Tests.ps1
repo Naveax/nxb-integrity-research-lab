@@ -153,6 +153,11 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         @($state.active_domains) | Should -Contain 'security'
         [DateTime]::Parse([string]$state.post_deadline_utc).ToUniversalTime() | Should -Be $script:T0.AddSeconds(14)
         [long]$state.post_deadline_monotonic_ticks | Should -Be 15000
+
+        $lateState = Invoke-NxbBoundedTestTrigger -Context $c -Id 'late' -Plan $script:PlanB -Now $script:T0.AddHours(-4) -Ticks 15000
+        [string]$lateState.state | Should -BeExactly 'finalizing'
+        [string]$lateState.termination_reason | Should -BeExactly 'post_window_complete'
+        [int]$lateState.coalesced_trigger_count | Should -Be 1
     }
 
     It 'bounds a trigger storm with coalescing and explicit rejection accounting' {
@@ -244,20 +249,12 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
     It 'terminates an untriggered session at the hard session deadline' {
         $c = Invoke-NxbBoundedTestStateSetup -Name 'timeout'
         [long]$c.State.hard_deadline_monotonic_ticks | Should -Be 1801000
-        $state = & $script:StateScript `
-            -PolicyPath $c.PolicyPath `
-            -StatePath $c.Path `
-            -ExpectedHead $script:ExpectedHead `
-            -SessionId $c.SessionId `
-            -Action Tick `
-            -NowUtc $script:T0.AddHours(-4) `
-            -MonotonicTicks 1801000 `
-            -MonotonicFrequency $script:Frequency `
-            -PassThru
+        $state = Invoke-NxbBoundedTestTrigger -Context $c -Now $script:T0.AddHours(-4) -Ticks 1801000
         [string]$state.state | Should -BeExactly 'finalizing'
         [bool]$state.truncation | Should -BeTrue
         [string]$state.budget_state | Should -BeExactly 'session_budget_exhausted'
         [string]$state.termination_reason | Should -BeExactly 'trigger_timeout'
+        $null -eq $state.primary_trigger | Should -BeTrue
     }
 
     It 'records emergency-stop termination during post-trigger capture' {

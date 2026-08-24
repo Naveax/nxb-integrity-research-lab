@@ -244,6 +244,36 @@ switch ($Action) {
         $domainValues = @($Domains | ForEach-Object { [string]$_ })
         if ($domainValues.Count -eq 0) { throw 'At least one trigger domain is required.' }
 
+        if ([string]$state.state -ceq 'armed' -and $MonotonicTicks -ge $hardDeadlineMonotonicTicks) {
+            Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
+            Set-NxbBoundedProperty -Object $state -Name 'truncation' -Value $true
+            Set-NxbBoundedProperty -Object $state -Name 'budget_state' -Value 'session_budget_exhausted'
+            Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'trigger_timeout'
+            break
+        }
+        if ([string]$state.state -ceq 'post_capture') {
+            if ($null -eq $state.PSObject.Properties['post_deadline_monotonic_ticks'] -or $null -eq $state.post_deadline_monotonic_ticks) {
+                throw 'Bounded capture monotonic post deadline is missing.'
+            }
+            $triggerTicksForDeadline = [long]$state.trigger_monotonic_ticks
+            $postDeadlineForTriggerTicks = [long]$state.post_deadline_monotonic_ticks
+            $observedPostAtTrigger = [Math]::Max(0.0,[double]($MonotonicTicks - $triggerTicksForDeadline) / [double]$MonotonicFrequency)
+            if ($MonotonicTicks -ge $hardDeadlineMonotonicTicks) {
+                Set-NxbBoundedProperty -Object $state -Name 'observed_posttrigger_seconds' -Value $observedPostAtTrigger
+                Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
+                Set-NxbBoundedProperty -Object $state -Name 'truncation' -Value $true
+                Set-NxbBoundedProperty -Object $state -Name 'budget_state' -Value 'session_budget_exhausted'
+                Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'session_budget_exhausted'
+                break
+            }
+            if ($MonotonicTicks -ge $postDeadlineForTriggerTicks) {
+                Set-NxbBoundedProperty -Object $state -Name 'observed_posttrigger_seconds' -Value $observedPostAtTrigger
+                Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'finalizing'
+                Set-NxbBoundedProperty -Object $state -Name 'termination_reason' -Value 'post_window_complete'
+                break
+            }
+        }
+
         if ([string]$state.state -ceq 'armed') {
             $armedTicks = [long]$state.armed_monotonic_ticks
             $elapsedPre = [double]($MonotonicTicks - $armedTicks) / [double]$MonotonicFrequency
