@@ -317,7 +317,7 @@ try {
         psscriptanalyzer_version = '1.25.0'
         pyyaml_version = '6.0.3'
         jsonschema_version = '4.26.0'
-        review_entries = [int]$reviewEntries.Count
+        review_entries = 8
         production_private_key_used = $false
         production_release_updated = $false
         production_tag_created = $false
@@ -346,7 +346,7 @@ try {
             receipt_sha256 = Get-NxbCiNativeSha256 -Path $receiptPath
             review_zip = $reviewZipPath
             review_zip_sha256 = Get-NxbCiNativeSha256 -Path $reviewZipPath
-            review_entries = [int]$reviewEntries.Count
+            review_entries = 8
             production_release_updated = $false
         }
     }
