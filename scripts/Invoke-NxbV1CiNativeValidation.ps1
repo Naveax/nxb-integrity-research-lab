@@ -40,9 +40,7 @@ function Write-NxbCiNativeTextNew {
             $writer.Dispose()
         }
     }
-    finally {
-        $stream.Dispose()
-    }
+    finally { $stream.Dispose() }
 }
 
 function Write-NxbCiNativeJsonNew {
@@ -62,9 +60,7 @@ function Test-NxbCiNativeAdministrator {
         $principal = [Security.Principal.WindowsPrincipal]::new($identity)
         return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
-    finally {
-        $identity.Dispose()
-    }
+    finally { $identity.Dispose() }
 }
 
 function Resolve-NxbCiNativeCommand {
@@ -168,6 +164,13 @@ $pesterModule = Get-Module -ListAvailable Pester | Where-Object Version -eq ([ve
 if ($null -eq $pesterModule) { throw 'NXB v1 CI native validation requires Pester 5.7.1.' }
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1
 if ($null -eq $analyzerModule) { throw 'NXB v1 CI native validation requires PSScriptAnalyzer 1.25.0.' }
+
+$pythonVersionProbe = @(& $pythonPath -c 'import sys; print(".".join(str(part) for part in sys.version_info[:3]), end="")' 2>&1)
+$pythonVersionExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+$pythonVersion = (@($pythonVersionProbe | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+if ($pythonVersionExit -ne 0 -or $pythonVersion -cne '3.12.10') {
+    throw ('NXB v1 CI native validation requires Python 3.12.10: exit={0} actual={1}' -f $pythonVersionExit,$pythonVersion)
+}
 
 $dependencyProbe = @(& $pythonPath -c 'import importlib.metadata as m; assert m.version("PyYAML") == "6.0.3"; assert m.version("jsonschema") == "4.26.0"; import yaml, jsonschema' 2>&1)
 if ($LASTEXITCODE -ne 0) { throw ('NXB v1 CI native Python dependency closure failed: {0}' -f ($dependencyProbe -join ' ')) }
@@ -315,6 +318,7 @@ try {
         warmup_count = $WarmupCount
         pester_version = '5.7.1'
         psscriptanalyzer_version = '1.25.0'
+        python_version = $pythonVersion
         pyyaml_version = '6.0.3'
         jsonschema_version = '4.26.0'
         review_entries = 8
@@ -338,6 +342,7 @@ try {
             ps7 = $ps7Summary
             ps51 = $ps51Summary
             ps51_not_run = $ps51NotRun
+            python_version = $pythonVersion
             native_calibration_valid = $true
             bounded_trigger_smoke_valid = $true
             bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
