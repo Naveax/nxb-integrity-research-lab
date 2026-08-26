@@ -179,6 +179,7 @@ try {
         dropped_event_count = $receipt.sample_accounting.dropped_event_count
         dropped_buffer_count = $receipt.sample_accounting.dropped_buffer_count
         estimated_overwritten_buffer_count = $receipt.sample_accounting.estimated_overwritten_buffer_count
+        domain_accounting = @($receipt.domain_accounting)
         domain_coverage = [string]$receipt.domain_coverage
         captured_domain_count = [int]$receipt.captured_domain_count
         uncaptured_domain_count = [int]$receipt.uncaptured_domain_count
