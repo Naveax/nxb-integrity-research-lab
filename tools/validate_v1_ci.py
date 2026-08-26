@@ -158,7 +158,10 @@ def main():
         and "bounded-trigger-native-smoke.json" in native_text
         and f"review_entries = {EXPECTED_NATIVE_REVIEW_ENTRIES}" in native_text
         and "review_entries = 7" not in native_text
+        and "$pythonVersion -cne '3.12.10'" in native_text
+        and "python_version = $pythonVersion" in native_text
         and BOUNDED_NATIVE_AUTHORITY in bounded_native_text
+        and "domain_accounting = @($receipt.domain_accounting)" in bounded_native_text
         and "etl_retained_in_review_artifact = $false" in bounded_native_text
         and "nxb-v1-ci-native-v1" in native_text
         and "ps51_expected_excluded" in native_text
