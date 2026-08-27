@@ -89,7 +89,7 @@ try {
                         }
                     }
                     catch {
-                        # State publication is atomic, but a transient read/open race is not authority.
+                        Write-Verbose ('Waiting for atomic bounded state publication: {0}' -f $_.Exception.Message)
                     }
                 }
                 Start-Sleep -Milliseconds 50
