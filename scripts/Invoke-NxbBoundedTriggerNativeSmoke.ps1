@@ -162,6 +162,10 @@ try {
     if (-not (Test-Path -LiteralPath $accountingPath -PathType Leaf)) { throw 'Bounded native smoke trace-loss accounting missing.' }
 
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $actualReceiptSha = (Get-FileHash -LiteralPath $capture.receipt_path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $stateEvidenceSha = [string]$state.evidence_sha256
+    if ($stateEvidenceSha -cnotmatch '^[0-9a-f]{64}$') { throw 'Bounded native smoke state evidence SHA-256 is malformed.' }
+    if ($stateEvidenceSha -cne $actualReceiptSha) { throw 'Bounded native smoke state/receipt evidence binding mismatch.' }
     if ([string]$capture.status -cne 'passed' -or [string]$receipt.status -cne 'passed') { throw 'Bounded native smoke capture did not return PASS.' }
     if ([string]$receipt.head_sha -cne $expected) { throw 'Bounded native smoke receipt exact-head mismatch.' }
     if (-not [bool]$receipt.session_binding_valid) { throw 'Bounded native smoke session binding is invalid.' }
@@ -218,7 +222,9 @@ try {
         truncation = [bool]$receipt.truncation
         budget_state = [string]$receipt.budgets.state_budget
         disk_state = [string]$receipt.budgets.disk_state
-        receipt_sha256 = (Get-FileHash -LiteralPath $capture.receipt_path -Algorithm SHA256).Hash.ToLowerInvariant()
+        receipt_sha256 = $actualReceiptSha
+        state_evidence_sha256 = $stateEvidenceSha
+        state_evidence_binding_valid = $true
         state_sha256 = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
         trace_loss_accounting_sha256 = (Get-FileHash -LiteralPath $accountingPath -Algorithm SHA256).Hash.ToLowerInvariant()
         etl_sha256 = [string]$receipt.evidence.etl_sha256

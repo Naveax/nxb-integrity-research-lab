@@ -236,6 +236,10 @@ def main():
         and "$seenActivation.Add($id)" not in bounded_coordinator_text
         and "[IO.File]::Move($tempPath,$using:signalsPath,$true)" in bounded_native_text
         and "-EmergencyStopPath $emergencyStopPath" in bounded_native_text
+        and "$stateEvidenceSha = [string]$state.evidence_sha256" in bounded_native_text
+        and "$stateEvidenceSha -cne $actualReceiptSha" in bounded_native_text
+        and "state_evidence_sha256 = $stateEvidenceSha" in bounded_native_text
+        and "state_evidence_binding_valid = $true" in bounded_native_text
         and "preserves activation instances and atomically publishes the native trigger signal" in bounded_activation_tests_text
         and "review_entries = 8" in tests_text
         and "Should -Not -Match ([regex]::Escape('review_entries = 7'))" in tests_text

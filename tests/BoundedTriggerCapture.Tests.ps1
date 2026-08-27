@@ -97,6 +97,10 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $nativeSource | Should -Match "disk_state.*within_budget"
         $nativeSource | Should -Match "requested_pretrigger_seconds.*3"
         $nativeSource | Should -Match "requested_posttrigger_seconds.*1"
+        $nativeSource | Should -Match ([regex]::Escape('$stateEvidenceSha = [string]$state.evidence_sha256'))
+        $nativeSource | Should -Match ([regex]::Escape('$stateEvidenceSha -cne $actualReceiptSha'))
+        $nativeSource | Should -Match ([regex]::Escape('state_evidence_sha256 = $stateEvidenceSha'))
+        $nativeSource | Should -Match ([regex]::Escape('state_evidence_binding_valid = $true'))
     }
 
     It 'clamps oversized requested windows to policy maxima' {
