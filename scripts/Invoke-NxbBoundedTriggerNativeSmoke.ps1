@@ -64,6 +64,9 @@ try {
 
     $signalsPath = Join-Path $workFull 'signals.json'
     $emergencyStopPath = Join-Path $workFull 'native-smoke-emergency.stop'
+    $armedStatePath = Join-Path ([string]$experiment) 'analysis\bounded-trigger-capture-state.json'
+    $armGateDelayMilliseconds = 1500
+    $armGateTimeoutSeconds = 60
     [IO.File]::WriteAllText(
         $signalsPath,
         ((@{ frame_time_ms = 10 } | ConvertTo-Json -Compress) + [Environment]::NewLine),
@@ -72,7 +75,32 @@ try {
 
     $signalJob = Start-Job -ScriptBlock {
         try {
-            Start-Sleep -Milliseconds 1500
+            $armGateDeadline = [DateTime]::UtcNow.AddSeconds($using:armGateTimeoutSeconds)
+            $armGateObserved = $false
+            while ([DateTime]::UtcNow -lt $armGateDeadline) {
+                if (Test-Path -LiteralPath $using:armedStatePath -PathType Leaf) {
+                    try {
+                        $armState = Get-Content -LiteralPath $using:armedStatePath -Raw | ConvertFrom-Json
+                        if ([string]$armState.state -ceq 'armed' -and
+                            [string]$armState.expected_head -ceq $using:expected -and
+                            -not [string]::IsNullOrWhiteSpace([string]$armState.session_id)) {
+                            $armGateObserved = $true
+                            break
+                        }
+                    }
+                    catch {
+                        # State publication is atomic, but a transient read/open race is not authority.
+                    }
+                }
+                Start-Sleep -Milliseconds 50
+            }
+            if (-not $armGateObserved) {
+                throw 'Timed out waiting for exact-head bounded capture state=armed before native signal publication.'
+            }
+
+            # Start the positive pre-trigger interval only after the real Memory WPR/state
+            # authority is armed. This prevents slow runner setup from consuming the delay.
+            Start-Sleep -Milliseconds $using:armGateDelayMilliseconds
             $tempPath = $using:signalsPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
             try {
                 [IO.File]::WriteAllText(
@@ -140,7 +168,7 @@ try {
     if ([int]$receipt.requested_pretrigger_seconds -ne 3 -or [int]$receipt.requested_posttrigger_seconds -ne 1) { throw 'Bounded native smoke requested-window contract drift.' }
     if ([bool]$receipt.window_clamped) { throw 'Bounded native smoke unexpectedly clamped the positive-control windows.' }
     if ([int]$receipt.budgets.memory_buffer_budget_mib -ne 64) { throw 'Bounded native smoke memory budget drift.' }
-    if ([double]$receipt.observed_pretrigger_seconds -le 0) { throw 'Bounded native smoke did not observe a real pre-trigger window.' }
+    if ([double]$receipt.observed_pretrigger_seconds -lt 1.0) { throw 'Bounded native smoke did not preserve the minimum armed pre-trigger interval.' }
     if ([double]$receipt.observed_posttrigger_seconds -le 0) { throw 'Bounded native smoke did not observe a real post-trigger window.' }
     if ([uint64]$receipt.sample_accounting.observed_buffers_written -lt 1) { throw 'Bounded native smoke observed no ETW buffers.' }
     if ([string]$state.state -cne 'completed') { throw 'Bounded native smoke state did not complete.' }
@@ -164,6 +192,10 @@ try {
         policy_fingerprint_sha256 = [string]$receipt.policy_fingerprint_sha256
         primary_plan_fingerprint_sha256 = [string]$receipt.primary_plan_fingerprint_sha256
         final_plan_fingerprint_sha256 = [string]$receipt.plan_fingerprint_sha256
+        arm_gate_observed = $true
+        arm_gate_state = 'armed'
+        arm_gate_delay_milliseconds = $armGateDelayMilliseconds
+        minimum_observed_pretrigger_seconds = 1.0
         capture_mode_before_trigger = [string]$receipt.capture_mode_before_trigger
         capture_mode_after_trigger = [string]$receipt.capture_mode_after_trigger
         requested_pretrigger_seconds = [int]$receipt.requested_pretrigger_seconds
