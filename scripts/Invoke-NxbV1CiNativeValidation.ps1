@@ -40,9 +40,7 @@ function Write-NxbCiNativeTextNew {
             $writer.Dispose()
         }
     }
-    finally {
-        $stream.Dispose()
-    }
+    finally { $stream.Dispose() }
 }
 
 function Write-NxbCiNativeJsonNew {
@@ -62,9 +60,7 @@ function Test-NxbCiNativeAdministrator {
         $principal = [Security.Principal.WindowsPrincipal]::new($identity)
         return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
-    finally {
-        $identity.Dispose()
-    }
+    finally { $identity.Dispose() }
 }
 
 function Resolve-NxbCiNativeCommand {
@@ -99,11 +95,18 @@ function Write-NxbCiNativeReviewZip {
         )
         try {
             foreach ($entryName in @($Entries.Keys | Sort-Object)) {
+                $entryNameText = [string]$entryName
+                if ([string]::IsNullOrWhiteSpace($entryNameText) -or
+                    [IO.Path]::IsPathRooted($entryNameText) -or
+                    $entryNameText -match '[\\/]' -or
+                    $entryNameText -in @('.','..')) {
+                    throw ('Native review entry name is not a safe flat path: {0}' -f $entryNameText)
+                }
                 $sourcePath = [string]$Entries[$entryName]
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                     throw ('Native review source missing: {0}' -f $sourcePath)
                 }
-                $entry = $archive.CreateEntry([string]$entryName,[IO.Compression.CompressionLevel]::Optimal)
+                $entry = $archive.CreateEntry($entryNameText,[IO.Compression.CompressionLevel]::Optimal)
                 $entryStream = $entry.Open()
                 try {
                     $sourceStream = [IO.File]::Open(
@@ -162,11 +165,19 @@ if ($null -eq $pesterModule) { throw 'NXB v1 CI native validation requires Peste
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq ([version]'1.25.0') | Select-Object -First 1
 if ($null -eq $analyzerModule) { throw 'NXB v1 CI native validation requires PSScriptAnalyzer 1.25.0.' }
 
+$pythonVersionProbe = @(& $pythonPath -c 'import sys; print(".".join(str(part) for part in sys.version_info[:3]), end="")' 2>&1)
+$pythonVersionExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+$pythonVersion = (@($pythonVersionProbe | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+if ($pythonVersionExit -ne 0 -or $pythonVersion -cne '3.12.10') {
+    throw ('NXB v1 CI native validation requires Python 3.12.10: exit={0} actual={1}' -f $pythonVersionExit,$pythonVersion)
+}
+
 $dependencyProbe = @(& $pythonPath -c 'import importlib.metadata as m; assert m.version("PyYAML") == "6.0.3"; assert m.version("jsonschema") == "4.26.0"; import yaml, jsonschema' 2>&1)
 if ($LASTEXITCODE -ne 0) { throw ('NXB v1 CI native Python dependency closure failed: {0}' -f ($dependencyProbe -join ' ')) }
 
 $profileLogPath = Join-Path $outputFull 'native-profile-parser.txt'
 $nativeCalibrationPath = Join-Path $outputFull 'native-calibration.json'
+$boundedSmokePath = Join-Path $outputFull 'bounded-trigger-native-smoke.json'
 $receiptPath = Join-Path $outputFull 'native-ci-receipt.json'
 $reviewZipPath = Join-Path $outputFull 'native-ci-review.zip'
 $hostedRoot = Join-Path $outputFull 'hosted'
@@ -217,6 +228,17 @@ try {
     if ($profileExit -ne 0 -or $profileText -notmatch 'NxbMinimalCpuScheduler') { throw 'Native WPR profile parser failed or did not expose NxbMinimalCpuScheduler.' }
     Write-NxbCiNativeTextNew -Path $profileLogPath -Text ($profileText + [Environment]::NewLine)
 
+    $boundedSmoke = & (Join-Path $PSScriptRoot 'Invoke-NxbBoundedTriggerNativeSmoke.ps1') `
+        -ExpectedHead $expected `
+        -WorkRoot (Join-Path $workRoot 'bounded-trigger-smoke') `
+        -OutputPath $boundedSmokePath `
+        -WprExecutablePath $wprPath `
+        -XperfExecutablePath $xperfPath `
+        -PassThru
+    if ([string]$boundedSmoke.status -cne 'passed' -or [string]$boundedSmoke.head_sha -cne $expected) {
+        throw 'Real bounded trigger native smoke did not return exact-head PASS.'
+    }
+
     $labRoot = Join-Path $workRoot 'native-calibration-lab'
     & (Join-Path $PSScriptRoot 'Initialize-Lab.ps1') -Root $labRoot -Role Target | Out-Null
     $parent = & (Join-Path $PSScriptRoot 'New-Experiment.ps1') `
@@ -243,8 +265,33 @@ try {
     $ps7XmlPath = Join-Path $hostedRoot 'pester-ps7.xml'
     $ps51XmlPath = Join-Path $hostedRoot 'pester-ps51.xml'
     $ps51SummaryPath = Join-Path $hostedRoot 'ps51-summary.json'
-    foreach ($requiredEvidence in @($hostedReceiptPath,$ps7XmlPath,$ps51XmlPath,$ps51SummaryPath,$nativeCalibrationPath,$profileLogPath)) {
+    foreach ($requiredEvidence in @($hostedReceiptPath,$ps7XmlPath,$ps51XmlPath,$ps51SummaryPath,$nativeCalibrationPath,$profileLogPath,$boundedSmokePath)) {
         if (-not (Test-Path -LiteralPath $requiredEvidence -PathType Leaf)) { throw ('Required native CI evidence missing: {0}' -f $requiredEvidence) }
+    }
+
+    $postRunHead = (@(& $gitPath -C $repositoryRoot rev-parse HEAD 2>&1) -join [Environment]::NewLine).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $postRunHead -cne $expected) {
+        throw ('Native post-run exact-head mismatch: expected={0} actual={1}' -f $expected,$postRunHead)
+    }
+    $postRunDirty = @(& $gitPath -C $repositoryRoot status --porcelain=v1 --untracked-files=all 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw 'Native post-run git status failed.' }
+    if ($postRunDirty.Count -gt 0) {
+        throw ('Native post-run worktree is dirty: {0}' -f ($postRunDirty -join '; '))
+    }
+    $postRunRepositoryIntegrityValid = $true
+
+    $reviewEntries = [ordered]@{
+        'bounded-trigger-native-smoke.json' = $boundedSmokePath
+        'hosted-ci-receipt.json' = $hostedReceiptPath
+        'native-calibration.json' = $nativeCalibrationPath
+        'native-ci-receipt.json' = $receiptPath
+        'native-profile-parser.txt' = $profileLogPath
+        'pester-ps51.xml' = $ps51XmlPath
+        'pester-ps7.xml' = $ps7XmlPath
+        'ps51-summary.json' = $ps51SummaryPath
+    }
+    if ($reviewEntries.Count -ne 8) {
+        throw ('Native review cardinality drift before receipt publication: expected=8 actual={0}' -f $reviewEntries.Count)
     }
 
     $receipt = [pscustomobject][ordered]@{
@@ -263,13 +310,18 @@ try {
         native_profile_parser = $true
         native_calibration_valid = $true
         native_calibration_sha256 = Get-NxbCiNativeSha256 -Path $nativeCalibrationPath
+        bounded_trigger_smoke_valid = $true
+        bounded_trigger_smoke_authority = 'nxb-bounded-trigger-native-smoke-v1'
+        bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
+        post_run_repository_integrity_valid = $postRunRepositoryIntegrityValid
         repetition_count = $RepetitionCount
         warmup_count = $WarmupCount
         pester_version = '5.7.1'
         psscriptanalyzer_version = '1.25.0'
+        python_version = $pythonVersion
         pyyaml_version = '6.0.3'
         jsonschema_version = '4.26.0'
-        review_entries = 7
+        review_entries = 8
         production_private_key_used = $false
         production_release_updated = $false
         production_tag_created = $false
@@ -279,15 +331,6 @@ try {
     }
     Write-NxbCiNativeJsonNew -Path $receiptPath -Value $receipt
 
-    $reviewEntries = [ordered]@{
-        'hosted-ci-receipt.json' = $hostedReceiptPath
-        'native-calibration.json' = $nativeCalibrationPath
-        'native-ci-receipt.json' = $receiptPath
-        'native-profile-parser.txt' = $profileLogPath
-        'pester-ps51.xml' = $ps51XmlPath
-        'pester-ps7.xml' = $ps7XmlPath
-        'ps51-summary.json' = $ps51SummaryPath
-    }
     Write-NxbCiNativeReviewZip -Path $reviewZipPath -Entries $reviewEntries
     $completed = $true
 
@@ -299,12 +342,16 @@ try {
             ps7 = $ps7Summary
             ps51 = $ps51Summary
             ps51_not_run = $ps51NotRun
+            python_version = $pythonVersion
             native_calibration_valid = $true
+            bounded_trigger_smoke_valid = $true
+            bounded_trigger_smoke_sha256 = Get-NxbCiNativeSha256 -Path $boundedSmokePath
+            post_run_repository_integrity_valid = $postRunRepositoryIntegrityValid
             receipt_path = $receiptPath
             receipt_sha256 = Get-NxbCiNativeSha256 -Path $receiptPath
             review_zip = $reviewZipPath
             review_zip_sha256 = Get-NxbCiNativeSha256 -Path $reviewZipPath
-            review_entries = 7
+            review_entries = 8
             production_release_updated = $false
         }
     }
