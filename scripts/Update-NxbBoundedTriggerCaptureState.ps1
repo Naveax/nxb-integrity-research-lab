@@ -411,6 +411,10 @@ switch ($Action) {
 
     'Complete' {
         if ([string]$state.state -cne 'finalizing') { throw ('Complete is invalid in state: {0}' -f [string]$state.state) }
+        $normalTermination = ([string]$state.termination_reason -in @('post_window_complete','zero_post_window'))
+        if (-not $normalTermination -or [bool]$state.truncation -or [string]$state.budget_state -cne 'normal') {
+            throw ('Complete requires normal non-truncated finalization with normal budget: termination={0} truncation={1} budget={2}' -f [string]$state.termination_reason,[bool]$state.truncation,[string]$state.budget_state)
+        }
         if ([string]$EvidenceSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'EvidenceSha256 is required for Complete action.' }
         Set-NxbBoundedProperty -Object $state -Name 'state' -Value 'completed'
         Set-NxbBoundedProperty -Object $state -Name 'evidence_sha256' -Value $EvidenceSha256.ToLowerInvariant()
