@@ -1,184 +1,214 @@
 # Project Handoff
 
-Bu dosya yeni sohbetlerde projenin kaldığı yeri hızlıca bulmak için kanonik devralma kaydıdır.
+Bu dosya yeni sohbetlerde projenin gerçekten kaldığı yeri bulmak için kanonik devralma kaydıdır.
+
+> **Authority note:** Bu dosyanın güncellenmesi mevcut exact-head sertifikasyonunu değiştirmez. Runtime/release otoritesi Git commit/PR/Issue/CI kanıtlarıyla belirlenir.
 
 ## Repository
 
 - Repository: `Naveax/nxb-integrity-research-lab`
 - Default branch: `main`
 - Visibility: public
-- Active issue: `#2 — NXB-IRL-004 — Full-system observability fabric`
-- Latest merged PR: `#7 — NXB-IRL-004: paired collector overhead calibration`
-- Active draft PR: `#8 — NXB-IRL-004: trace-loss and circular-overwrite accounting`
-- PR `#8` validated implementation head: `e5a7e0cf2f7c1a4c5f50b3c460e0c859d74db258`
+- Current `main`: `1dc42289d587a8f06a5eca39b45142b5bcc565af`
+- Current `main` tree: `393afa3a1cfe391a613017465778638ca46f71ea`
+- Published release line: `v1.0.1`
+- Canonical active runtime issue: `#26 — NXB v1.x — Bounded pre-trigger / post-trigger capture primitives`
+- Canonical active PR: `#48 — NXB runtime: bounded pre-trigger / post-trigger capture primitives`
+- Post-#26 planning backlog: `#49 — NXB v1.1 — compatibility, endurance and repository enforcement backlog`
 
-GitHub Actions are intentionally disabled repository-wide and must remain disabled.
+GitHub Actions are **enabled and authority-bearing**. The old handoff statement that Actions must remain disabled is historical and no longer valid.
 
-## Completed NXB-IRL-004 blocks
+## Current exact-head runtime authority
 
-### Minimal CPU and scheduler profile
-
-- PR: `#6`
-- Squash merge: `04214ac4e27a1b35e4327392480c2f89e9caaddc`
-- Status: `MERGED`
-
-Completed properties:
-
-- repository-owned minimal CPU/scheduler WPR profile,
-- bounded 512 MiB file-mode collector,
-- explicit opt-in for legacy unbounded `GeneralProfile`,
-- profile provenance and integrity binding,
-- teardown-first stop lifecycle,
-- adversarial profile/path/reparse coverage,
-- PowerShell 7 and Windows PowerShell 5.1 support.
-
-### Paired collector overhead calibration
-
-- PR: `#7`
-- Squash merge: `04ac296da24c9e6b755ef6868ba0b82a34bd0f4a`
-- Validated implementation head: `76c2d9cbc6d52c7025664bc06a108fa44d3457f4`
-- Status: `MERGED AND VALIDATED`
-- Validation record: `docs/NXB-IRL-004-VALIDATION.md`
-
-Required validation results:
-
-- public repository guard: passed,
-- native WPR profile parser: passed,
-- PSScriptAnalyzer: 0 findings,
-- repository smoke: passed,
-- PowerShell 7 Pester: 98 passed, 0 failed,
-- Windows PowerShell 5.1 Pester: 98 passed, 0 failed,
-- native WPR calibration: 3/3 successful pairs and 1 warmup,
-- threshold policy: `not_declared`.
-
-Completed properties:
-
-- strict calibration evidence schema and semantic validation,
-- parent and separate child experiment lifecycle binding,
-- same-machine, same-boot, same-power-policy and same-workload enforcement,
-- deterministic control/capture ordering,
-- process CPU, working-set and private-byte measurements,
-- WPR start and stop/finalization latency,
-- ETL SHA-256, length, effective byte rate and profile provenance,
-- pair deltas and distribution summaries,
-- explicit measured, unsupported and failed states,
-- teardown-first stop and explicit WPR cancellation,
-- schema-valid failed-pair preservation.
-
-### Trace-loss and circular-overwrite accounting
-
-- PR: `#8`
-- Branch: `nxb-irl-004-trace-loss-accounting`
-- Validated implementation head: `e5a7e0cf2f7c1a4c5f50b3c460e0c859d74db258`
-- Status: `IMPLEMENTATION COMPLETE — EXACT-HEAD WINDOWS VALIDATION PASSED — DOCUMENTATION CLOSEOUT`
-- Validation record: `docs/NXB-IRL-004-TRACE-LOSS-VALIDATION.md`
-
-Required validation results:
-
-- public repository guard: passed — 108 candidates,
-- native WPR profile parser: passed,
-- PSScriptAnalyzer: 0 Error/Warning findings,
-- repository smoke: passed,
-- PowerShell 7 Pester: 136 passed, 0 failed,
-- Windows PowerShell 5.1 Pester: 136 passed, 0 failed,
-- native paired WPR regression calibration: 1/1 pair,
-- base exact-head validation: passed,
-- native trace-loss accounting: passed,
-- evidence integrity and finalization: passed.
-
-Validated native accounting result:
+PR `#48` remains open, draft and unmerged.
 
 ```text
-trace_loss_classification:         no_native_loss_reported
-measured_counter_count:            2
-total_reported_loss:               0
-circular_overwrite_classification: no_risk_observed
-circular_utilization_ratio:        0.162109375
-evidence_completeness:             complete
-post_stop_counter_source:          etl_header_snapshot
-xperf_available:                   false
+base/main  1dc42289d587a8f06a5eca39b45142b5bcc565af
+head       f661af3e98031f3da1a7fc4bc693e6d8b39a551d
+tree       2cfe8ef95515ff1f02ec50915c79c3e5fc4894fb
+preview    024a334fd36f68bd8ffa15e03e4cbe1410b55bae  # ephemeral
 ```
 
-Completed properties:
+The current source implements the remaining bounded pre-trigger/post-trigger runtime primitive on top of the published v1.0.1 authority without rewriting historical release evidence.
 
-- strict Draft 2020-12 trace-loss evidence schema,
-- cross-field semantic validation and Python companion validator,
-- pre-stop native WPR status snapshot,
-- post-stop `Events Lost`, `Buffers Lost` and `Buffers Written` accounting,
-- native `OpenTraceW` / `TRACE_LOGFILE_HEADER` ETL reader,
-- xperf-independent measured fallback,
-- hash-bound native counter provenance,
-- actual ETL SHA-256 and byte-length reconciliation,
-- file-mode `realtime_buffers_lost: not_applicable`,
-- separate trace-loss and circular-overwrite classifications,
-- fixed circular-capacity risk threshold,
-- short WPR stop staging followed by canonical ETL placement,
-- fail-closed lifecycle when a successful stop produces no ETL,
-- safe exact-head local Windows validation runner,
-- complete PowerShell 7 and Windows PowerShell 5.1 adversarial coverage.
+Key runtime properties already implemented:
 
-The validated classifications remain deliberately narrow. They do not claim general trace-loss absence, circular-overwrite absence or capture completeness.
+- bounded 64 MiB Memory-WPR pre-trigger ring;
+- exact-head/session/policy-bound state;
+- monotonic hard/post deadlines;
+- bounded overlap coalescing and trigger-storm rejection;
+- emergency, budget and disk-pressure termination;
+- bounded per-domain accounting;
+- retained ETL SHA-256 without retaining raw ETL in review evidence;
+- native review cardinality exactly `8`;
+- post-run exact-head + clean-worktree verification before native evidence upload;
+- completed state `evidence_sha256` bound to the exact retained capture receipt SHA-256;
+- native smoke evidence retains `state_evidence_sha256` and requires exact equality with `receipt_sha256`.
 
-## Current closeout boundary
+## Hosted authority
 
-PR `#8` remains open and draft. Merge or ready-for-review transition has not been performed.
-
-The authoritative runtime/schema/test head is:
+Fresh current-head hosted certification is closed:
 
 ```text
-e5a7e0cf2f7c1a4c5f50b3c460e0c859d74db258
+workflow      NXB v1 CI
+run number    #119
+run id        33079363219
+attempt       1
+event         pull_request
+conclusion    SUCCESS
+artifact id   9649653921
+artifact      nxb-v1-hosted-validation-f661af3e98031f3da1a7fc4bc693e6d8b39a551d
+SHA-256       a67f059842ccb54002fb322234a62bfe0a279289c1abce95c6a9d33f7b911b76
 ```
 
-Commits after that head must remain documentation-only. Before merge, compare the final PR head against the validated implementation head and verify that only closeout documentation changed.
+Independent hosted audit closed with:
 
-Issue `#2` remains open because the broader full-system observability fabric is not complete.
+- exact six safe hosted artifact entries;
+- PowerShell 7 `915/915`;
+- Windows PowerShell 5.1 `908/915` with exactly seven `PS7Only` exclusions;
+- PSScriptAnalyzer findings `0`;
+- known-error findings `0`;
+- independent validator `13/13 + 8/8`;
+- production mutation false.
 
-## Next required block
+Hosted admission freeze: Issue #26 comment `5440357764`.
 
-Start with:
+## Current physical/native boundary
+
+As of the 2026-09-07 continuation revalidation:
 
 ```text
-RAM/page-fault/working-set capture profile
+exact-head workflow_dispatch count = 0
+exact-head native authority         = none
+PR #48 state                        = OPEN / DRAFT
 ```
 
-Required scope:
+Do **not** manufacture a native authority from an untrusted environment. The remaining boundary requires the trusted elevated physical Windows host, Administrator access, real WPR/Xperf, and the repository's `NXB-NATIVE-WPT` runner identity/runtime.
 
-- define bounded RAM, working-set, commit and page-fault evidence contracts,
-- identify native ETW/WPR providers and events available on supported Windows versions,
-- separate process working-set evidence from system memory-pressure evidence,
-- represent hard faults, soft faults, page reads, standby-list effects and commit pressure without inventing unsupported values,
-- bind all measurements to experiment, machine, boot, profile, tool and ETL provenance,
-- add deterministic memory-pressure fixtures that remain safe and bounded,
-- measure collector overhead and trace-loss state using the existing NXB-IRL-004 mechanisms,
-- add schema, semantic validation, adversarial tests and exact-head Windows validation,
-- preserve the public repository boundary.
+Canonical physical execution precedence is Issue #26 comment `5440464799` (**v4.1**):
 
-## Remaining NXB-IRL-004 work
+```text
+5440410030  physical preflight bundle v4.0
+5440426680  exact-head one-dispatch operator v4.1
+5440443895  post-run continuity + runtime-ledger freeze v4.1
+5440455610  independent native admission v4.0
+```
 
-- RAM/page-fault/working-set profile,
-- expanded capture-completeness classification across future provider sets,
-- disk/file-system/storage queue profile,
-- GPU/DXGKRNL/present profile,
-- network/NDIS/connection profile,
-- device/driver/PCIe provider inventory,
-- power/frequency/thermal snapshot,
-- firmware/VBS/HVCI/Secure Boot experiment binding,
-- cross-domain correlation engine,
-- controlled memory, storage, GPU and network fixtures,
-- representative production overhead thresholds.
+Operational rules:
+
+1. run preflight on the trusted elevated Windows host;
+2. remain in the same PowerShell 7 process;
+3. acquire the exact-head native lock atomically;
+4. issue exactly one `workflow_dispatch(run_native=true)`;
+5. resolve and poll only that run ID;
+6. never rerun or redispatch as a substitute for polling;
+7. after SUCCESS, run post-run continuity/runtime-ledger freeze while the lock remains held;
+8. independently audit exact 11-file outer / 8-entry inner evidence;
+9. keep the lock held through final CAS, merge and published-main verification;
+10. failure/cancellation/ambiguity does not authorize automatic rerun or lock release.
+
+Continuation checkpoint comment: Issue #26 comment `5566587788`.
+
+## Current CI contract
+
+Workflow: `.github/workflows/nxb-v1-ci.yml`
+
+Named checks:
+
+- `nxb-v1 / hosted-contract`
+- `nxb-v1 / signed-release-verify`
+- `nxb-v1 / native-wpt`
+- `nxb-v1 / release-candidate`
+
+`native-wpt` is intentionally manual-only:
+
+```text
+github.event_name == workflow_dispatch && inputs.run_native
+```
+
+Runner labels:
+
+```text
+[self-hosted, Windows, X64, nxb-native, wpt]
+```
+
+Ordinary PR runs must not be treated as native certification merely because the native job is skipped.
+
+## Remaining #26 gates
+
+- [ ] trusted physical-host preflight PASS;
+- [ ] exactly one exact-head native dispatch, attempt 1 unless a separately classified infrastructure failure is explicitly handled under the authority rules;
+- [ ] same-process post-run runner/runtime continuity PASS;
+- [ ] exact runtime ledger publication and digest reconciliation;
+- [ ] exact 11-file outer / 8-entry inner native artifact independent audit;
+- [ ] Python `3.12.10`, Pester `5.7.1`, PSScriptAnalyzer `1.25.0`, PyYAML `6.0.3`, jsonschema `4.26.0` bindings confirmed;
+- [ ] bounded arm-gate/domain/state-to-receipt evidence confirmed;
+- [ ] `post_run_repository_integrity_valid=true` confirmed;
+- [ ] native run/job/artifact/digest authority frozen in Issue #26;
+- [ ] fresh final main/head/tree/merge-preview CAS;
+- [ ] PR #48 marked Ready only after native admission;
+- [ ] merge by **merge commit only** with `expected_head_sha=f661af3e98031f3da1a7fc4bc693e6d8b39a551d`;
+- [ ] published-main ancestry/tree verification;
+- [ ] close #26;
+- [ ] release the exact native lock only after publication verification.
+
+Squash/rebase are not admissible for the authority merge.
+
+## Issue #49 / v1.1 boundary
+
+Issue `#49` is planning/source-archaeology only while #26 remains unadmitted.
+
+Do not before #26 closes:
+
+- create a v1.1 implementation branch;
+- dispatch successor production/compatibility authority;
+- enable branch protection;
+- register/reconfigure successor runners;
+- use a production signer;
+- mutate tags/Releases;
+- rewrite v1.0.0/v1.0.1 authority.
+
+The first unresolved v1.1 design field is intentionally the exact post-#26 predecessor `main` SHA/tree.
+
+The planned post-#26 sequence is:
+
+1. freeze the post-#26 predecessor SHA/tree;
+2. V11.A0 claim-free compatibility substrate seed;
+3. V11.A1/V11.B first dispatchable trusted Windows compatibility + bounded 1h authority;
+4. expand one compatibility axis at a time;
+5. add durable lifecycle transaction journal/startup reconciliation;
+6. certify clean-host elevated PerMachine lifecycle;
+7. certify existing-PerMachine signed update/rollback/reboot/disk-pressure lifecycle;
+8. extend pressure/interruption authority to update/release transport;
+9. promote admitted classes from 1h -> 6h -> 24h without increasing per-cycle limits;
+10. dry-run the dedicated native-admission integration and repository protection before enabling `main` enforcement.
+
+## Repository-enforcement debt
+
+`main` is currently unprotected. Repository-level enforcement is intentionally deferred until the dedicated native-admission integration can be dry-run safely.
+
+Future policy must not simply mark `nxb-v1 / native-wpt` as a normal required PR check. The planned native proof is a distinct `nxb-native-admission / exact-head` context emitted only by a dedicated minimal integration whose credential is unavailable to candidate PR workflows.
+
+## Documentation sequencing
+
+The historical `docs/ROADMAP.md` and prior `docs/HANDOFF.md` content lagged far behind the current authority chain. Documentation-only cleanup must **not** be merged into `main` before #26 closes because advancing `main` would stale PR #48's current base/merge-preview and force avoidable recertification.
+
+Any documentation cleanup branch prepared while #26 is open should remain draft/unmerged, then be refreshed from the post-#26 `main` before final merge.
 
 ## Public repository boundary
 
-Never commit raw ETL, packet captures, dumps, protected binaries, drivers, private keys, PFX files, credentials, tokens or undisclosed findings.
+Never commit raw ETL, packet captures, dumps, protected binaries, drivers, private keys, PFX/P12 files, credentials, tokens, undisclosed findings, or other sensitive evidence bytes.
 
 ## Continuation prompt
 
 ```text
-Continue Naveax/nxb-integrity-research-lab from draft PR #8.
-Validated implementation head: e5a7e0cf2f7c1a4c5f50b3c460e0c859d74db258.
-Read issue #2, docs/HANDOFF.md, docs/NXB-IRL-004-TRACE-LOSS-ACCOUNTING.md and docs/NXB-IRL-004-TRACE-LOSS-VALIDATION.md.
-Verify the final PR #8 head differs from the validated implementation head only by closeout documentation.
-Do not merge or mark ready without explicit instruction.
-After PR #8 closeout, start the RAM/page-fault/working-set profile block from updated main on a new branch and draft PR.
-Keep GitHub Actions disabled and preserve the public repository boundary.
+Continue Naveax/nxb-integrity-research-lab from Issue #26 / PR #48.
+Current candidate head: f661af3e98031f3da1a7fc4bc693e6d8b39a551d.
+Current candidate tree: 2cfe8ef95515ff1f02ec50915c79c3e5fc4894fb.
+Current main: 1dc42289d587a8f06a5eca39b45142b5bcc565af.
+Hosted authority: NXB v1 CI #119 / 33079363219 / SUCCESS.
+Canonical physical precedence: Issue #26 comment 5440464799 v4.1.
+Before any dispatch, prove exact-head workflow_dispatch count is still zero and run the trusted physical preflight.
+Never duplicate an equivalent active Action for the same SHA/workflow/input.
+Do not implement v1.1 or advance main before #26 native admission and merge publication are complete.
 ```
