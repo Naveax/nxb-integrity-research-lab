@@ -5,11 +5,13 @@ Describe 'NXB bounded trigger activation publication regression contract' {
         $script:RepositoryRoot = Split-Path -Parent $PSScriptRoot
         $script:CoordinatorScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerCapture.ps1'
         $script:NativeSmokeScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerNativeSmoke.ps1'
+        $script:StateScript = Join-Path $script:RepositoryRoot 'scripts\Update-NxbBoundedTriggerCaptureState.ps1'
     }
 
-    It 'preserves activation instances and atomically publishes the native trigger signal' {
+    It 'preserves activation instances atomically publishes signals and fails closed on abnormal completion' {
         $coordinator = Get-Content -LiteralPath $script:CoordinatorScript -Raw
         $nativeSmoke = Get-Content -LiteralPath $script:NativeSmokeScript -Raw
+        $stateSource = Get-Content -LiteralPath $script:StateScript -Raw
 
         $coordinator | Should -Match ([regex]::Escape('Get-NxbBoundedActivationKey'))
         $coordinator | Should -Match ([regex]::Escape('last_transition_utc'))
@@ -20,6 +22,16 @@ Describe 'NXB bounded trigger activation publication regression contract' {
         $coordinator | Should -Not -Match ([regex]::Escape('$seenActivation.Add($TriggerId)'))
         $coordinator | Should -Not -Match ([regex]::Escape('$seenActivation.Add($id)'))
         $coordinator | Should -Not -Match 'elseif\s*\(\$primarySeen\s+-and'
+
+        $coordinator | Should -Match ([regex]::Escape('$normalTermination -and'))
+        $coordinator | Should -Match ([regex]::Escape('-not [bool]$finalState.truncation -and'))
+        $coordinator | Should -Match ([regex]::Escape("[string]`$finalState.budget_state -ceq 'normal' -and"))
+        $coordinator | Should -Match ([regex]::Escape("[string]`$diskBudgetState -ceq 'within_budget' -and"))
+        $coordinator | Should -Not -Match ([regex]::Escape("@('within_budget','pressure_terminated')"))
+        $stateSource | Should -Match ([regex]::Escape("[string]`$state.termination_reason -in @('post_window_complete','zero_post_window')"))
+        $stateSource | Should -Match ([regex]::Escape('-not $normalTermination -or [bool]$state.truncation'))
+        $stateSource | Should -Match ([regex]::Escape("[string]`$state.budget_state -cne 'normal'"))
+        $stateSource | Should -Match ([regex]::Escape('Complete requires normal non-truncated finalization with normal budget'))
 
         $nativeSmoke | Should -Match ([regex]::Escape('$armedStatePath = Join-Path ([string]$experiment) ''analysis\bounded-trigger-capture-state.json'''))
         $nativeSmoke | Should -Match ([regex]::Escape('$armGateDelayMilliseconds = 1500'))
