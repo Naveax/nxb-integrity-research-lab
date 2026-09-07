@@ -316,11 +316,13 @@ try {
     $sessionSha = (Get-FileHash -LiteralPath $sessionPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
     $normalTermination = ([string]$finalState.termination_reason -ceq 'post_window_complete' -or [string]$finalState.termination_reason -ceq 'zero_post_window')
-    $safeDiskState = ([string]$diskBudgetState -in @('within_budget','pressure_terminated'))
     $capturePassed = (
         $primarySeen -and
         $sessionBindingValid -and
-        $safeDiskState -and
+        $normalTermination -and
+        -not [bool]$finalState.truncation -and
+        [string]$finalState.budget_state -ceq 'normal' -and
+        [string]$diskBudgetState -ceq 'within_budget' -and
         $traceLengthBytes -gt 0 -and
         $capturedDomainCount -gt 0 -and
         $null -ne $buffersWritten -and
@@ -409,7 +411,7 @@ try {
         $finalState = Invoke-NxbBoundedState -ActionName Complete -Extra @{ EvidenceSha256 = $receiptSha }
     }
     else {
-        $failureDetail = ('Bounded trigger capture finalized but did not satisfy PASS contract: trigger={0} disk={1} coverage={2} buffers_written={3} accounting={4}' -f $primarySeen,$diskBudgetState,$coverageStatus,$buffersWritten,[string]$accounting.summary.evidence_completeness)
+        $failureDetail = ('Bounded trigger capture finalized but did not satisfy PASS contract: trigger={0} termination={1} truncation={2} state_budget={3} disk={4} coverage={5} buffers_written={6} accounting={7}' -f $primarySeen,[string]$finalState.termination_reason,[bool]$finalState.truncation,[string]$finalState.budget_state,$diskBudgetState,$coverageStatus,$buffersWritten,[string]$accounting.summary.evidence_completeness)
         $finalState = Invoke-NxbBoundedState -ActionName Fail -Extra @{ FailureReason = $failureDetail; EvidenceSha256 = $receiptSha }
         throw $failureDetail
     }
