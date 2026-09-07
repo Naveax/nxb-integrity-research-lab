@@ -6,6 +6,7 @@ Describe 'NXB bounded trigger activation publication regression contract' {
         $script:CoordinatorScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerCapture.ps1'
         $script:NativeSmokeScript = Join-Path $script:RepositoryRoot 'scripts\Invoke-NxbBoundedTriggerNativeSmoke.ps1'
         $script:StateScript = Join-Path $script:RepositoryRoot 'scripts\Update-NxbBoundedTriggerCaptureState.ps1'
+        $script:PolicyPath = Join-Path $script:RepositoryRoot 'config\adaptive-observability-policy.default.json'
     }
 
     It 'preserves activation instances and atomically publishes the native trigger signal while failing closed on abnormal completion' {
@@ -32,6 +33,73 @@ Describe 'NXB bounded trigger activation publication regression contract' {
         $stateSource | Should -Match ([regex]::Escape('-not $normalTermination -or [bool]$state.truncation'))
         $stateSource | Should -Match ([regex]::Escape("[string]`$state.budget_state -cne 'normal'"))
         $stateSource | Should -Match ([regex]::Escape('Complete requires normal non-truncated finalization with normal budget'))
+
+        $expectedHead = ('1' * 40)
+        $sessionId = [Guid]::NewGuid().ToString('D')
+        $statePath = Join-Path $TestDrive 'abnormal-complete.json'
+        $frequency = 1000L
+        $t0 = [DateTime]::Parse('2026-09-07T09:00:00Z').ToUniversalTime()
+
+        [void](& $script:StateScript `
+            -PolicyPath $script:PolicyPath `
+            -StatePath $statePath `
+            -ExpectedHead $expectedHead `
+            -SessionId $sessionId `
+            -Action Arm `
+            -RequestedPreTriggerSeconds 3 `
+            -RequestedPostTriggerSeconds 10 `
+            -NowUtc $t0 `
+            -MonotonicTicks 1000 `
+            -MonotonicFrequency $frequency `
+            -PassThru)
+
+        [void](& $script:StateScript `
+            -PolicyPath $script:PolicyPath `
+            -StatePath $statePath `
+            -ExpectedHead $expectedHead `
+            -SessionId $sessionId `
+            -Action Trigger `
+            -TriggerId 'frame-spike' `
+            -TriggerReason 'test:frame-spike' `
+            -TriggerPriority 700 `
+            -PlanFingerprintSha256 ('a' * 64) `
+            -Domains @('cpu') `
+            -NowUtc $t0.AddSeconds(2) `
+            -MonotonicTicks 3000 `
+            -MonotonicFrequency $frequency `
+            -PassThru)
+
+        $emergency = & $script:StateScript `
+            -PolicyPath $script:PolicyPath `
+            -StatePath $statePath `
+            -ExpectedHead $expectedHead `
+            -SessionId $sessionId `
+            -Action EmergencyStop `
+            -NowUtc $t0.AddSeconds(3) `
+            -MonotonicTicks 4000 `
+            -MonotonicFrequency $frequency `
+            -PassThru
+        [string]$emergency.state | Should -BeExactly 'finalizing'
+        [string]$emergency.termination_reason | Should -BeExactly 'emergency_stop'
+        [bool]$emergency.truncation | Should -BeTrue
+
+        {
+            & $script:StateScript `
+                -PolicyPath $script:PolicyPath `
+                -StatePath $statePath `
+                -ExpectedHead $expectedHead `
+                -SessionId $sessionId `
+                -Action Complete `
+                -EvidenceSha256 ('c' * 64) `
+                -NowUtc $t0.AddSeconds(4) `
+                -MonotonicTicks 5000 `
+                -MonotonicFrequency $frequency
+        } | Should -Throw '*Complete requires normal non-truncated finalization with normal budget*'
+
+        $afterRejectedComplete = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        [string]$afterRejectedComplete.state | Should -BeExactly 'finalizing'
+        [string]$afterRejectedComplete.termination_reason | Should -BeExactly 'emergency_stop'
+        $null -eq $afterRejectedComplete.evidence_sha256 | Should -BeTrue
 
         $nativeSmoke | Should -Match ([regex]::Escape('$armedStatePath = Join-Path ([string]$experiment) ''analysis\bounded-trigger-capture-state.json'''))
         $nativeSmoke | Should -Match ([regex]::Escape('$armGateDelayMilliseconds = 1500'))
