@@ -8,7 +8,7 @@ Describe 'NXB bounded trigger activation publication regression contract' {
         $script:StateScript = Join-Path $script:RepositoryRoot 'scripts\Update-NxbBoundedTriggerCaptureState.ps1'
     }
 
-    It 'preserves activation instances atomically publishes signals and fails closed on abnormal completion' {
+    It 'preserves activation instances and atomically publishes the native trigger signal while failing closed on abnormal completion' {
         $coordinator = Get-Content -LiteralPath $script:CoordinatorScript -Raw
         $nativeSmoke = Get-Content -LiteralPath $script:NativeSmokeScript -Raw
         $stateSource = Get-Content -LiteralPath $script:StateScript -Raw
