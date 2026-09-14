@@ -14,6 +14,7 @@ Describe 'NXB v1.0.1 successor version transition' {
         $script:UpdateDescriptorSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v1-update-descriptor.schema.json'
         $script:PredecessorHead = 'a4f1b242c003333b1f34b1cd54ca37cab33fbf4f'
         $script:PredecessorTree = '34779176d9e15cd4d700d46132785c0b25f19604'
+        $script:ReleaseHead = '9a6f5b91d1a9e1d639be4b904851c7d7a1a12c85'
     }
 
     It 'binds the frozen v1.0.0 predecessor and enters v1.0.1 version-transition' {
@@ -74,6 +75,12 @@ Describe 'NXB v1.0.1 successor version transition' {
         [string]$assetMap['update-descriptor.json'] | Should -BeExactly 'de0d07c796b925b928eeee6e92959a3e7430cd332cfee86478746086bc266450'
         [string]$assetMap['update-trust.json'] | Should -BeExactly 'c27f6f7a9b35ff731a99f5c45573d490c32304fd8b1b2e8f17d2cede84ec341a'
         [string]$production.implementation.certified_head | Should -BeExactly 'a10535b294c4d7ba8a4c3683154609087bf50c4b'
+        [int]$production.ci.ps7_total | Should -Be 899
+        [int]$production.ci.ps7_passed | Should -Be 899
+        [int]$production.ci.ps51_total | Should -Be 899
+        [int]$production.ci.ps51_passed | Should -Be 892
+        [int]$production.ci.ps51_not_run | Should -Be 7
+        [int]$production.ci.native_review_entries | Should -Be 7
         [string]$production.ci.native_runner_name | Should -BeExactly 'NXB-NATIVE-WPT'
         [bool]$production.safety.require_merge_tree_identity | Should -BeTrue
         [bool]$production.safety.allow_signer_rotation | Should -BeFalse
@@ -119,18 +126,27 @@ Describe 'NXB v1.0.1 successor version transition' {
         @($updateSchema.properties.release_version.enum) | Should -Contain '1.0.1'
     }
 
-    It 'keeps successor ancestry rooted at the exact production predecessor' {
+    It 'freezes the release transition at v1.0.1 while allowing safe post-release descendants' {
         $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
         if ($null -eq $gitCommand) { $gitCommand = Get-Command git -ErrorAction Stop }
         $git = [string]$gitCommand.Source
         $tree = (& $git -C $script:RepositoryRoot rev-parse ($script:PredecessorHead + '^{tree}') 2>$null).Trim()
         $LASTEXITCODE | Should -Be 0
         $tree | Should -BeExactly $script:PredecessorTree
-        & $git -C $script:RepositoryRoot merge-base --is-ancestor $script:PredecessorHead HEAD 2>$null
+        $tagHead = (& $git -C $script:RepositoryRoot rev-parse 'v1.0.1^{}' 2>$null).Trim()
+        $LASTEXITCODE | Should -Be 0
+        $tagHead | Should -BeExactly $script:ReleaseHead
+        & $git -C $script:RepositoryRoot merge-base --is-ancestor $script:PredecessorHead $script:ReleaseHead 2>$null
+        $LASTEXITCODE | Should -Be 0
+        & $git -C $script:RepositoryRoot merge-base --is-ancestor $script:ReleaseHead HEAD 2>$null
         $LASTEXITCODE | Should -Be 0
     }
 
-    It 'passes the successor independent validator with production authority and eight negative controls' {
+    It 'passes the frozen-release successor validator with post-release safety and eight negative controls' {
+        $validatorSource = Get-Content -LiteralPath $script:ValidatorPath -Raw
+        $validatorSource | Should -Match ([regex]::Escape('def read_git_text(root, ref, relative):'))
+        $validatorSource | Should -Match ([regex]::Escape('transition_private_hits = private_key_hits(root, transition_changed, ref=RELEASE_HEAD)'))
+
         $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
         if ($null -eq $pythonCommand) { $pythonCommand = Get-Command python -ErrorAction Stop }
         $python = [string]$pythonCommand.Source
@@ -139,12 +155,25 @@ Describe 'NXB v1.0.1 successor version transition' {
         $exitCode | Should -Be 0
         $result = ([string]($output | Select-Object -Last 1)) | ConvertFrom-Json
         [string]$result.status | Should -BeExactly 'passed'
-        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v13'
+        [string]$result.authority | Should -BeExactly 'nxb-v1-successor-independent-v14'
+        [string]$result.release_tag | Should -BeExactly 'v1.0.1'
+        [string]$result.release_head | Should -BeExactly $script:ReleaseHead
+        [string]$result.validation_model | Should -BeExactly 'frozen-release-transition-plus-post-release-safety'
+        [string]$result.release_private_key_scan_ref | Should -BeExactly $script:ReleaseHead
+        [string]$result.post_release_private_key_scan_ref | Should -BeExactly 'worktree'
+        [bool]$result.checks.release_tag_head_exact | Should -BeTrue
+        [bool]$result.checks.predecessor_is_release_ancestor | Should -BeTrue
+        [bool]$result.checks.release_head_is_current_ancestor | Should -BeTrue
         [bool]$result.checks.package_release_versions | Should -BeTrue
         [bool]$result.checks.update_release_versions | Should -BeTrue
         [bool]$result.checks.production_release_policy | Should -BeTrue
         [bool]$result.checks.required_documents_present | Should -BeTrue
         [bool]$result.checks.transition_paths_allowed | Should -BeTrue
+        [bool]$result.checks.post_release_generated_artifacts_absent | Should -BeTrue
+        [bool]$result.checks.post_release_private_key_material_absent | Should -BeTrue
+        @($result.disallowed_paths).Count | Should -Be 0
+        @($result.post_release_forbidden_artifacts).Count | Should -Be 0
+        @($result.post_release_private_key_hits).Count | Should -Be 0
         [int]$result.negative_controls_validated | Should -Be 8
         [int]$result.negative_control_count | Should -Be 8
         @($result.failures).Count | Should -Be 0
