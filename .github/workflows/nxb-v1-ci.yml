@@ -138,6 +138,8 @@ jobs:
           persist-credentials: false
 
       - name: Set up pinned Python 3.12.10
+        env:
+          PSExecutionPolicyPreference: Bypass
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12.10'
@@ -222,7 +224,7 @@ jobs:
             if ($env:NATIVE_RESULT -cne 'success') { throw ('Required native WPT result: ' + $env:NATIVE_RESULT) }
           }
           elseif (@('skipped','success') -cnotcontains $env:NATIVE_RESULT) {
-            throw ('Unexpected optional native WPT result: ' + $env:NATIVE_RESULT)
+            throw ('Unexpected optional native WPT result: ' + $env:NATIVE_RESULT) }
           }
           Write-Output 'NXB v1 release-candidate CI aggregate PASS.'
           Write-Output 'production_release_updated=false'
