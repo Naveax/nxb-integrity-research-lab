@@ -101,6 +101,12 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $nativeSource | Should -Match ([regex]::Escape('$stateEvidenceSha -cne $actualReceiptSha'))
         $nativeSource | Should -Match ([regex]::Escape('state_evidence_sha256 = $stateEvidenceSha'))
         $nativeSource | Should -Match ([regex]::Escape('state_evidence_binding_valid = $true'))
+        $capabilitiesIndex = $nativeSource.IndexOf("Get-SystemCapabilities.ps1",[StringComparison]::Ordinal)
+        $identityIndex = $nativeSource.IndexOf("Get-ObservationIdentity.ps1",[StringComparison]::Ordinal)
+        $captureIndex = $nativeSource.IndexOf("Invoke-NxbBoundedTriggerCapture.ps1",[StringComparison]::Ordinal)
+        $capabilitiesIndex | Should -BeGreaterThan -1
+        $identityIndex | Should -BeGreaterThan $capabilitiesIndex
+        $captureIndex | Should -BeGreaterThan $identityIndex
     }
 
     It 'clamps oversized requested windows to policy maxima' {

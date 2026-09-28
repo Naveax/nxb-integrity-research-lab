@@ -62,6 +62,10 @@ try {
         -Name ('NXB-Bounded-Native-' + $expected.Substring(0,12)) `
         -Hypothesis 'A real Memory WPR ring preserves bounded evidence before and after an adaptive trigger'
 
+    # Trace-loss accounting requires the same provenance bootstrap as every
+    # other real native WPR experiment. Create it before the Memory ring starts.
+    [void](& (Join-Path $PSScriptRoot 'Get-SystemCapabilities.ps1') -ExperimentPath ([string]$experiment))
+    [void](& (Join-Path $PSScriptRoot 'Get-ObservationIdentity.ps1') -ExperimentPath ([string]$experiment))
     $signalsPath = Join-Path $workFull 'signals.json'
     $emergencyStopPath = Join-Path $workFull 'native-smoke-emergency.stop'
     $armedStatePath = Join-Path ([string]$experiment) 'analysis\bounded-trigger-capture-state.json'
