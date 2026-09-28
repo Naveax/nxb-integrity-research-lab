@@ -115,10 +115,10 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
 
     It 'accepts bounded Memory logging with non-applicable real-time consumer delivery' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
-        $profile = $document.capture.profile
-        $profile.logging_mode = 'Memory'
-        $profile.file_mode = 'Memory'
-        $profile.maximum_file_size_mib = $null
+        $captureProfile = $document.capture.profile
+        $captureProfile.logging_mode = 'Memory'
+        $captureProfile.file_mode = 'Memory'
+        $captureProfile.maximum_file_size_mib = $null
         $overwrite = $document.circular_overwrite
         $overwrite.classification = 'not_applicable'
         $overwrite.capacity_bytes = $null
