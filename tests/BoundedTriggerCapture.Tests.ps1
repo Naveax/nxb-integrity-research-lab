@@ -82,6 +82,7 @@ Describe 'NXB bounded pre-trigger and post-trigger capture contract' {
         $startSource | Should -Match ([regex]::Escape('memory_buffer_budget_mib = $memoryBudgetMiB'))
         $startSource | Should -Match ([regex]::Escape('if ($memoryBudgetMiB -ne 64)'))
         $startSource | Should -Match ([regex]::Escape("overwrite_model          = 'bounded-memory-buffer-reuse'"))
+        $startSource | Should -Match ([regex]::Escape("file_mode                = 'Memory'"))
         $startSource | Should -Not -Match '(?m)^\s*\$startOutput\s*=.*-filemode'
 
         $stateSource = Get-Content -LiteralPath $script:StateScript -Raw
