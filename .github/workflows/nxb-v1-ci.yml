@@ -45,12 +45,20 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
-          $ps51ModuleRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          $documents = [Environment]::GetFolderPath('MyDocuments')
+          if ([string]::IsNullOrWhiteSpace($documents)) {
+            if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw 'RUNNER_TEMP is required when MyDocuments is unavailable.' }
+            $ps51ModuleRoot = Join-Path $env:RUNNER_TEMP 'nxb-ps51-modules'
+          }
+          else {
+            $ps51ModuleRoot = Join-Path $documents 'WindowsPowerShell\Modules'
+          }
           [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
           $ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
           if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
             Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
           }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('NXB_PS51_MODULE_ROOT=' + $ps51ModuleRoot) -Encoding utf8
           python -m pip install --disable-pip-version-check PyYAML==6.0.3 jsonschema==4.26.0
 
       - name: Run repo-owned hosted validation
@@ -104,12 +112,20 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
-          $ps51ModuleRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          $documents = [Environment]::GetFolderPath('MyDocuments')
+          if ([string]::IsNullOrWhiteSpace($documents)) {
+            if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw 'RUNNER_TEMP is required when MyDocuments is unavailable.' }
+            $ps51ModuleRoot = Join-Path $env:RUNNER_TEMP 'nxb-ps51-modules'
+          }
+          else {
+            $ps51ModuleRoot = Join-Path $documents 'WindowsPowerShell\Modules'
+          }
           [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
           $ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
           if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
             Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
           }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('NXB_PS51_MODULE_ROOT=' + $ps51ModuleRoot) -Encoding utf8
 
       - name: Verify certification-safe signed-release authority
         shell: pwsh
@@ -151,12 +167,20 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
-          $ps51ModuleRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+          $documents = [Environment]::GetFolderPath('MyDocuments')
+          if ([string]::IsNullOrWhiteSpace($documents)) {
+            if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw 'RUNNER_TEMP is required when MyDocuments is unavailable.' }
+            $ps51ModuleRoot = Join-Path $env:RUNNER_TEMP 'nxb-ps51-modules'
+          }
+          else {
+            $ps51ModuleRoot = Join-Path $documents 'WindowsPowerShell\Modules'
+          }
           [IO.Directory]::CreateDirectory($ps51ModuleRoot) | Out-Null
           $ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
           if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) {
             Save-Module Pester -RequiredVersion 5.7.1 -Path $ps51ModuleRoot -Force -Repository PSGallery
           }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('NXB_PS51_MODULE_ROOT=' + $ps51ModuleRoot) -Encoding utf8
           python -m pip install --disable-pip-version-check PyYAML==6.0.3 jsonschema==4.26.0
 
       - name: Fail-closed native runner preflight

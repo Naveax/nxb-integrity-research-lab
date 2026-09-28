@@ -172,6 +172,10 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $c = Get-NxbV1CiTestContext
         $source = Get-Content -LiteralPath $c.hosted -Raw
         $workflow = Get-Content -LiteralPath $c.workflow -Raw
+        $workflow | Should -Match ([regex]::Escape('NXB_PS51_MODULE_ROOT'))
+        $workflow | Should -Match ([regex]::Escape('Join-Path $env:RUNNER_TEMP ''nxb-ps51-modules'''))
+        $source | Should -Match ([regex]::Escape("GetEnvironmentVariable('NXB_PS51_MODULE_ROOT',[EnvironmentVariableTarget]::Process)"))
+        $source | Should -Match ([regex]::Escape('requires NXB_PS51_MODULE_ROOT when MyDocuments is unavailable'))
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tests'''))
         $source | Should -Match ([regex]::Escape('New-PesterConfiguration'))
         $source | Should -Match ([regex]::Escape('WindowsPowerShell\v1.0\powershell.exe'))

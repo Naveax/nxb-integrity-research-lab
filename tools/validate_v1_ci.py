@@ -216,6 +216,10 @@ def main():
         and "SetEnvironmentVariable($rootVariableName,$repositoryRoot" in hosted_text
         and "$ps51ExcludedTag = 'PS7Only'" in hosted_text
         and "$expectedPs51ExcludedTests = 7" in hosted_text
+        and "NXB_PS51_MODULE_ROOT" in workflow_text
+        and "Join-Path $env:RUNNER_TEMP 'nxb-ps51-modules'" in workflow_text
+        and "GetEnvironmentVariable('NXB_PS51_MODULE_ROOT',[EnvironmentVariableTarget]::Process)" in hosted_text
+        and "requires NXB_PS51_MODULE_ROOT when MyDocuments is unavailable" in hosted_text
         and "$config.Filter.ExcludeTag=@($ExcludedTag)" in hosted_text
         and "NotRunCount" in hosted_text
         and ps7_only_count == 7
