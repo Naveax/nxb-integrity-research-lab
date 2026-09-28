@@ -780,7 +780,7 @@ $statistics = [ordered]@{
         status = 'not_applicable'
         value = $null
         source = $null
-        reason = 'File-mode ETL gerçek zamanlı consumer teslimatı kullanmıyor.'
+        reason = 'Post-stop ETL accounting gerçek zamanlı consumer teslimatı kullanmıyor.'
     }
 }
 
