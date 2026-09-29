@@ -171,6 +171,11 @@ def main():
         and "$ps51Passed -ne ($ps51Total - $expectedPs51Excluded)" in native_text
         and "'893/893'" not in native_text
         and "'886/893'" not in native_text
+        and "$xperfPath = Resolve-NxbCiNativeCommand -Name @('xperf.exe','xperf')" in native_text
+        and "$wptDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $xperfPath))" in native_text
+        and "$pairedWprPath = Join-Path $wptDirectory 'wpr.exe'" in native_text
+        and "$wprDirectory.Equals($xperfDirectory,[StringComparison]::OrdinalIgnoreCase)" in native_text
+        and "$wprPath = Resolve-NxbCiNativeCommand -Name @('wpr.exe','wpr')" not in native_text
         and "production_release_updated = $false" in native_text
         and "Upload native validation evidence" in workflow_text
         and "nxb-v1-native-validation-${{ env.NXB_EXPECTED_SHA }}" in workflow_text

@@ -134,8 +134,15 @@ if (-not (Test-NxbCiNativeAdministrator)) { throw 'NXB v1 CI native validation r
 $repositoryRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $expected = $ExpectedHead.ToLowerInvariant()
 $gitPath = Resolve-NxbCiNativeCommand -Name @('git.exe','git')
-$wprPath = Resolve-NxbCiNativeCommand -Name @('wpr.exe','wpr')
 $xperfPath = Resolve-NxbCiNativeCommand -Name @('xperf.exe','xperf')
+$wprPath = $null
+if (-not [string]::IsNullOrWhiteSpace($xperfPath) -and (Test-Path -LiteralPath $xperfPath -PathType Leaf)) {
+    $wptDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $xperfPath))
+    $pairedWprPath = Join-Path $wptDirectory 'wpr.exe'
+    if (Test-Path -LiteralPath $pairedWprPath -PathType Leaf) {
+        $wprPath = [IO.Path]::GetFullPath($pairedWprPath)
+    }
+}
 $pythonPath = Resolve-NxbCiNativeCommand -Name @('python.exe','python')
 $pwshPath = Resolve-NxbCiNativeCommand -Name @('pwsh.exe','pwsh')
 foreach ($pair in @(
@@ -144,6 +151,11 @@ foreach ($pair in @(
     if ([string]::IsNullOrWhiteSpace([string]$pair[1]) -or -not (Test-Path -LiteralPath ([string]$pair[1]) -PathType Leaf)) {
         throw ('NXB v1 CI native dependency missing: {0}' -f [string]$pair[0])
     }
+}
+$wprDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $wprPath))
+$xperfDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $xperfPath))
+if (-not $wprDirectory.Equals($xperfDirectory,[StringComparison]::OrdinalIgnoreCase)) {
+    throw ('NXB v1 CI native WPT pair drift: wpr={0} xperf={1}' -f $wprPath,$xperfPath)
 }
 
 $currentHead = (@(& $gitPath -C $repositoryRoot rev-parse HEAD 2>&1) -join [Environment]::NewLine).Trim().ToLowerInvariant()
