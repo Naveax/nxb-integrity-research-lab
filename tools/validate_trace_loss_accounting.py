@@ -91,14 +91,32 @@ def validate_capture(document: dict[str, Any]) -> None:
 
     profile = capture["profile"]
     if profile["bounded"]:
-        require(
-            profile["file_mode"] == "Circular",
-            "bounded profile must use Circular file_mode",
-        )
-        require(
-            profile["maximum_file_size_mib"] is not None,
-            "bounded profile requires maximum_file_size_mib",
-        )
+        if profile["logging_mode"] == "Memory":
+            require(
+                profile["file_mode"] == "Memory",
+                "bounded Memory logging must use Memory file_mode",
+            )
+            require(
+                profile["maximum_file_size_mib"] is None,
+                "bounded Memory logging cannot declare maximum_file_size_mib",
+            )
+            require(
+                profile["buffer_size_kib"] is not None and profile["buffers"] is not None,
+                "bounded Memory logging requires buffer_size_kib and buffers",
+            )
+        else:
+            require(
+                profile["logging_mode"] == "File",
+                "bounded non-Memory profile must use File logging_mode",
+            )
+            require(
+                profile["file_mode"] == "Circular",
+                "bounded File logging must use Circular file_mode",
+            )
+            require(
+                profile["maximum_file_size_mib"] is not None,
+                "bounded File logging requires maximum_file_size_mib",
+            )
     else:
         require(
             profile["maximum_file_size_mib"] is None,
@@ -135,10 +153,6 @@ def validate_counter_sources(document: dict[str, Any]) -> None:
             require(
                 counter_name == "realtime_buffers_lost",
                 f"native_counters.{counter_name} cannot be not_applicable",
-            )
-            require(
-                document["capture"]["profile"]["logging_mode"] == "File",
-                "realtime_buffers_lost can be not_applicable only for File logging mode",
             )
             require(
                 counter["source"] is None,
@@ -226,7 +240,7 @@ def validate_circular_overwrite(document: dict[str, Any]) -> bool:
     classification = overwrite["classification"]
 
     if not profile["bounded"] or profile["file_mode"] != "Circular":
-        require(classification == "not_applicable", "unbounded capture must be not_applicable")
+        require(classification == "not_applicable", "non-circular capture must be not_applicable")
         require(overwrite["capacity_bytes"] is None, "not_applicable capacity_bytes must be null")
         require(overwrite["final_etl_length"] is None, "not_applicable final_etl_length must be null")
         require(overwrite["utilization_ratio"] is None, "not_applicable utilization_ratio must be null")

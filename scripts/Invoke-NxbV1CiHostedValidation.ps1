@@ -66,7 +66,16 @@ if ($null -eq $analyzerModule) { throw 'Hosted CI requires PSScriptAnalyzer 1.25
 
 $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if (-not (Test-Path -LiteralPath $ps51 -PathType Leaf)) { throw 'Windows PowerShell 5.1 is missing.' }
-$ps51Pester = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules\Pester\5.7.1\Pester.psd1'
+$ps51ModuleRoot = [Environment]::GetEnvironmentVariable('NXB_PS51_MODULE_ROOT',[EnvironmentVariableTarget]::Process)
+if ([string]::IsNullOrWhiteSpace($ps51ModuleRoot)) {
+    $documents = [Environment]::GetFolderPath('MyDocuments')
+    if ([string]::IsNullOrWhiteSpace($documents)) {
+        throw 'Hosted CI requires NXB_PS51_MODULE_ROOT when MyDocuments is unavailable.'
+    }
+    $ps51ModuleRoot = Join-Path $documents 'WindowsPowerShell\Modules'
+}
+$ps51ModuleRoot = [IO.Path]::GetFullPath($ps51ModuleRoot)
+$ps51Pester = Join-Path $ps51ModuleRoot 'Pester\5.7.1\Pester.psd1'
 if (-not (Test-Path -LiteralPath $ps51Pester -PathType Leaf)) { throw 'Windows PowerShell 5.1 Pester 5.7.1 is missing.' }
 
 $pythonVersionText = @(& $python --version 2>&1) -join ' '

@@ -113,14 +113,33 @@ Describe 'NXB trace-loss and circular-overwrite accounting validation' {
             Should -Throw '*cannot be not_applicable*'
     }
 
-    It 'rejects a real-time counter marked not applicable outside File logging mode' {
+    It 'accepts bounded Memory logging with non-applicable real-time consumer delivery' {
+        $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
+        $captureProfile = $document.capture.profile
+        $captureProfile.logging_mode = 'Memory'
+        $captureProfile.file_mode = 'Memory'
+        $captureProfile.maximum_file_size_mib = $null
+        $overwrite = $document.circular_overwrite
+        $overwrite.classification = 'not_applicable'
+        $overwrite.capacity_bytes = $null
+        $overwrite.final_etl_length = $null
+        $overwrite.utilization_ratio = $null
+        $overwrite.risk_reasons = @()
+        $overwrite.reason = 'Memory logging uses bounded in-memory buffer reuse.'
+        $document | ConvertTo-Json -Depth 20 |
+            Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
+
+        { & $script:Validator -Path $script:DocumentPath } | Should -Not -Throw
+    }
+
+    It 'rejects a bounded Memory profile that claims Circular file mode' {
         $document = Get-Content -LiteralPath $script:DocumentPath -Raw | ConvertFrom-Json
         $document.capture.profile.logging_mode = 'Memory'
         $document | ConvertTo-Json -Depth 20 |
             Set-Content -LiteralPath $script:DocumentPath -Encoding UTF8
 
         { & $script:Validator -Path $script:DocumentPath } |
-            Should -Throw '*only for File logging mode*'
+            Should -Throw '*Memory logging must use Memory file_mode*'
     }
 
     It 'rejects circular utilization math that does not match ETL provenance' {

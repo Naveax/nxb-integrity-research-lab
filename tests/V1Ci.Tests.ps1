@@ -15,6 +15,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
                 known_error_scanner = Join-Path $full 'scripts\Invoke-NxbV1CiKnownErrorScan.ps1'
                 validator = Join-Path $full 'tools\validate_v1_ci.py'
                 native = Join-Path $full 'scripts\Invoke-NxbV1CiNativeValidation.ps1'
+                bounded_native_smoke = Join-Path $full 'scripts\Invoke-NxbBoundedTriggerNativeSmoke.ps1'
                 signing = Join-Path $full 'scripts\Invoke-NxbV1ProductionSigningCertification.ps1'
             }
         }
@@ -22,7 +23,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
 
     It 'keeps every CI authority component repo-owned' {
         $c = Get-NxbV1CiTestContext
-        foreach ($path in @($c.policy,$c.known_error_config,$c.workflow,$c.hosted,$c.known_error_scanner,$c.validator,$c.native,$c.signing)) { Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue }
+        foreach ($path in @($c.policy,$c.known_error_config,$c.workflow,$c.hosted,$c.known_error_scanner,$c.validator,$c.native,$c.bounded_native_smoke,$c.signing)) { Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue }
         $validatorSource = Get-Content -LiteralPath $c.validator -Raw
         $validatorSource | Should -Match 'nxb-v1-ci-independent-v1'
         $validatorSource | Should -Match 'requirement_count'
@@ -90,6 +91,7 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $c = Get-NxbV1CiTestContext
         $workflowSource = Get-Content -LiteralPath $c.workflow -Raw
         $nativeSource = Get-Content -LiteralPath $c.native -Raw
+        $boundedSmokeSource = Get-Content -LiteralPath $c.bounded_native_smoke -Raw
         $workflowSource | Should -Match ([regex]::Escape('Invoke-NxbV1CiNativeValidation.ps1'))
         $workflowSource | Should -Match ([regex]::Escape('-RepetitionCount 1'))
         $workflowSource | Should -Match ([regex]::Escape('-WarmupCount 0'))
@@ -108,10 +110,23 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $nativeSource | Should -Match ([regex]::Escape('$ps51Passed -ne ($ps51Total - $expectedPs51Excluded)'))
         $nativeSource | Should -Not -Match ([regex]::Escape("'893/893'"))
         $nativeSource | Should -Not -Match ([regex]::Escape("'886/893'"))
+        $nativeSource | Should -Match ([regex]::Escape('$xperfPath = Resolve-NxbCiNativeCommand -Name @(''xperf.exe'',''xperf'')'))
+        $nativeSource | Should -Match ([regex]::Escape('$wptDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $xperfPath))'))
+        $nativeSource | Should -Match ([regex]::Escape('$pairedWprPath = Join-Path $wptDirectory ''wpr.exe'''))
+        $nativeSource | Should -Match ([regex]::Escape('$wprDirectory.Equals($xperfDirectory,[StringComparison]::OrdinalIgnoreCase)'))
+        $nativeSource | Should -Not -Match ([regex]::Escape('$wprPath = Resolve-NxbCiNativeCommand -Name @(''wpr.exe'',''wpr'')'))
         $nativeSource | Should -Match ([regex]::Escape('Invoke-CollectorOverheadCalibration.ps1'))
+        $nativeSource | Should -Match ([regex]::Escape('Invoke-NxbBoundedTriggerNativeSmoke.ps1'))
+        $nativeSource | Should -Match ([regex]::Escape("bounded_trigger_smoke_authority = 'nxb-bounded-trigger-native-smoke-v1'"))
+        $nativeSource | Should -Match ([regex]::Escape('bounded_trigger_smoke_valid = $true'))
+        $nativeSource | Should -Match ([regex]::Escape('bounded-trigger-native-smoke.json'))
+        $nativeSource | Should -Match ([regex]::Escape('$boundedSmokePath'))
         $nativeSource | Should -Match ([regex]::Escape("authority = 'nxb-v1-ci-native-v1'"))
-        $nativeSource | Should -Match ([regex]::Escape('review_entries = 7'))
+        $nativeSource | Should -Match ([regex]::Escape('review_entries = 8'))
+        $nativeSource | Should -Not -Match ([regex]::Escape('review_entries = 7'))
         $nativeSource | Should -Match ([regex]::Escape('production_release_updated = $false'))
+        $boundedSmokeSource | Should -Match ([regex]::Escape("authority = 'nxb-bounded-trigger-native-smoke-v1'"))
+        $boundedSmokeSource | Should -Match ([regex]::Escape('etl_retained_in_review_artifact = $false'))
     }
 
     It 'delegates signed-release verification with fail-closed result-shape checks' {
@@ -162,6 +177,10 @@ Describe 'NXB v1 CI and native authority automation contract' {
         $c = Get-NxbV1CiTestContext
         $source = Get-Content -LiteralPath $c.hosted -Raw
         $workflow = Get-Content -LiteralPath $c.workflow -Raw
+        $workflow | Should -Match ([regex]::Escape('NXB_PS51_MODULE_ROOT'))
+        $workflow | Should -Match ([regex]::Escape('Join-Path $env:RUNNER_TEMP ''nxb-ps51-modules'''))
+        $source | Should -Match ([regex]::Escape("GetEnvironmentVariable('NXB_PS51_MODULE_ROOT',[EnvironmentVariableTarget]::Process)"))
+        $source | Should -Match ([regex]::Escape('requires NXB_PS51_MODULE_ROOT when MyDocuments is unavailable'))
         $source | Should -Match ([regex]::Escape('Join-Path $repositoryRoot ''tests'''))
         $source | Should -Match ([regex]::Escape('New-PesterConfiguration'))
         $source | Should -Match ([regex]::Escape('WindowsPowerShell\v1.0\powershell.exe'))
