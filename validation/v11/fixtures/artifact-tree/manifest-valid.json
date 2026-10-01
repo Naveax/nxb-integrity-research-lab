@@ -1,0 +1,18 @@
+{
+  "contract_id": "nxb-artifact-tree-manifest-v1",
+  "root_role": "fixture-root",
+  "file_count": 2,
+  "total_bytes": 3,
+  "files": [
+    {
+      "relative_path": "a.txt",
+      "byte_length": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "relative_path": "nested/ü.txt",
+      "byte_length": 3,
+      "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    }
+  ]
+}

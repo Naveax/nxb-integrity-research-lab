@@ -1,0 +1,51 @@
+{
+  "profile": "nxb-v11-verified-archive-fixture-cases-v1",
+  "note": "Unsafe archive paths are data strings only; no hostile repository path or binary archive is tracked.",
+  "valid": [
+    "module.psd1",
+    "nested/file.txt",
+    "unicode/ü.txt"
+  ],
+  "invalid": [
+    {
+      "case": "traversal",
+      "entry": "../escape.txt"
+    },
+    {
+      "case": "rooted",
+      "entry": "/rooted.txt"
+    },
+    {
+      "case": "drive",
+      "entry": "C:/drive.txt"
+    },
+    {
+      "case": "backslash",
+      "entry": "a\\b.txt"
+    },
+    {
+      "case": "reserved_dos",
+      "entry": "NUL.txt"
+    },
+    {
+      "case": "ads_colon",
+      "entry": "a:stream"
+    },
+    {
+      "case": "trailing_dot",
+      "entry": "trail./file.txt"
+    },
+    {
+      "case": "dot_segment",
+      "entry": "a/./b.txt"
+    },
+    {
+      "case": "empty_segment",
+      "entry": "a//b.txt"
+    },
+    {
+      "case": "control",
+      "entry": "control\\u0001.txt"
+    }
+  ]
+}

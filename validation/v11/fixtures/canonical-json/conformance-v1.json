@@ -1,0 +1,29 @@
+{
+  "profile": "nxb-canonical-json-v1-seed-conformance",
+  "historical_smoke": {
+    "input": {
+      "z": 1,
+      "list": [
+        3,
+        "x\n",
+        false
+      ],
+      "a": {
+        "b": true,
+        "a": null
+      }
+    },
+    "expected_canonical": "{\"a\":{\"a\":null,\"b\":true},\"list\":[3,\"x\\n\",false],\"z\":1}",
+    "expected_sha256": "170f36671e659fda9fdc5237be36ae283a2e5a63c03029ce11cb6b4c17f839a7"
+  },
+  "artifact_tree_fixture": {
+    "path": "validation/v11/fixtures/artifact-tree/manifest-valid.json",
+    "expected_canonical": "{\"contract_id\":\"nxb-artifact-tree-manifest-v1\",\"file_count\":2,\"files\":[{\"byte_length\":0,\"relative_path\":\"a.txt\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"byte_length\":3,\"relative_path\":\"nested/ü.txt\",\"sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}],\"root_role\":\"fixture-root\",\"total_bytes\":3}",
+    "expected_sha256": "cda7308a487bf6b05ebd37adbe9cb0d08db1e1e08f47b4a189a0a42ed04b0be3"
+  },
+  "type_distinction": {
+    "integer": 42,
+    "numeric_string": "42",
+    "unicode_nfc": "Türkçe ü"
+  }
+}
