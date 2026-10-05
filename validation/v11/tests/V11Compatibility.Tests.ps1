@@ -437,3 +437,138 @@ Describe 'V11 A0 supply-chain schema contracts' {
         [string]$schema.'$defs'.relativePath.pattern | Should -Match '\\\\'
     }
 }
+
+Describe 'V11 native-impact classifier' {
+    BeforeAll {
+        $script:ImpactPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
+        $script:ImpactSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-native-impact-policy.schema.json'
+        $script:ImpactToolPath = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+        $script:ImpactFixturePath = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-impact-classifier\cases-v1.json'
+    }
+
+    It 'keeps the native-impact policy canonical, strict and fail-closed by default' {
+        $policyBytes = [IO.File]::ReadAllBytes($script:ImpactPolicyPath)
+        $policyText = [Text.UTF8Encoding]::new($false, $true).GetString($policyBytes)
+        $policy = $policyText | ConvertFrom-Json
+        (ConvertTo-NxbCanonicalJson -InputObject $policy) | Should -BeExactly $policyText
+        $policyText.EndsWith([string][char]10) | Should -BeFalse
+
+        [string]$policy.authority | Should -BeExactly 'nxb-native-impact-policy-v1'
+        [int]$policy.schema_version | Should -Be 1
+        @($policy.classification_precedence) |
+            Should -Be @('native_required', 'hosted_authority_only', 'non_authority_metadata')
+        @($policy.forbidden_broad_patterns) | Should -Contain 'docs/**'
+        @($policy.forbidden_broad_patterns) | Should -Contain '*.md'
+        @($policy.native_roots | Where-Object { [string]$_.path -eq 'validation/v11/tools/' }).Count |
+            Should -Be 1
+        @($policy.hosted_authority_only_roots | Where-Object { [string]$_.path -eq 'docs/hosted-authority-fixture/' }).Count |
+            Should -Be 1
+        @($policy.non_authority_metadata_roots | Where-Object { [string]$_.path -eq 'docs/non-authority-fixture/' }).Count |
+            Should -Be 1
+
+        $schema = Get-Content -LiteralPath $script:ImpactSchemaPath -Raw | ConvertFrom-Json
+        [string]$schema.'$id' | Should -BeExactly 'urn:nxb:schema:nxb-native-impact-policy:v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        [string]$schema.properties.authority.const | Should -BeExactly 'nxb-native-impact-policy-v1'
+        [bool]$schema.'$defs'.rootRule.additionalProperties | Should -BeFalse
+        [bool]$schema.'$defs'.edge.additionalProperties | Should -BeFalse
+    }
+
+    It 'matches every native-impact fixture decision deterministically' {
+        $fixtures = Get-Content -LiteralPath $script:ImpactFixturePath -Raw |
+            ConvertFrom-Json
+        [string]$fixtures.authority |
+            Should -BeExactly 'nxb-native-impact-classifier-fixtures-v1'
+        @($fixtures.cases).Count | Should -BeGreaterOrEqual 12
+
+        $root = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-impact-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        [void][IO.Directory]::CreateDirectory($root)
+        $seenIds = @{}
+
+        try {
+            $index = 0
+            foreach ($case in @($fixtures.cases)) {
+                $id = [string]$case.id
+                $seenIds.ContainsKey($id) | Should -BeFalse
+                $seenIds[$id] = $true
+
+                $inputObject = [ordered]@{
+                    authority = 'nxb-native-impact-classification-input-v1'
+                    schema_version = 1
+                    repository = [string]$fixtures.repository
+                    base_sha = [string]$fixtures.base_sha
+                    head_sha = [string]$fixtures.head_sha
+                    merge_base_sha = [string]$fixtures.merge_base_sha
+                    changed_paths = @($case.changes)
+                    base_dependency_edges = @($case.base_dependency_edges)
+                    candidate_dependency_edges = @($case.candidate_dependency_edges)
+                }
+
+                $inputPath = Join-Path $root ('case-{0}.input.json' -f $index)
+                $outputPath = Join-Path $root ('case-{0}.output.json' -f $index)
+                Write-Utf8NoBom -Path $inputPath -Text (
+                    ConvertTo-NxbCanonicalJson -InputObject $inputObject
+                )
+
+                $run = Invoke-V11Python -Arguments @(
+                    $script:ImpactToolPath,
+                    '--policy', $script:ImpactPolicyPath,
+                    '--input', $inputPath,
+                    '--output', $outputPath
+                )
+                $run.ExitCode | Should -Be 0
+                Test-Path -LiteralPath $outputPath -PathType Leaf | Should -BeTrue
+
+                $resultText = Get-Content -LiteralPath $outputPath -Raw
+                $result = $resultText | ConvertFrom-Json
+                (ConvertTo-NxbCanonicalJson -InputObject $result) |
+                    Should -BeExactly $resultText
+                [string]$result.authority |
+                    Should -BeExactly 'nxb-native-impact-classification-v1'
+                [string]$result.impact_class |
+                    Should -BeExactly ([string]$case.expected_impact_class)
+                [string]$result.decision_kind |
+                    Should -BeExactly ([string]$case.expected_decision_kind)
+                [int]$result.unmatched_path_count |
+                    Should -Be ([int]$case.expected_unmatched_path_count)
+                ([string]$result.impact_policy_sha256) |
+                    Should -Match '^[0-9a-f]{64}$'
+                ([string]$result.impact_graph_sha256) |
+                    Should -Match '^[0-9a-f]{64}$'
+                ([string]$result.changed_path_set_sha256) |
+                    Should -Match '^[0-9a-f]{64}$'
+                $index++
+            }
+
+            foreach ($requiredId in @(
+                'workflow-change',
+                'hosted-only-fixture',
+                'non-authority-fixture-script-extension',
+                'dependency-closure-indirect-json',
+                'rename-safe-to-native',
+                'rename-native-to-safe',
+                'delete-native',
+                'mixed-safe-native',
+                'unknown-new-file',
+                'base-edge-removed-candidate',
+                'classifier-self-change',
+                'symlink-shape'
+            )) {
+                $seenIds.ContainsKey($requiredId) | Should -BeTrue
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'keeps the classifier core free of network and child-process execution' {
+        $source = Get-Content -LiteralPath $script:ImpactToolPath -Raw
+        $source | Should -Not -Match '(?m)^\s*import\s+(subprocess|socket|urllib|http|requests)\b'
+        $source | Should -Not -Match '\b(subprocess|os\.system|Popen)\b'
+        $source | Should -Match 'unknown_unclassified_path'
+        $source | Should -Match 'native_dependency_closure'
+    }
+}

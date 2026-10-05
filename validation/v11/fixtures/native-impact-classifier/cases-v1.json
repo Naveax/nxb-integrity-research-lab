@@ -1,0 +1,239 @@
+{
+  "authority": "nxb-native-impact-classifier-fixtures-v1",
+  "schema_version": 1,
+  "repository": "Naveax/nxb-integrity-research-lab",
+  "base_sha": "1111111111111111111111111111111111111111",
+  "head_sha": "2222222222222222222222222222222222222222",
+  "merge_base_sha": "1111111111111111111111111111111111111111",
+  "cases": [
+    {
+      "id": "workflow-change",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": ".github/workflows/nxb-v11-compatibility.yml",
+          "new_path": ".github/workflows/nxb-v11-compatibility.yml",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "hosted-only-fixture",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "docs/hosted-authority-fixture/readme.md",
+          "new_path": "docs/hosted-authority-fixture/readme.md",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "hosted_authority_only",
+      "expected_decision_kind": "native_not_required",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "non-authority-fixture-script-extension",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "docs/non-authority-fixture/example.ps1",
+          "new_path": "docs/non-authority-fixture/example.ps1",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "non_authority_metadata",
+      "expected_decision_kind": "native_not_required",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "dependency-closure-indirect-json",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "docs/innocent-looking.json",
+          "new_path": "docs/innocent-looking.json",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [
+        {
+          "source": "validation/v11/scripts/Invoke-NxbV11CompatibilityNativeValidation.ps1",
+          "target": "docs/innocent-looking.json",
+          "reason_code": "fixture_native_dependency"
+        }
+      ],
+      "candidate_dependency_edges": [
+        {
+          "source": "validation/v11/scripts/Invoke-NxbV11CompatibilityNativeValidation.ps1",
+          "target": "docs/innocent-looking.json",
+          "reason_code": "fixture_native_dependency"
+        }
+      ],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "rename-safe-to-native",
+      "changes": [
+        {
+          "change_type": "renamed",
+          "old_path": "docs/non-authority-fixture/note.txt",
+          "new_path": "scripts/renamed.ps1",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "rename-native-to-safe",
+      "changes": [
+        {
+          "change_type": "renamed",
+          "old_path": "scripts/old.ps1",
+          "new_path": "docs/non-authority-fixture/old.txt",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "delete-native",
+      "changes": [
+        {
+          "change_type": "deleted",
+          "old_path": "profiles/Nxb.MinimalCpuScheduler.wprp",
+          "new_path": null,
+          "old_type": "regular",
+          "new_type": "missing"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "mixed-safe-native",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "docs/non-authority-fixture/a.txt",
+          "new_path": "docs/non-authority-fixture/a.txt",
+          "old_type": "regular",
+          "new_type": "regular"
+        },
+        {
+          "change_type": "modified",
+          "old_path": "schemas/nxb-v11-environment-fingerprint.schema.json",
+          "new_path": "schemas/nxb-v11-environment-fingerprint.schema.json",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "unknown-new-file",
+      "changes": [
+        {
+          "change_type": "added",
+          "old_path": null,
+          "new_path": "mystery/new.txt",
+          "old_type": "missing",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 1
+    },
+    {
+      "id": "base-edge-removed-candidate",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "docs/dependency.txt",
+          "new_path": "docs/dependency.txt",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [
+        {
+          "source": "validation/v11/scripts/Invoke-NxbV11CompatibilityNativeValidation.ps1",
+          "target": "docs/dependency.txt",
+          "reason_code": "fixture_removed_edge"
+        }
+      ],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "classifier-self-change",
+      "changes": [
+        {
+          "change_type": "modified",
+          "old_path": "validation/v11/tools/classify_native_impact.py",
+          "new_path": "validation/v11/tools/classify_native_impact.py",
+          "old_type": "regular",
+          "new_type": "regular"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    },
+    {
+      "id": "symlink-shape",
+      "changes": [
+        {
+          "change_type": "type_changed",
+          "old_path": "docs/non-authority-fixture/link.txt",
+          "new_path": "docs/non-authority-fixture/link.txt",
+          "old_type": "regular",
+          "new_type": "symlink"
+        }
+      ],
+      "base_dependency_edges": [],
+      "candidate_dependency_edges": [],
+      "expected_impact_class": "native_required",
+      "expected_decision_kind": "native_evidence",
+      "expected_unmatched_path_count": 0
+    }
+  ]
+}

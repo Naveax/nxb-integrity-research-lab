@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-native-impact-policy:v1",
+  "title": "NXB native impact policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "policy_version",
+    "native_roots",
+    "hosted_authority_only_roots",
+    "non_authority_metadata_roots",
+    "dependency_edges",
+    "forbidden_broad_patterns",
+    "classification_precedence",
+    "limits"
+  ],
+  "properties": {
+    "authority": {"const": "nxb-native-impact-policy-v1"},
+    "schema_version": {"const": 1},
+    "policy_version": {"type": "integer", "minimum": 1},
+    "native_roots": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rootRule"}},
+    "hosted_authority_only_roots": {"type": "array", "items": {"$ref": "#/$defs/rootRule"}},
+    "non_authority_metadata_roots": {"type": "array", "items": {"$ref": "#/$defs/rootRule"}},
+    "dependency_edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}},
+    "forbidden_broad_patterns": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "classification_precedence": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "native_required"},
+        {"const": "hosted_authority_only"},
+        {"const": "non_authority_metadata"}
+      ],
+      "items": false
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_changed_paths", "max_dependency_edges", "max_graph_nodes"],
+      "properties": {
+        "max_changed_paths": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "max_dependency_edges": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "max_graph_nodes": {"type": "integer", "minimum": 1, "maximum": 65536}
+      }
+    }
+  },
+  "$defs": {
+    "ruleId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "reasonCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "repoPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f*?\\[\\]])[^/]+(?:/[^/]+)*/?$"
+    },
+    "rootRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "match_type", "path", "reason_code"],
+      "properties": {
+        "rule_id": {"$ref": "#/$defs/ruleId"},
+        "match_type": {"enum": ["exact", "prefix"]},
+        "path": {"$ref": "#/$defs/repoPath"},
+        "reason_code": {"$ref": "#/$defs/reasonCode"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"match_type": {"const": "exact"}}},
+          "then": {"properties": {"path": {"pattern": "[^/]$"}}}
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target", "reason_code"],
+      "properties": {
+        "source": {"$ref": "#/$defs/repoPath"},
+        "target": {"$ref": "#/$defs/repoPath"},
+        "reason_code": {"$ref": "#/$defs/reasonCode"}
+      }
+    }
+  }
+}
