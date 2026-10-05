@@ -24,6 +24,34 @@
       "entry": "a\\b.txt"
     },
     {
+      "case": "non_nfc",
+      "entry": "e\u0301.txt"
+    },
+    {
+      "case": "invalid_question",
+      "entry": "?.txt"
+    },
+    {
+      "case": "invalid_asterisk",
+      "entry": "*.txt"
+    },
+    {
+      "case": "invalid_quote",
+      "entry": "\".txt"
+    },
+    {
+      "case": "invalid_less_than",
+      "entry": "<.txt"
+    },
+    {
+      "case": "invalid_greater_than",
+      "entry": ">.txt"
+    },
+    {
+      "case": "invalid_pipe",
+      "entry": "|.txt"
+    },
+    {
       "case": "reserved_dos",
       "entry": "NUL.txt"
     },

@@ -176,7 +176,8 @@ function Get-RelativeArchivePath {
         $EntryName -match '^[A-Za-z]:') {
         Fail "ZIP entry is rooted/drive-qualified: $EntryName"
     }
-    if ($EntryName.Normalize([Text.NormalizationForm]::FormC) -cne $EntryName) {
+    $nfcEntryName = $EntryName.Normalize([Text.NormalizationForm]::FormC)
+    if (-not [string]::Equals($nfcEntryName, $EntryName, [StringComparison]::Ordinal)) {
         Fail "ZIP entry is not NFC-normalized: $EntryName"
     }
 
@@ -201,6 +202,9 @@ function Get-RelativeArchivePath {
         }
         if ($segment.Contains(':')) {
             Fail "ZIP entry contains ADS-style colon: $EntryName"
+        }
+        if ($segment.IndexOfAny([char[]]'?*"<>|') -ge 0) {
+            Fail "ZIP entry contains Windows-invalid segment character: $EntryName"
         }
         foreach ($character in $segment.ToCharArray()) {
             $code = [int]$character
