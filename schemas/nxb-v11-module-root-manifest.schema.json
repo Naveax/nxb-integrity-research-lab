@@ -1,0 +1,40 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"urn:nxb:schema:nxb-v11-module-root-manifest:v1",
+  "title":"NXB V11 module root manifest v1",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["authority","powershell_module_lock_sha256","module_count","modules"],
+  "properties":{
+    "authority":{"const":"nxb-v11-module-root-manifest-v1"},
+    "powershell_module_lock_sha256":{"$ref":"#/$defs/sha256"},
+    "module_count":{"type":"integer","minimum":0},
+    "modules":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/module"}}
+  },
+  "$defs":{
+    "sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "version":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._+!-]*$"},
+    "normalizedName":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[a-z0-9]+(?:[._-][a-z0-9]+)*$"},
+    "moduleName":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "relativePath":{"type":"string","minLength":1,"maxLength":2048,"pattern":"^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f:])[^/]+(?:/[^/]+)*$"},
+    "module":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":[
+        "normalized_name","name","version","package_sha256",
+        "module_manifest_relative","module_manifest_sha256",
+        "extracted_tree_sha256","loaded_relative_path"
+      ],
+      "properties":{
+        "normalized_name":{"$ref":"#/$defs/normalizedName"},
+        "name":{"$ref":"#/$defs/moduleName"},
+        "version":{"$ref":"#/$defs/version"},
+        "package_sha256":{"$ref":"#/$defs/sha256"},
+        "module_manifest_relative":{"$ref":"#/$defs/relativePath"},
+        "module_manifest_sha256":{"$ref":"#/$defs/sha256"},
+        "extracted_tree_sha256":{"$ref":"#/$defs/sha256"},
+        "loaded_relative_path":{"$ref":"#/$defs/relativePath"}
+      }
+    }
+  }
+}

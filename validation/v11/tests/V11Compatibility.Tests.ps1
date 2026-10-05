@@ -313,3 +313,127 @@ Describe 'V11 A0 Python dependency authority' {
         $launcher | Should -Not -Match '\b(subprocess|os\.system)\b'
     }
 }
+Describe 'V11 A0 supply-chain schema contracts' {
+    BeforeAll {
+        $script:ModuleLockSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-powershell-module-lock.schema.json'
+        $script:WheelhouseSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-wheelhouse-manifest.schema.json'
+        $script:InstalledSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-installed-distribution-manifest.schema.json'
+        $script:ModuleRootSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-module-root-manifest.schema.json'
+
+        function Read-Schema {
+            param([Parameter(Mandatory = $true)][string]$Path)
+
+            $bytes = [IO.File]::ReadAllBytes($Path)
+            $bytes.Length | Should -BeGreaterThan 0
+            if ($bytes.Length -ge 3) {
+                (@($bytes[0], $bytes[1], $bytes[2]) -join ',') |
+                    Should -Not -Be '239,187,191'
+            }
+            return [Text.UTF8Encoding]::new($false, $true).GetString($bytes) |
+                ConvertFrom-Json
+        }
+    }
+
+    It 'binds the PowerShell module lock v2 schema without recursive digest fields' {
+        $schema = Read-Schema -Path $script:ModuleLockSchemaPath
+        [string]$schema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-powershell-module-lock:v2'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        [string]$schema.properties.authority.const |
+            Should -BeExactly 'nxb-v11-powershell-module-lock-v2'
+        [int]$schema.properties.schema_version.const | Should -Be 2
+        [int]$schema.properties.modules.minItems | Should -Be 2
+        [int]$schema.properties.modules.maxItems | Should -Be 2
+        [bool]$schema.'$defs'.module.additionalProperties | Should -BeFalse
+        [string]$schema.'$defs'.module.properties.extracted_tree_profile.const |
+            Should -BeExactly 'nxb-artifact-tree-manifest-v1'
+
+        $rootPropertyNames = @($schema.properties.PSObject.Properties.Name)
+        foreach ($forbidden in @(
+            'powershell_module_lock_sha256',
+            'validation_toolchain_lock_sha256',
+            'compatibility_policy_sha256',
+            'receipt_sha256'
+        )) {
+            $rootPropertyNames | Should -Not -Contain $forbidden
+        }
+
+        @($schema.'$defs'.module.properties.allowed_powershell_cells.items.enum) |
+            Should -Be @('ps74-prev-lts', 'ps75-stable', 'ps76-primary')
+    }
+
+    It 'binds the wheelhouse manifest v1 schema to exact locked wheel bytes' {
+        $schema = Read-Schema -Path $script:WheelhouseSchemaPath
+        [string]$schema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-wheelhouse-manifest:v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        [string]$schema.properties.authority.const |
+            Should -BeExactly 'nxb-v11-wheelhouse-manifest-v1'
+        [bool]$schema.'$defs'.wheel.additionalProperties | Should -BeFalse
+        [bool]$schema.'$defs'.wheel.properties.wheel_tags.uniqueItems | Should -BeTrue
+
+        $required = @($schema.'$defs'.wheel.required)
+        foreach ($name in @(
+            'normalized_name',
+            'version',
+            'wheel_filename',
+            'byte_length',
+            'wheel_sha256',
+            'wheel_tags'
+        )) {
+            $required | Should -Contain $name
+        }
+    }
+
+    It 'binds the installed-distribution manifest v1 schema to RECORD-owned files' {
+        $schema = Read-Schema -Path $script:InstalledSchemaPath
+        [string]$schema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-installed-distribution-manifest:v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        [string]$schema.properties.authority.const |
+            Should -BeExactly 'nxb-v11-installed-distribution-manifest-v1'
+        [bool]$schema.'$defs'.distribution.additionalProperties | Should -BeFalse
+        [bool]$schema.'$defs'.file.additionalProperties | Should -BeFalse
+
+        $required = @($schema.'$defs'.distribution.required)
+        foreach ($name in @(
+            'source_wheel_filename',
+            'source_wheel_sha256',
+            'source_extracted_tree_sha256',
+            'metadata_relative_path',
+            'metadata_sha256',
+            'record_relative_path',
+            'record_sha256',
+            'files'
+        )) {
+            $required | Should -Contain $name
+        }
+    }
+
+    It 'binds the module-root manifest v1 schema without host absolute paths' {
+        $schema = Read-Schema -Path $script:ModuleRootSchemaPath
+        [string]$schema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-module-root-manifest:v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        [string]$schema.properties.authority.const |
+            Should -BeExactly 'nxb-v11-module-root-manifest-v1'
+        [bool]$schema.'$defs'.module.additionalProperties | Should -BeFalse
+
+        $required = @($schema.'$defs'.module.required)
+        foreach ($name in @(
+            'normalized_name',
+            'name',
+            'version',
+            'package_sha256',
+            'module_manifest_relative',
+            'module_manifest_sha256',
+            'extracted_tree_sha256',
+            'loaded_relative_path'
+        )) {
+            $required | Should -Contain $name
+        }
+
+        [string]$schema.'$defs'.relativePath.pattern | Should -Match '\(\?!/'
+        [string]$schema.'$defs'.relativePath.pattern | Should -Match '\\\\'
+    }
+}
