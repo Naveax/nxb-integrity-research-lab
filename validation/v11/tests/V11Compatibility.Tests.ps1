@@ -572,3 +572,238 @@ Describe 'V11 native-impact classifier' {
         $source | Should -Match 'native_dependency_closure'
     }
 }
+
+
+Describe 'V11 successor known-error scanner' {
+    BeforeAll {
+        $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
+        $script:KnownErrorPolicySchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-known-error-signatures.schema.json'
+        $script:KnownErrorScanSchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-known-error-scan.schema.json'
+        $script:KnownErrorToolPath = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+        $script:KnownErrorFixturePath = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\known-error\cases-v1.json'
+    }
+
+    It 'keeps signature policy canonical and forbids failure override' {
+        $policyBytes = [IO.File]::ReadAllBytes($script:KnownErrorPolicyPath)
+        $policyText = [Text.UTF8Encoding]::new($false, $true).GetString($policyBytes)
+        $policy = $policyText | ConvertFrom-Json
+        (ConvertTo-NxbCanonicalJson -InputObject $policy) | Should -BeExactly $policyText
+        $policyText.EndsWith([string][char]10) | Should -BeFalse
+        [string]$policy.authority | Should -BeExactly 'nxb-v11-known-error-signatures-v1'
+        [int]$policy.schema_version | Should -Be 1
+
+        $ids = @($policy.rules | ForEach-Object { [string]$_.id })
+        $ids.Count | Should -BeGreaterThan 0
+        @($ids | Sort-Object -Unique).Count | Should -Be $ids.Count
+        foreach ($rule in @($policy.rules)) {
+            [string]$rule.id | Should -Match '^NXB-V11-ERR-[0-9]{3}$'
+            [string]$rule.severity | Should -BeExactly 'error'
+            [bool]$rule.failure_override_permitted | Should -BeFalse
+            @($rule.applies_to).Count | Should -BeGreaterThan 0
+        }
+
+        $signatureSchema = Get-Content -LiteralPath $script:KnownErrorPolicySchemaPath -Raw |
+            ConvertFrom-Json
+        [string]$signatureSchema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-known-error-signatures:v1'
+        [bool]$signatureSchema.additionalProperties | Should -BeFalse
+        [bool]$signatureSchema.'$defs'.rule.additionalProperties | Should -BeFalse
+        [bool]$signatureSchema.'$defs'.rule.properties.failure_override_permitted.const |
+            Should -BeFalse
+
+        $scanSchema = Get-Content -LiteralPath $script:KnownErrorScanSchemaPath -Raw |
+            ConvertFrom-Json
+        [string]$scanSchema.'$id' |
+            Should -BeExactly 'urn:nxb:schema:nxb-v11-known-error-scan:v1'
+        [bool]$scanSchema.additionalProperties | Should -BeFalse
+        [bool]$scanSchema.properties.failure_override_permitted.const | Should -BeFalse
+        [bool]$scanSchema.'$defs'.finding.additionalProperties | Should -BeFalse
+    }
+
+    It 'reproduces every logical known-error fixture decision' {
+        $fixtures = Get-Content -LiteralPath $script:KnownErrorFixturePath -Raw |
+            ConvertFrom-Json
+        [string]$fixtures.authority |
+            Should -BeExactly 'nxb-v11-known-error-fixtures-v1'
+        @($fixtures.cases).Count | Should -Be 10
+
+        $root = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-known-error-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        [void][IO.Directory]::CreateDirectory($root)
+
+        try {
+            $index = 0
+            foreach ($case in @($fixtures.cases)) {
+                $relative = 'fixture/{0:d2}-{1}' -f $index,([string]$case.filename)
+                $full = Join-Path $root $relative.Replace('/', [IO.Path]::DirectorySeparatorChar)
+                [void][IO.Directory]::CreateDirectory((Split-Path -Parent $full))
+                Write-Utf8NoBom -Path $full -Text ([string]$case.source)
+
+                $input = [ordered]@{
+                    authority = 'nxb-v11-known-error-scan-input-v1'
+                    schema_version = 1
+                    repository = 'fixture/repository'
+                    entries = @(
+                        [ordered]@{
+                            path = $relative
+                            validation_class = [string]$case.validation_class
+                        }
+                    )
+                }
+                $inputPath = Join-Path $root ('input-{0:d2}.json' -f $index)
+                $outputPath = Join-Path $root ('output-{0:d2}.json' -f $index)
+                Write-Utf8NoBom -Path $inputPath -Text (
+                    ConvertTo-NxbCanonicalJson -InputObject $input
+                )
+
+                $run = Invoke-V11Python -Arguments @(
+                    $script:KnownErrorToolPath,
+                    '--repository-root', $root,
+                    '--policy', $script:KnownErrorPolicyPath,
+                    '--input', $inputPath,
+                    '--output', $outputPath
+                )
+                $run.ExitCode | Should -Be 0
+
+                $resultText = Get-Content -LiteralPath $outputPath -Raw
+                $result = $resultText | ConvertFrom-Json
+                (ConvertTo-NxbCanonicalJson -InputObject $result) |
+                    Should -BeExactly $resultText
+                [string]$result.authority |
+                    Should -BeExactly 'nxb-v11-known-error-scan-v1'
+                [bool]$result.failure_override_permitted | Should -BeFalse
+
+                $expectedIds = @($case.expected_ids | ForEach-Object { [string]$_ } | Sort-Object)
+                $actualIds = @($result.findings | ForEach-Object { [string]$_.id } | Sort-Object)
+                $actualIds | Should -Be $expectedIds
+                [int]$result.finding_count | Should -Be $expectedIds.Count
+                [string]$result.status |
+                    Should -BeExactly $(if ($expectedIds.Count -eq 0) { 'passed' } else { 'failed' })
+                $index++
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'reports zero findings across the current successor judging-source subset' {
+        $entries = @(
+            [ordered]@{ path = 'validation/v11/scripts/ConvertTo-NxbV11CanonicalAuthority.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/scripts/Expand-NxbV11VerifiedArchive.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/tests/CanonicalJson.Tests.ps1'; validation_class = 'pester_test' },
+            [ordered]@{ path = 'validation/v11/tests/V11Compatibility.Tests.ps1'; validation_class = 'pester_test' },
+            [ordered]@{ path = 'validation/v11/tools/build_artifact_tree_manifest.py'; validation_class = 'executable_python' },
+            [ordered]@{ path = 'validation/v11/tools/materialize_python_requirements.py'; validation_class = 'executable_python' },
+            [ordered]@{ path = 'validation/v11/tools/run_pinned_pip.py'; validation_class = 'executable_python' },
+            [ordered]@{ path = 'validation/v11/tools/classify_native_impact.py'; validation_class = 'executable_python' },
+            [ordered]@{ path = 'validation/v11/tools/scan_v11_known_errors.py'; validation_class = 'executable_python' }
+        )
+        $root = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-known-error-current-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        [void][IO.Directory]::CreateDirectory($root)
+        $inputPath = Join-Path $root 'input.json'
+        $outputPath = Join-Path $root 'output.json'
+
+        try {
+            $input = [ordered]@{
+                authority = 'nxb-v11-known-error-scan-input-v1'
+                schema_version = 1
+                repository = 'Naveax/nxb-integrity-research-lab'
+                entries = $entries
+            }
+            Write-Utf8NoBom -Path $inputPath -Text (
+                ConvertTo-NxbCanonicalJson -InputObject $input
+            )
+            $run = Invoke-V11Python -Arguments @(
+                $script:KnownErrorToolPath,
+                '--repository-root', $script:RepositoryRoot,
+                '--policy', $script:KnownErrorPolicyPath,
+                '--input', $inputPath,
+                '--output', $outputPath
+            )
+            $run.ExitCode | Should -Be 0
+            $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
+            [string]$result.status | Should -BeExactly 'passed'
+            [int]$result.entry_count | Should -Be 9
+            [int]$result.finding_count | Should -Be 0
+            @($result.findings).Count | Should -Be 0
+            [bool]$result.failure_override_permitted | Should -BeFalse
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'fails closed on duplicate, traversal and missing scan paths' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-known-error-invalid-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        [void][IO.Directory]::CreateDirectory((Join-Path $root 'fixture'))
+        $existing = Join-Path $root 'fixture\safe.ps1'
+        Write-Utf8NoBom -Path $existing -Text 'Write-Output ''ok'''
+
+        try {
+            $cases = @(
+                [ordered]@{
+                    name = 'duplicate'
+                    entries = @(
+                        [ordered]@{ path = 'fixture/safe.ps1'; validation_class = 'executable_powershell' },
+                        [ordered]@{ path = 'fixture/safe.ps1'; validation_class = 'pester_test' }
+                    )
+                    expected = 'duplicate scan path'
+                },
+                [ordered]@{
+                    name = 'traversal'
+                    entries = @(
+                        [ordered]@{ path = '../escape.ps1'; validation_class = 'executable_powershell' }
+                    )
+                    expected = 'traversal segment'
+                },
+                [ordered]@{
+                    name = 'missing'
+                    entries = @(
+                        [ordered]@{ path = 'fixture/missing.py'; validation_class = 'executable_python' }
+                    )
+                    expected = 'missing/non-file'
+                }
+            )
+
+            foreach ($case in $cases) {
+                $inputPath = Join-Path $root (([string]$case.name) + '.json')
+                $outputPath = Join-Path $root (([string]$case.name) + '.out.json')
+                $input = [ordered]@{
+                    authority = 'nxb-v11-known-error-scan-input-v1'
+                    schema_version = 1
+                    repository = 'fixture/repository'
+                    entries = @($case.entries)
+                }
+                Write-Utf8NoBom -Path $inputPath -Text (
+                    ConvertTo-NxbCanonicalJson -InputObject $input
+                )
+                $run = Invoke-V11Python -Arguments @(
+                    $script:KnownErrorToolPath,
+                    '--repository-root', $root,
+                    '--policy', $script:KnownErrorPolicyPath,
+                    '--input', $inputPath,
+                    '--output', $outputPath
+                )
+                $run.ExitCode | Should -Be 2
+                $run.Text | Should -Match ([regex]::Escape([string]$case.expected))
+                Test-Path -LiteralPath $outputPath | Should -BeFalse
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'keeps the scanner core offline and process-free' {
+        $source = Get-Content -LiteralPath $script:KnownErrorToolPath -Raw
+        $source | Should -Not -Match '(?m)^\s*import\s+(subprocess|socket|urllib|http|requests)\b'
+        $source | Should -Not -Match '\b(subprocess|os\.system|Popen)\b'
+        $source | Should -Match 'failure_override_permitted'
+    }
+}

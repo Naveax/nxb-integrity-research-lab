@@ -1,0 +1,88 @@
+{
+  "authority": "nxb-v11-known-error-fixtures-v1",
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "safe-powershell",
+      "validation_class": "executable_powershell",
+      "filename": "safe.ps1",
+      "source": "function Test-NxbThing {\n    try { return 1 } catch { throw }\n}\n",
+      "expected_ids": []
+    },
+    {
+      "id": "empty-catch",
+      "validation_class": "executable_powershell",
+      "filename": "empty-catch.ps1",
+      "source": "try { 1 } catch { }\n",
+      "expected_ids": [
+        "NXB-V11-ERR-001"
+      ]
+    },
+    {
+      "id": "matches-assignment",
+      "validation_class": "pester_test",
+      "filename": "matches.Tests.ps1",
+      "source": "$matches = @{}\n",
+      "expected_ids": [
+        "NXB-V11-ERR-002"
+      ]
+    },
+    {
+      "id": "ambiguous-colon",
+      "validation_class": "executable_powershell",
+      "filename": "colon.ps1",
+      "source": "$name = 'x'\nWrite-Host \"value=$name:bad\"\n",
+      "expected_ids": [
+        "NXB-V11-ERR-003"
+      ]
+    },
+    {
+      "id": "strict-json-regex-literal-not-scanned",
+      "validation_class": "strict_json_policy_or_schema",
+      "filename": "policy.json",
+      "source": "{\"regex\":\"catch\\\\s*\\\\{\\\\s*\\\\}\"}",
+      "expected_ids": []
+    },
+    {
+      "id": "pull-request-target",
+      "validation_class": "workflow_orchestration",
+      "filename": "workflow.yml",
+      "source": "on:\n  pull_request_target:\n    types: [opened]\n",
+      "expected_ids": [
+        "NXB-V11-ERR-004"
+      ]
+    },
+    {
+      "id": "unpinned-action",
+      "validation_class": "workflow_orchestration",
+      "filename": "unpinned.yml",
+      "source": "steps:\n  - uses: actions/checkout@v4\n",
+      "expected_ids": [
+        "NXB-V11-ERR-005"
+      ]
+    },
+    {
+      "id": "pinned-action",
+      "validation_class": "workflow_orchestration",
+      "filename": "pinned.yml",
+      "source": "steps:\n  - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n",
+      "expected_ids": []
+    },
+    {
+      "id": "python-eval",
+      "validation_class": "executable_python",
+      "filename": "bad.py",
+      "source": "value = eval(user_text)\n",
+      "expected_ids": [
+        "NXB-V11-ERR-006"
+      ]
+    },
+    {
+      "id": "safe-python",
+      "validation_class": "executable_python",
+      "filename": "safe.py",
+      "source": "import json\nvalue = json.loads(text)\n",
+      "expected_ids": []
+    }
+  ]
+}

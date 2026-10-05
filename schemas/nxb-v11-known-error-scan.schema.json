@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-known-error-scan:v1",
+  "title": "NXB V11 known-error scan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "signature_policy_sha256",
+    "entry_count",
+    "rule_count",
+    "finding_count",
+    "status",
+    "failure_override_permitted",
+    "findings"
+  ],
+  "properties": {
+    "authority": {"const": "nxb-v11-known-error-scan-v1"},
+    "schema_version": {"const": 1},
+    "signature_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "entry_count": {"type": "integer", "minimum": 0},
+    "rule_count": {"type": "integer", "minimum": 0},
+    "finding_count": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["passed", "failed"]},
+    "failure_override_permitted": {"const": false},
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "validationClass": {
+      "enum": [
+        "workflow_orchestration",
+        "executable_powershell",
+        "executable_python",
+        "pester_test",
+        "strict_json_policy_or_schema",
+        "locked_dependency_manifest",
+        "logical_fixture_spec",
+        "authority_documentation"
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "validation_class",
+        "index",
+        "line",
+        "preview"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^NXB-V11-ERR-[0-9]{3}$"},
+        "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "validation_class": {"$ref": "#/$defs/validationClass"},
+        "index": {"type": "integer", "minimum": 0},
+        "line": {"type": "integer", "minimum": 1},
+        "preview": {"type": "string", "maxLength": 180}
+      }
+    }
+  }
+}
