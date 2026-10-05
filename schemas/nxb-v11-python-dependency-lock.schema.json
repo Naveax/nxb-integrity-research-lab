@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-python-dependency-lock:v1",
+  "title": "NXB V11 Python dependency lock v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "python_full_version",
+    "architecture",
+    "platform_tag",
+    "generation_python_version",
+    "generation_pip_version",
+    "source_index_identity",
+    "artifact_tree_profile",
+    "pip_bootstrap",
+    "packages"
+  ],
+  "properties": {
+    "authority": {"const": "nxb-v11-python-dependency-lock-v1"},
+    "schema_version": {"const": 1},
+    "python_full_version": {"$ref": "#/$defs/exactVersion"},
+    "architecture": {"enum": ["x64", "arm64"]},
+    "platform_tag": {"$ref": "#/$defs/asciiToken"},
+    "generation_python_version": {"$ref": "#/$defs/exactVersion"},
+    "generation_pip_version": {"$ref": "#/$defs/exactVersion"},
+    "source_index_identity": {"$ref": "#/$defs/sourceIdentity"},
+    "artifact_tree_profile": {"const": "nxb-artifact-tree-manifest-v1"},
+    "pip_bootstrap": {"$ref": "#/$defs/pipBootstrap"},
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/package"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "exactVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+!-]*$"
+    },
+    "asciiToken": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+    },
+    "sourceIdentity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "normalizedName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "wheelFilename": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*\\.whl$"
+    },
+    "wheelTag": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "pipBootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "version",
+        "artifact_name",
+        "artifact_sha256",
+        "source_project",
+        "source_index_identity",
+        "publisher_identity",
+        "source_repository",
+        "source_commit",
+        "source_tag",
+        "provenance_subject_sha256",
+        "python_requires",
+        "artifact_tree_manifest_sha256"
+      ],
+      "properties": {
+        "authority": {"const": "nxb-v11-pip-bootstrap-v1"},
+        "version": {"$ref": "#/$defs/exactVersion"},
+        "artifact_name": {"$ref": "#/$defs/wheelFilename"},
+        "artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "source_project": {"const": "pip"},
+        "source_index_identity": {"$ref": "#/$defs/sourceIdentity"},
+        "publisher_identity": {"$ref": "#/$defs/sourceIdentity"},
+        "source_repository": {"$ref": "#/$defs/sourceIdentity"},
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tag": {"$ref": "#/$defs/sourceIdentity"},
+        "provenance_subject_sha256": {"$ref": "#/$defs/sha256"},
+        "python_requires": {"$ref": "#/$defs/sourceIdentity"},
+        "artifact_tree_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalized_name",
+        "version",
+        "wheel_filename",
+        "wheel_sha256",
+        "wheel_tags"
+      ],
+      "properties": {
+        "normalized_name": {"$ref": "#/$defs/normalizedName"},
+        "version": {"$ref": "#/$defs/exactVersion"},
+        "wheel_filename": {"$ref": "#/$defs/wheelFilename"},
+        "wheel_sha256": {"$ref": "#/$defs/sha256"},
+        "wheel_tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/wheelTag"}
+        }
+      }
+    }
+  }
+}
