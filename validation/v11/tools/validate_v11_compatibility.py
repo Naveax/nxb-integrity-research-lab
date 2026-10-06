@@ -87,6 +87,8 @@ def _check_strings(value: Any) -> None:
             fail("non-NFC JSON string")
         if any(ord(char) < 0x20 or ord(char) == 0x7f for char in value):
             fail("JSON string contains a control character")
+        if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            fail("JSON string contains an unpaired Unicode surrogate")
     elif isinstance(value, dict):
         for key, child in value.items():
             _check_strings(key)
@@ -113,17 +115,20 @@ def _canonical_document(content: bytes, name: str) -> dict[str, Any]:
             parse_float=_parse_float,
             parse_constant=_parse_constant,
         )
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, RecursionError) as exc:
         if isinstance(exc, PreflightError):
             raise
         fail(f"{name}: malformed JSON")
     if not isinstance(document, dict):
         fail(f"{name}: JSON root must be an object")
-    _check_strings(document)
-    canonical = json.dumps(
-        document, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    try:
+        _check_strings(document)
+        canonical = json.dumps(
+            document, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (RecursionError, UnicodeError):
+        fail(f"{name}: JSON nesting or Unicode invalid")
     if content != canonical:
         fail(f"{name}: non-canonical JSON bytes")
     expected_authority = KNOWN_AUTHORITY.get(name)
