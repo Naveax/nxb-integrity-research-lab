@@ -229,3 +229,126 @@ Describe 'V11 claim-free fingerprint reconciliation boundary' {
         }
     }
 }
+Describe 'V11 compatibility-plan structural boundary (claim-free)' {
+    BeforeAll {
+        $script:PlanRepositoryRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $script:PlanSchemaPath = Join-Path $script:PlanRepositoryRoot 'schemas\nxb-v11-compatibility-plan.schema.json'
+        $script:PlanFixturePath = Join-Path $script:PlanRepositoryRoot 'validation\v11\fixtures\native-runtime\compatibility-plan-v1.synthetic.json'
+        $script:PlanPython = if ($env:NXB_V11_PYTHON) {
+            [IO.Path]::GetFullPath($env:NXB_V11_PYTHON)
+        } else {
+            [IO.Path]::GetFullPath((Get-Command python -ErrorAction Stop).Source)
+        }
+        Import-Module (Join-Path $script:PlanRepositoryRoot 'scripts\Nxb.EvidenceStore.psm1') -Force
+    }
+
+    It 'rejects structural plan drift without asserting native support' {
+        $code = @(
+            'from __future__ import annotations'
+            'import copy, json, pathlib, sys'
+            'from jsonschema import Draft202012Validator'
+            'repo = pathlib.Path(sys.argv[1])'
+            'schema = json.loads((repo / "schemas" / "nxb-v11-compatibility-plan.schema.json").read_text(encoding="utf-8"))'
+            'fixture = json.loads((repo / "validation" / "v11" / "fixtures" / "native-runtime" / "compatibility-plan-v1.synthetic.json").read_text(encoding="utf-8"))'
+            'Draft202012Validator.check_schema(schema)'
+            'validator = Draft202012Validator(schema)'
+            'results = []'
+            'def check(label, condition):'
+            '    if not condition: raise AssertionError("FAILED " + label)'
+            '    results.append(label)'
+            'def mutate(label, target, value, valid=False):'
+            '    candidate = copy.deepcopy(fixture)'
+            '    node = candidate'
+            '    for part in target[:-1]: node = node[part]'
+            '    node[target[-1]] = value'
+            '    got = not list(validator.iter_errors(candidate))'
+            '    check(label, got is valid)'
+            'check("positive-baseline", not list(validator.iter_errors(fixture)))'
+            'check("review-six", fixture["review"]["entry_count"] == 6)'
+            'check("no-physical-claim", "physical_support_claimed" not in fixture)'
+            'mutate("reject-disabled-cell", ["cell","status"], "provisional-disabled")'
+            'mutate("reject-invalid-authority", ["authority"], "other")'
+            'mutate("reject-wrong-repository", ["repository"], "other/repository")'
+            'mutate("reject-bad-dispatcher-sha", ["dispatcher","sha"], "F" * 40)'
+            'mutate("reject-wrong-predecessor-issue", ["predecessor","issue"], 27)'
+            'mutate("reject-unknown-root-field", ["raw_etl"], "secret")'
+            'mutate("reject-non-baseline-null-ref", ["cell","axis"], "python")'
+            'mutate("reject-main-pr-number", ["candidate","pr_number"], 51)'
+            'mutate("reject-main-branch", ["candidate","branch"], "candidate/feature")'
+            'mutate("reject-wrong-cycle-count", ["endurance","bounded_cycle_count"], 6)'
+            'mutate("reject-over-ticks", ["limits","runner","max_ticks"], 257)'
+            'mutate("reject-over-attempts", ["limits","runner","max_attempts_per_task"], 4)'
+            'mutate("reject-over-frame", ["limits","transport","max_frame_bytes"], 16385)'
+            'mutate("reject-over-spool", ["limits","transport","max_spool_bytes"], 262145)'
+            'mutate("reject-queue-overflow", ["limits","transport","queue_overflow"], 1)'
+            'mutate("reject-over-trace-ring", ["limits","observability","max_trace_ring_bytes"], 67108865)'
+            'mutate("reject-review-seven", ["review","entry_count"], 7)'
+            'mutate("reject-production-key", ["production_boundary","private_key_used"], True)'
+            'mutate("reject-production-release", ["production_boundary","release_mutation"], True)'
+            'mutate("reject-lineage-hash", ["lineage","a1_policy_enablement_receipt_sha256"], "z" * 64)'
+            'mutate("reject-intent-float", ["intent","sha256"], 2.5)'
+            'mutate("reject-observability-disk-zero", ["limits","observability","max_disk_bytes"], 0)'
+            'd=copy.deepcopy(fixture)'
+            'd["execution_mode"]="candidate"'
+            'd["candidate"]["pr_number"]=51'
+            'd["candidate"]["branch"]="native/feature"'
+            'd["candidate"]["sha"]="2" * 40'
+            'd["candidate"]["tree_sha"]="3" * 40'
+            'd["cell"]["axis"]="python"'
+            'd["cell"]["baseline_cell_id"]=fixture["cell"]["id"]'
+            'd["cell"]["axis_change_count"]=1'
+            'check("positive-candidate-shape", not list(validator.iter_errors(d)))'
+            'd["candidate"]["pr_number"]=None'
+            'check("reject-candidate-missing-pr", bool(list(validator.iter_errors(d))))'
+            'd=copy.deepcopy(fixture)'
+            'd["cell"]["axis"]="hardware"'
+            'd["cell"]["baseline_cell_id"]=fixture["cell"]["id"]'
+            'd["cell"]["axis_change_count"]=2'
+            'check("reject-multi-axis-without-reference", bool(list(validator.iter_errors(d))))'
+            'd["cell"]["cross_axis_exception_reference"]="issue49:synthetic-cross-axis-exception"'
+            'check("represent-explicit-exception-only", not list(validator.iter_errors(d)))'
+            'd=copy.deepcopy(fixture)'
+            'd["endurance"]["tier"]="24h"'
+            'd["endurance"]["bounded_cycle_count"]=24'
+            'check("positive-bounded-24h-shape", not list(validator.iter_errors(d)))'
+            'print(json.dumps({"status":"PASS","count":len(results),"checks":results},separators=(",",":")))'
+        ) -join [Environment]::NewLine
+
+        $temp = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-plan-check-{0}.py' -f [Guid]::NewGuid().ToString('N')
+        )
+        [IO.File]::WriteAllText($temp,$code,[Text.UTF8Encoding]::new($false))
+        $previous = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = @(& $script:PlanPython $temp $script:PlanRepositoryRoot 2>&1 | ForEach-Object { [string]$_ })
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previous
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        }
+        $exitCode | Should -Be 0 -Because ($output -join [Environment]::NewLine)
+        $result = ($output -join [Environment]::NewLine) | ConvertFrom-Json
+        $result.status | Should -BeExactly 'PASS'
+        [int]$result.count | Should -Be 30
+        @($result.checks).Count | Should -Be 30
+    }
+
+    It 'preserves exact canonical synthetic fixture bytes and restrictive authority' {
+        $schema = Get-Content -LiteralPath $script:PlanSchemaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $schema.'$id' | Should -BeExactly 'urn:nxb:schema:nxb-v11-compatibility-plan:v1'
+        $schema.properties.authority.const | Should -BeExactly 'nxb-v11-compatibility-plan-v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+
+        $fixture = Get-Content -LiteralPath $script:PlanFixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $expected = ConvertTo-NxbCanonicalJson -InputObject $fixture
+        $bytes = [IO.File]::ReadAllBytes($script:PlanFixturePath)
+        $text = [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+        $text | Should -BeExactly $expected
+        $fixture.execution_mode | Should -BeExactly 'admitted_main'
+        $fixture.candidate.pr_number | Should -BeNullOrEmpty
+        $fixture.production_boundary.private_key_used | Should -BeFalse
+        $fixture.production_boundary.repository_protection_mutated | Should -BeFalse
+    }
+}

@@ -1,0 +1,672 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-compatibility-plan:v1",
+  "title": "NXB V11 physical compatibility plan v1",
+  "description": "Claim-free structural contract for the physical compatibility-plan.json. Actual enabled-cell membership, SHA ancestry, policy budget comparison, intent recomputation and trusted-run admission require an independent validator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "base",
+    "candidate",
+    "cell",
+    "dispatcher",
+    "endurance",
+    "execution_mode",
+    "intent",
+    "limits",
+    "lineage",
+    "policy",
+    "predecessor",
+    "production_boundary",
+    "repository",
+    "review",
+    "schema_version"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-v11-compatibility-plan-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "repository": {
+      "const": "Naveax/nxb-integrity-research-lab"
+    },
+    "execution_mode": {
+      "enum": [
+        "admitted_main",
+        "candidate"
+      ]
+    },
+    "dispatcher": {
+      "$ref": "#/$defs/dispatcher"
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "base": {
+      "$ref": "#/$defs/gitObject"
+    },
+    "predecessor": {
+      "$ref": "#/$defs/predecessor"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "axis",
+        "axis_change_count",
+        "baseline_cell_id",
+        "cross_axis_exception_reference",
+        "id",
+        "status",
+        "support_class"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/cellId"
+        },
+        "status": {
+          "const": "enabled"
+        },
+        "support_class": {
+          "enum": [
+            "primary",
+            "retained",
+            "previous-lts",
+            "legacy-esu",
+            "separate-hardware-class",
+            "replay-only"
+          ]
+        },
+        "axis": {
+          "enum": [
+            "baseline",
+            "python",
+            "powershell",
+            "windows",
+            "hardware"
+          ]
+        },
+        "baseline_cell_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/cellId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "axis_change_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cross_axis_exception_reference": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "axis": {
+                "const": "baseline"
+              }
+            },
+            "required": [
+              "axis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "baseline_cell_id": {
+                "type": "null"
+              },
+              "axis_change_count": {
+                "const": 0
+              },
+              "cross_axis_exception_reference": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "baseline_cell_id": {
+                "$ref": "#/$defs/cellId"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "axis_change_count": {
+                "type": "integer",
+                "minimum": 2
+              }
+            },
+            "required": [
+              "axis_change_count"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cross_axis_exception_reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            }
+          }
+        }
+      ]
+    },
+    "endurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bounded_cycle_count",
+        "tier"
+      ],
+      "properties": {
+        "tier": {
+          "enum": [
+            "1h",
+            "6h",
+            "24h"
+          ]
+        },
+        "bounded_cycle_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "1h"
+              }
+            },
+            "required": [
+              "tier"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bounded_cycle_count": {
+                "const": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "6h"
+              }
+            },
+            "required": [
+              "tier"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bounded_cycle_count": {
+                "const": 6
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "24h"
+              }
+            },
+            "required": [
+              "tier"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bounded_cycle_count": {
+                "const": 24
+              }
+            }
+          }
+        }
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observability",
+        "runner",
+        "transport"
+      ],
+      "properties": {
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_attempts_per_task",
+            "max_ready_queue_depth",
+            "max_ticks",
+            "shards",
+            "task_count"
+          ],
+          "properties": {
+            "task_count": {
+              "const": 24
+            },
+            "shards": {
+              "const": 4
+            },
+            "max_ticks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 256
+            },
+            "max_attempts_per_task": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            },
+            "max_ready_queue_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24
+            }
+          }
+        },
+        "transport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "high_watermark",
+            "low_watermark",
+            "max_frame_bytes",
+            "max_queue_depth",
+            "max_reconnect_attempts",
+            "max_session_seconds",
+            "max_spool_bytes",
+            "max_spool_records",
+            "queue_overflow",
+            "synthetic_event_count"
+          ],
+          "properties": {
+            "synthetic_event_count": {
+              "const": 24
+            },
+            "max_frame_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "max_session_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 300
+            },
+            "max_queue_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "high_watermark": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6
+            },
+            "low_watermark": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_spool_records": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "max_spool_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144
+            },
+            "max_reconnect_attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "queue_overflow": {
+              "const": 0
+            }
+          }
+        },
+        "observability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_disk_bytes",
+            "max_trace_post_seconds",
+            "max_trace_pre_seconds",
+            "max_trace_ring_bytes",
+            "max_wpr_trigger_count"
+          ],
+          "properties": {
+            "max_wpr_trigger_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "max_trace_ring_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 67108864
+            },
+            "max_trace_pre_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_trace_post_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_disk_bytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "intent": {
+      "$ref": "#/$defs/intent"
+    },
+    "lineage": {
+      "$ref": "#/$defs/lineage"
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_count"
+      ],
+      "properties": {
+        "entry_count": {
+          "const": 6
+        }
+      }
+    },
+    "production_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "merge_mutation",
+        "private_key_used",
+        "release_mutation",
+        "repository_protection_mutated",
+        "tag_mutation"
+      ],
+      "properties": {
+        "private_key_used": {
+          "const": false
+        },
+        "tag_mutation": {
+          "const": false
+        },
+        "release_mutation": {
+          "const": false
+        },
+        "merge_mutation": {
+          "const": false
+        },
+        "repository_protection_mutated": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "cellId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 256
+    },
+    "gitObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "tree_sha"
+      ],
+      "properties": {
+        "sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "tree_sha": {
+          "$ref": "#/$defs/gitSha"
+        }
+      }
+    },
+    "dispatcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harness_manifest_sha256",
+        "sha",
+        "tree_sha",
+        "workflow_blob_sha"
+      ],
+      "properties": {
+        "sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "tree_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "workflow_blob_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "harness_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branch",
+        "pr_number",
+        "sha",
+        "tree_sha"
+      ],
+      "properties": {
+        "sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "tree_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "pr_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "branch": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9._/-]+$"
+            }
+          ]
+        }
+      }
+    },
+    "predecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue",
+        "main_sha",
+        "main_tree_sha",
+        "pr"
+      ],
+      "properties": {
+        "main_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "main_tree_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "issue": {
+          "const": 26
+        },
+        "pr": {
+          "const": 48
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "const": "config/nxb-v11-compatibility-policy.json"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status": {
+          "const": "enabled"
+        }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "runner_class",
+        "sha256"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-compatibility-dispatch-intent-v1"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_class": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "a1_policy_enablement_receipt_sha256",
+        "a1_selector_preparation_receipt_sha256"
+      ],
+      "properties": {
+        "a1_selector_preparation_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "a1_policy_enablement_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "execution_mode": {
+            "const": "admitted_main"
+          }
+        },
+        "required": [
+          "execution_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidate": {
+            "properties": {
+              "pr_number": {
+                "type": "null"
+              },
+              "branch": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "candidate": {
+            "properties": {
+              "pr_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
