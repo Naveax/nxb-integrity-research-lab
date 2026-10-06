@@ -766,7 +766,8 @@ Describe 'V11 successor known-error scanner' {
             [ordered]@{ path = 'validation/v11/tools/materialize_python_requirements.py'; validation_class = 'executable_python' },
             [ordered]@{ path = 'validation/v11/tools/run_pinned_pip.py'; validation_class = 'executable_python' },
             [ordered]@{ path = 'validation/v11/tools/classify_native_impact.py'; validation_class = 'executable_python' },
-            [ordered]@{ path = 'validation/v11/tools/scan_v11_known_errors.py'; validation_class = 'executable_python' }
+            [ordered]@{ path = 'validation/v11/tools/scan_v11_known_errors.py'; validation_class = 'executable_python' },
+            [ordered]@{ path = 'validation/v11/tools/validate_v11_compatibility.py'; validation_class = 'executable_python' }
         )
         $root = Join-Path ([IO.Path]::GetTempPath()) (
             'nxb-v11-known-error-current-{0}' -f [Guid]::NewGuid().ToString('N')
@@ -795,7 +796,7 @@ Describe 'V11 successor known-error scanner' {
             $run.ExitCode | Should -Be 0
             $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
             [string]$result.status | Should -BeExactly 'passed'
-            [int]$result.entry_count | Should -Be 9
+            [int]$result.entry_count | Should -Be 10
             [int]$result.finding_count | Should -Be 0
             @($result.findings).Count | Should -Be 0
             [bool]$result.failure_override_permitted | Should -BeFalse
@@ -873,5 +874,94 @@ Describe 'V11 successor known-error scanner' {
         $source | Should -Not -Match '(?m)^\s*import\s+(subprocess|socket|urllib|http|requests)\b'
         $source | Should -Not -Match '\b(subprocess|os\.system|Popen)\b'
         $source | Should -Match 'failure_override_permitted'
+    }
+}
+
+
+Describe 'V11 review ZIP structural preflight (no admission)' {
+    It 'requires explicit structural-only mode and never claims physical authority' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $zip = Join-Path $root 'review.zip'
+        $generator = @'
+import json, sys, zipfile
+names = {
+  'environment-fingerprint.json': 'nxb-compatibility-environment-fingerprint-v1',
+  'compatibility-plan.json': 'nxb-v11-compatibility-plan-v1',
+  'endurance-cycle-summary.json': 'nxb-v11-endurance-cycle-summary-v1',
+  'known-error-scan.json': 'nxb-v11-known-error-scan-v1',
+  'independent-validation.json': 'nxb-v11-compatibility-independent-v1',
+  'compatibility-certification-receipt.json': 'synthetic-not-admitted',
+}
+keys = sorted(names)
+with zipfile.ZipFile(sys.argv[1], 'w', compression=zipfile.ZIP_DEFLATED) as output:
+    for key in keys:
+        data = {'authority': names[key], 'status': 'synthetic'}
+        text = json.dumps(data, sort_keys=True, separators=(',', ':'))
+        output.writestr(key, text.encode('utf-8'))
+'@
+        try {
+            $made = Invoke-V11Python -Arguments @('-c', $generator, $zip)
+            $made.ExitCode | Should -Be 0
+            $missingMode = Invoke-V11Python -Arguments @($tool, '--zip', $zip)
+            $missingMode.ExitCode | Should -Be 2
+            $missingMode.Text | Should -Match '--mode'
+            $inspection = Invoke-V11Python -Arguments @($tool, '--mode', 'structural-preflight', '--zip', $zip)
+            $inspection.ExitCode | Should -Be 0
+            $doc = $inspection.Text | ConvertFrom-Json
+            [string]$doc.status | Should -BeExactly 'STRUCTURE_ONLY'
+            [bool]$doc.admitted | Should -BeFalse
+            [bool]$doc.physical_compatibility_claimed | Should -BeFalse
+            [int]$doc.entry_count | Should -Be 6
+            @($doc.unverified_gates).Count | Should -BeGreaterThan 0
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects missing, unsafe and non-canonical synthetic review entries' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-negative-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generator = @'
+import json,sys,zipfile
+names = {
+ 'environment-fingerprint.json':'nxb-compatibility-environment-fingerprint-v1',
+ 'compatibility-plan.json':'nxb-v11-compatibility-plan-v1',
+ 'endurance-cycle-summary.json':'nxb-v11-endurance-cycle-summary-v1',
+ 'known-error-scan.json':'nxb-v11-known-error-scan-v1',
+ 'independent-validation.json':'nxb-v11-compatibility-independent-v1',
+ 'compatibility-certification-receipt.json':'synthetic-not-admitted',
+}
+mode = sys.argv[2]
+keys = sorted(names)
+if mode == 'missing': keys = keys[:-1]
+if mode == 'unsafe': keys[0] = '../unexpected.json'
+with zipfile.ZipFile(sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED) as output:
+ for key in keys:
+  data = {'authority':names.get(key,'synthetic'),'status':'synthetic'}
+  text = json.dumps(data,sort_keys=True,separators=(',',':'))
+  if mode == 'pretty' and key == 'compatibility-plan.json': text=json.dumps(data,indent=2)
+  output.writestr(key,text.encode('utf-8'))
+'@
+        try {
+            foreach ($case in @(
+                @{ mode='missing'; error='entry count' },
+                @{ mode='unsafe'; error='names differ' },
+                @{ mode='pretty'; error='non-canonical JSON' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @('-c', $generator, $zip, [string]$case.mode)
+                $made.ExitCode | Should -Be 0
+                $run = Invoke-V11Python -Arguments @($tool, '--mode', 'structural-preflight', '--zip', $zip)
+                $run.ExitCode | Should -Be 2
+                $run.Text | Should -Match ([regex]::Escape([string]$case.error))
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
