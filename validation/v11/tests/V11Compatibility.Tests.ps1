@@ -1042,3 +1042,72 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
         }
     }
 }
+
+Describe 'V11 ZIP malformed Unicode and nesting fail-closed behavior' {
+    It 'rejects unpaired surrogate keys/values and deeply nested JSON with exit 2' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-json-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-json-edge-zip.py'
+        $generator = @'
+import json
+import sys
+import zipfile
+
+authorities = {
+    "environment-fingerprint.json": "nxb-compatibility-environment-fingerprint-v1",
+    "compatibility-plan.json": "nxb-v11-compatibility-plan-v1",
+    "endurance-cycle-summary.json": "nxb-v11-endurance-cycle-summary-v1",
+    "known-error-scan.json": "nxb-v11-known-error-scan-v1",
+    "independent-validation.json": "nxb-v11-compatibility-independent-v1",
+    "compatibility-certification-receipt.json": "synthetic-not-admitted",
+}
+mode = sys.argv[2]
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in sorted(authorities):
+        payload = {"authority": authorities[name], "status": "synthetic"}
+        if name == "compatibility-plan.json" and mode == "surrogate-value":
+            payload["bad"] = chr(0xD800)
+        if name == "compatibility-plan.json" and mode == "surrogate-key":
+            payload[chr(0xD800)] = "bad"
+        if name == "compatibility-plan.json" and mode == "deeply-nested":
+            content = (
+                '{"authority":"nxb-v11-compatibility-plan-v1","nested":'
+                + "[" * 1200 + "0" + "]" * 1200 + "}"
+            ).encode("utf-8")
+        else:
+            content = json.dumps(
+                payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        archive.writestr(name, content)
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($case in @(
+                @{ mode = 'valid'; accepted = $true; pattern = 'STRUCTURE_ONLY' },
+                @{ mode = 'surrogate-value'; accepted = $false; pattern = 'unpaired Unicode surrogate' },
+                @{ mode = 'surrogate-key'; accepted = $false; pattern = 'unpaired Unicode surrogate' },
+                @{ mode = 'deeply-nested'; accepted = $false; pattern = 'malformed JSON|JSON nesting' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @($generatorPath, $zip, [string]$case.mode)
+                $made.ExitCode | Should -Be 0
+                $run = Invoke-V11Python -Arguments @($tool, '--mode', 'structural-preflight', '--zip', $zip)
+                if ($case.accepted) {
+                    $run.ExitCode | Should -Be 0
+                    $doc = $run.Text | ConvertFrom-Json
+                    [string]$doc.status | Should -BeExactly 'STRUCTURE_ONLY'
+                    [bool]$doc.admitted | Should -BeFalse
+                }
+                else {
+                    $run.ExitCode | Should -Be 2
+                    $run.Text | Should -Match 'NXB_V11_REVIEW_ZIP_PREFLIGHT_ERROR'
+                    $run.Text | Should -Match ([string]$case.pattern)
+                }
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
