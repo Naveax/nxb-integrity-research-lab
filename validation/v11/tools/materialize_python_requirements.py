@@ -195,6 +195,29 @@ def assert_existing_ancestry_ordinary(path: str, stop: str, label: str) -> None:
         current = parent
 
 
+def parse_wheel_identity(filename: str, label: str) -> tuple[str, str, list[str]]:
+    """Decode the distribution/version and expanded PEP 427 tags from a wheel name."""
+    pieces = filename[:-4].split("-")
+    if len(pieces) not in (5, 6):
+        fail(f"{label} must contain a complete wheel identity")
+    distribution, version = pieces[0], pieces[1]
+    if not distribution or not version:
+        fail(f"{label} has an empty wheel distribution/version")
+    if len(pieces) == 6 and re.fullmatch(r"[0-9][A-Za-z0-9_.]*", pieces[2]) is None:
+        fail(f"{label} has an invalid wheel build tag")
+    tag_parts = [group.split(".") for group in pieces[-3:]]
+    if any(not group or any(TAG_RE.fullmatch(tag) is None for tag in group) for group in tag_parts):
+        fail(f"{label} has invalid wheel compatibility tags")
+    expanded = sorted(
+        f"{python}-{abi}-{platform}"
+        for python in tag_parts[0]
+        for abi in tag_parts[1]
+        for platform in tag_parts[2]
+    )
+    normalized = re.sub(r"[-_.]+", "-", distribution).lower()
+    return normalized, version, sorted(set(expanded))
+
+
 def validate_lock(document: dict[str, Any]) -> list[dict[str, Any]]:
     root = assert_exact_keys(document, TOP_LEVEL_KEYS, "lock")
     if root["authority"] != AUTHORITY:
@@ -246,6 +269,11 @@ def validate_lock(document: dict[str, Any]) -> list[dict[str, Any]]:
         fail("pip bootstrap source index identity differs from lock source index")
     if bootstrap["provenance_subject_sha256"] != bootstrap["artifact_sha256"]:
         fail("pip bootstrap provenance subject digest must equal artifact SHA-256")
+    bootstrap_name, bootstrap_version, _ = parse_wheel_identity(
+        bootstrap["artifact_name"], "lock.pip_bootstrap.artifact_name"
+    )
+    if bootstrap_name != "pip" or bootstrap_version != bootstrap["version"]:
+        fail("pip bootstrap wheel distribution/version differs from declared pip identity")
 
     packages = root["packages"]
     if not isinstance(packages, list) or not packages:
@@ -292,6 +320,15 @@ def validate_lock(document: dict[str, Any]) -> list[dict[str, Any]]:
             fail(f"Windows case-fold wheel filename collision: {filename}")
         filenames.add(filename)
         folded_filenames.add(folded)
+        wheel_name, wheel_version, wheel_tags = parse_wheel_identity(
+            filename, f"lock.packages[{index}].wheel_filename"
+        )
+        if wheel_name != name:
+            fail(f"lock.packages[{index}] wheel distribution name differs from normalized_name")
+        if wheel_version != version:
+            fail(f"lock.packages[{index}] wheel version differs from declared version")
+        if wheel_tags != tags:
+            fail(f"lock.packages[{index}] wheel tags differ from declared wheel_tags")
         name_bytes = name.encode("utf-8")
         if last_name is not None and name_bytes <= last_name:
             fail("lock.packages must be strictly sorted by UTF-8 normalized_name bytes")

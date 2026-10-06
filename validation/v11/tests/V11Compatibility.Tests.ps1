@@ -221,6 +221,74 @@ Describe 'V11 A0 Python dependency authority' {
         }
     }
 
+    It 'rejects wheel name, version, tag and pip-bootstrap substitution' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-wheel-negative-{0}' -f [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        [void][IO.Directory]::CreateDirectory($work)
+
+        try {
+            foreach ($variant in @('name', 'version', 'tags', 'bootstrap')) {
+                $lock = New-TestPythonLock
+                switch ($variant) {
+                    'name' {
+                        $lock.packages[0].wheel_filename = 'rogue-4.26.0-py3-none-any.whl'
+                        $pattern = 'wheel distribution name'
+                    }
+                    'version' {
+                        $lock.packages[0].wheel_filename = 'jsonschema-4.27.0-py3-none-any.whl'
+                        $pattern = 'wheel version'
+                    }
+                    'tags' {
+                        $lock.packages[0].wheel_tags = @('cp312-cp312-win_amd64')
+                        $pattern = 'wheel tags'
+                    }
+                    'bootstrap' {
+                        $lock.pip_bootstrap.artifact_name = 'rogue-26.2.1-py3-none-any.whl'
+                        $pattern = 'pip bootstrap wheel distribution/version'
+                    }
+                }
+                $lockPath = Join-Path $root ($variant + '.lock')
+                $output = Join-Path $work ($variant + '.txt')
+                Write-Utf8NoBom -Path $lockPath -Text (ConvertTo-NxbCanonicalJson -InputObject $lock)
+                $result = Invoke-V11Python -Arguments @(
+                    $script:MaterializerPath, '--lock', $lockPath,
+                    '--work-root', $work, '--output', $output
+                )
+                $result.ExitCode | Should -Be 2
+                $result.Text | Should -Match $pattern
+                Test-Path -LiteralPath $output | Should -BeFalse
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'accepts complete expanded PEP 427 wheel tags' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-wheel-expanded-{0}' -f [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        [void][IO.Directory]::CreateDirectory($work)
+
+        try {
+            $lock = New-TestPythonLock
+            $lock.packages[0].wheel_filename = 'jsonschema-4.26.0-py2.py3-none-any.whl'
+            $lock.packages[0].wheel_tags = @('py2-none-any', 'py3-none-any')
+            $lockPath = Join-Path $root 'expanded.lock'
+            $output = Join-Path $work 'expanded.txt'
+            Write-Utf8NoBom -Path $lockPath -Text (ConvertTo-NxbCanonicalJson -InputObject $lock)
+            $result = Invoke-V11Python -Arguments @(
+                $script:MaterializerPath, '--lock', $lockPath,
+                '--work-root', $work, '--output', $output
+            )
+            $result.ExitCode | Should -Be 0
+            $result.Text | Should -Match 'NXB_V11_PYTHON_REQUIREMENTS_PROJECTION_PASS'
+            Test-Path -LiteralPath $output | Should -BeTrue
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'runs only the exact pip package from the owned isolated bootstrap root' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pinned-pip-{0}' -f [Guid]::NewGuid().ToString('N'))
         $work = Join-Path $root 'work'
