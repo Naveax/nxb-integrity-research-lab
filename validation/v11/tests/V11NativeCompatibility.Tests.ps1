@@ -352,3 +352,119 @@ Describe 'V11 compatibility-plan structural boundary (claim-free)' {
         $fixture.production_boundary.repository_protection_mutated | Should -BeFalse
     }
 }
+Describe 'V11 claim-free endurance-cycle summary contract' {
+    It 'preserves a canonical synthetic fixture without physical admission' {
+        $schemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-endurance-cycle-summary.schema.json'
+        $fixturePath = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-runtime\endurance-cycle-summary-v1.synthetic.json'
+        $schema = Get-Content -LiteralPath $schemaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $fixture = Get-Content -LiteralPath $fixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $schema.'$id' | Should -BeExactly 'urn:nxb:schema:nxb-v11-endurance-cycle-summary:v1'
+        $schema.properties.authority.const | Should -BeExactly 'nxb-v11-endurance-cycle-summary-v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        $fixture.status | Should -BeExactly 'synthetic_closed_unadmitted'
+        $fixture.physical_compatibility_claimed | Should -BeFalse
+        $fixture.raw_payloads_embedded | Should -BeFalse
+        $fixture.review.entry_count | Should -Be 6
+
+        $raw = [IO.File]::ReadAllBytes($fixturePath)
+        $text = [Text.UTF8Encoding]::new($false, $true).GetString($raw)
+        $canonicalCode = @(
+            'import json, pathlib, sys'
+            'p = pathlib.Path(sys.argv[1])'
+            'raw = p.read_bytes()'
+            'value = json.loads(raw.decode("utf-8", "strict"))'
+            'canonical = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")'
+            'print("PASS" if raw == canonical else "FAIL")'
+        ) -join [Environment]::NewLine
+        $canonicalTemp = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-endurance-canonical-{0}.py' -f [Guid]::NewGuid().ToString('N'))
+        [IO.File]::WriteAllText($canonicalTemp, $canonicalCode, [Text.UTF8Encoding]::new($false))
+        try {
+            $check = @(& $script:PythonPath -I $canonicalTemp $fixturePath 2>&1 | ForEach-Object { [string]$_ })
+            $checkExit = $LASTEXITCODE
+        }
+        finally {
+            Remove-Item -LiteralPath $canonicalTemp -Force -ErrorAction SilentlyContinue
+        }
+        $checkExit | Should -Be 0 -Because ($check -join [Environment]::NewLine)
+        $check.Count | Should -Be 1
+        $check[0] | Should -BeExactly 'PASS'
+    }
+
+    It 'enforces structural 1h/6h/24h and bounded negative controls' {
+        $code = @'
+from __future__ import annotations
+import copy, json, pathlib, sys
+from jsonschema import Draft202012Validator
+r=pathlib.Path(sys.argv[1])
+s=json.loads((r/"schemas"/"nxb-v11-endurance-cycle-summary.schema.json").read_text(encoding="utf-8"))
+f=json.loads((r/"validation"/"v11"/"fixtures"/"native-runtime"/"endurance-cycle-summary-v1.synthetic.json").read_text(encoding="utf-8"))
+Draft202012Validator.check_schema(s)
+v=Draft202012Validator(s)
+checks=[]
+def check(name,ok):
+    if not ok: raise AssertionError(name)
+    checks.append(name)
+check("positive-1h",v.is_valid(f))
+for tier,n in (("6h",6),("24h",24)):
+    x=copy.deepcopy(f)
+    x["endurance_tier"]=tier
+    x["cycle_count"]=n
+    x["cycles"]=copy.deepcopy(f["cycles"])*n
+    for i,c in enumerate(x["cycles"]):c["index"]=i+1
+    check("positive-"+tier,v.is_valid(x))
+cases=[
+ ("wrong-authority",["authority"],"other"),
+ ("wrong-review-count",["review","entry_count"],7),
+ ("wrong-physical-claim",["physical_compatibility_claimed"],True),
+ ("wrong-raw-payload",["raw_payloads_embedded"],True),
+ ("wrong-1h-count",["cycle_count"],6),
+ ("wrong-24h-length",["endurance_tier"],"24h"),
+ ("wrong-unknown-root",["raw_etl"],"leak"),
+ ("wrong-unknown-cycle",["cycles",0,"raw_etl"],"leak"),
+ ("wrong-task-count",["cycles",0,"part4","task_count"],23),
+ ("wrong-task-ticks",["cycles",0,"part4","max_ticks_observed"],257),
+ ("wrong-task-attempts",["cycles",0,"part4","max_attempts_observed"],4),
+ ("wrong-task-queue",["cycles",0,"part4","ready_queue_peak"],25),
+ ("wrong-recovery",["cycles",0,"part4","final_resume_closed"],False),
+ ("wrong-transport-events",["cycles",0,"part3","synthetic_event_count"],23),
+ ("wrong-transport-frame",["cycles",0,"part3","max_frame_bytes_observed"],16385),
+ ("wrong-transport-queue",["cycles",0,"part3","max_queue_depth_observed"],9),
+ ("wrong-transport-overflow",["cycles",0,"part3","queue_overflow"],1),
+ ("wrong-transport-spool",["cycles",0,"part3","spool_byte_peak"],262145),
+ ("wrong-transport-reconnect",["cycles",0,"part3","reconnect_attempts"],4),
+ ("wrong-observability-wpr",["cycles",0,"observability","memory_wpr_trigger_count"],2),
+ ("wrong-observability-ring",["cycles",0,"observability","trace_ring_bytes"],67108865),
+ ("wrong-observability-pre",["cycles",0,"observability","trace_pre_seconds"],31),
+ ("wrong-observability-disk",["cycles",0,"observability","disk_bytes"],536870913),
+ ("wrong-trace-loss",["cycles",0,"observability","trace_lost_events"],1),
+ ("wrong-trace-accounting",["cycles",0,"observability","trace_accounting_closed"],False),
+ ("wrong-release-mutation",["production_boundary","release_mutation"],True),
+ ("wrong-uppercase-policy-sha",["policy_sha256"],"A"*64),
+ ("wrong-cell-id",["cell_id"],"bad cell")
+]
+for name,path,value in cases:
+    x=copy.deepcopy(f)
+    node=x
+    for k in path[:-1]:node=node[k]
+    node[path[-1]]=value
+    check(name,not v.is_valid(x))
+print(json.dumps({"status":"PASS","count":len(checks)},separators=(",",":")))
+'@
+        $temp = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-endurance-check-{0}.py' -f [Guid]::NewGuid().ToString('N'))
+        [IO.File]::WriteAllText($temp, $code, [Text.UTF8Encoding]::new($false))
+        $previous = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = @(& $script:PythonPath $temp $script:RepositoryRoot 2>&1 | ForEach-Object { [string]$_ })
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previous
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        }
+        $exitCode | Should -Be 0 -Because ($output -join [Environment]::NewLine)
+        $result = ($output -join [Environment]::NewLine) | ConvertFrom-Json
+        $result.status | Should -BeExactly 'PASS'
+        [int]$result.count | Should -Be 31
+    }
+}
