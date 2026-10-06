@@ -965,3 +965,71 @@ with zipfile.ZipFile(sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED) as output
         }
     }
 }
+
+
+Describe 'V11 ZIP digest/parser snapshot binding (claim-free)' {
+    It 'preserves entry and outer hash identity when the disk ZIP is swapped before parsing' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $probe = @'
+import hashlib
+import importlib.util
+import json
+import os
+import tempfile
+import zipfile
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1]).resolve()
+spec = importlib.util.spec_from_file_location("nxb_envelope_candidate", path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
+    root = Path(base)
+    original = root / "review.zip"
+    replacement = root / "replacement.zip"
+    authority = {**module.KNOWN_AUTHORITY, "compatibility-certification-receipt.json": "synthetic-not-admitted"}
+    def make(dest, state):
+        content_hashes = {}
+        with zipfile.ZipFile(dest, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name in sorted(module.EXPECTED_NAMES):
+                data = json.dumps({"authority": authority[name], "status": state}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                archive.writestr(name, data)
+                content_hashes[name] = hashlib.sha256(data).hexdigest()
+        return content_hashes
+    expected = make(original, "original")
+    make(replacement, "swapped")
+    original_digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    real_zipfile = zipfile.ZipFile
+    seen = []
+    def swap_before_parse(file, *args, **kwargs):
+        seen.append(type(file).__name__)
+        os.replace(replacement, original)
+        return real_zipfile(file, *args, **kwargs)
+    zipfile.ZipFile = swap_before_parse
+    try:
+        report = module.inspect_zip(original, original_digest)
+    finally:
+        zipfile.ZipFile = real_zipfile
+    assert len(seen) == 1, seen
+    assert seen == ["BytesIO"], seen
+    assert report["zip_sha256"] == original_digest
+    assert all(row["sha256"] == expected[row["name"]] for row in report["entries"])
+    assert not report["admitted"] and not report["physical_compatibility_claimed"]
+    assert hashlib.sha256(original.read_bytes()).hexdigest() != original_digest
+    print("SNAPSHOT_RACE_TEST_PASS: digest and six inspected entries came from original in-memory bytes")
+    try:
+        module.inspect_zip(original, original_digest)
+    except module.PreflightError as e:
+        assert "digest mismatch" in str(e), str(e)
+        print("SWAPPED_DISK_CONTENT_REJECTED_PASS")
+    else:
+        raise AssertionError("unexpected swapped digest acceptance")
+'@
+        $run = Invoke-V11Python -Arguments @('-c', $probe, $tool)
+        $run.ExitCode | Should -Be 0
+        $run.Text | Should -Match 'SNAPSHOT_RACE_TEST_PASS'
+        $run.Text | Should -Match 'SWAPPED_DISK_CONTENT_REJECTED_PASS'
+    }
+}

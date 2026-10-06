@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -186,18 +187,19 @@ def _ordinary_zip(path: Path) -> None:
         current = current.parent
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def inspect_zip(path: Path, expected_digest: str | None = None) -> dict[str, Any]:
     """Check byte/path/canonical JSON structure only. Never return 'admitted'."""
     _ordinary_zip(path)
-    outer_sha = _sha256(path)
+    # Parse and hash one bounded byte snapshot. Reopening the path for parsing
+    # would allow a replacement between hash verification and entry inspection.
+    try:
+        with path.open("rb") as stream:
+            archive_bytes = stream.read(MAX_ZIP_BYTES + 1)
+    except OSError:
+        fail("review ZIP is absent or unreadable")
+    if not archive_bytes or len(archive_bytes) > MAX_ZIP_BYTES:
+        fail("review ZIP exceeds bounded preflight size")
+    outer_sha = hashlib.sha256(archive_bytes).hexdigest()
     if expected_digest is not None:
         if SHA256_RE.fullmatch(expected_digest) is None:
             fail("expected ZIP digest must be lowercase SHA-256")
@@ -205,7 +207,7 @@ def inspect_zip(path: Path, expected_digest: str | None = None) -> dict[str, Any
             fail("independently supplied ZIP digest mismatch")
 
     try:
-        with zipfile.ZipFile(path, mode="r", allowZip64=False) as archive:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes), mode="r", allowZip64=False) as archive:
             entries = archive.infolist()
             if len(entries) != len(EXPECTED_NAMES):
                 fail("review entry count is not exactly six")
