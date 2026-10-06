@@ -1,0 +1,151 @@
+BeforeAll {
+    $script:RepositoryRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    $script:SchemaPath = Join-Path $script:RepositoryRoot 'schemas\nxb-v11-environment-fingerprint.schema.json'
+    $script:FixturePath = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-runtime\environment-fingerprint-v1.synthetic.json'
+    $script:EvidenceStorePath = Join-Path $script:RepositoryRoot 'scripts\Nxb.EvidenceStore.psm1'
+    $script:PythonPath = if ($env:NXB_V11_PYTHON) {
+        [IO.Path]::GetFullPath($env:NXB_V11_PYTHON)
+    } else {
+        [IO.Path]::GetFullPath((Get-Command python -ErrorAction Stop).Source)
+    }
+    Import-Module $script:EvidenceStorePath -Force
+}
+
+Describe 'V11 physical fingerprint source schema (claim-free)' {
+    It 'reproduces 29 schema and identity regression checks' {
+        $pythonCode = @'
+#!/usr/bin/env python3
+from __future__ import annotations
+import copy, hashlib, json, pathlib, sys
+from jsonschema import Draft202012Validator, FormatChecker
+
+repo = pathlib.Path(sys.argv[1])
+schema_path = repo / "schemas" / "nxb-v11-environment-fingerprint.schema.json"
+fixture_path = repo / "validation" / "v11" / "fixtures" / "native-runtime" / "environment-fingerprint-v1.synthetic.json"
+schema = json.loads(schema_path.read_text(encoding="utf-8"))
+fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+Draft202012Validator.check_schema(schema)
+validator = Draft202012Validator(schema, format_checker=FormatChecker())
+
+def digest(value):
+    doc = {k: v for k, v in value.items() if k not in {"captured_utc", "fingerprint_sha256"}}
+    payload = json.dumps(doc, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+def validate(value):
+    return list(validator.iter_errors(value))
+
+results = []
+def pass_case(label, condition):
+    if not condition:
+        raise AssertionError("FAILED " + label)
+    results.append(label)
+
+pass_case("schema-2020-12-valid", True)
+pass_case("positive-synthetic", not validate(fixture))
+pass_case("stored-sha-exact", fixture["fingerprint_sha256"] == digest(fixture))
+
+t=copy.deepcopy(fixture)
+t["captured_utc"] = "2026-10-07T01:02:03Z"
+pass_case("volatile-timestamp-excluded", digest(t) == digest(fixture))
+
+for label,change in [
+    ("ubr-drift", lambda d: d["windows"].__setitem__("ubr",9169)),
+    ("pwsh-micro-drift", lambda d: d["powershell"].__setitem__("version","7.6.7")),
+    ("policy-hash-drift", lambda d: d.__setitem__("policy_sha256","9"*64)),
+    ("tree-drift", lambda d: d.__setitem__("head_tree_sha","c"*40)),
+]:
+    d=copy.deepcopy(fixture)
+    change(d)
+    pass_case(label+"-identity-change",digest(d)!=digest(fixture))
+
+negative=[
+    ("wrong-authority", lambda d:d.__setitem__("authority","other")),
+    ("dirty-worktree", lambda d:d.__setitem__("worktree_clean",False)),
+    ("unknown-property",lambda d:d.__setitem__("leaked_machine_serial","unsafe")),
+    ("wrong-windows-product-type",lambda d:d["windows"].__setitem__("product_type",4)),
+    ("wrong-arch",lambda d:d["windows"].__setitem__("architecture","amd64")),
+    ("wrong-ubr-type",lambda d:d["windows"].__setitem__("ubr","9168")),
+    ("wrong-git-sha",lambda d:d.__setitem__("head_sha","A"*40)),
+    ("wrong-policy-sha",lambda d:d.__setitem__("policy_sha256","g"*64)),
+    ("runner-label-duplicate",lambda d:d["runner"].__setitem__("labels",["self-hosted","self-hosted"])),
+    ("runner-os-server",lambda d:d["runner"].__setitem__("os","Linux")),
+    ("wpt-pairing-false",lambda d:d["wpt"].__setitem__("same_directory",False)),
+    ("wpt-sibling-missing",lambda d:d["wpt"].__setitem__("wpr",{})),
+    ("wpt-relative-traversal",lambda d:d["wpt"]["xperf"].__setitem__("relative_path","..\\xperf.exe")),
+    ("user-home-leak",lambda d:d["python"].__setitem__("executable",r"C:\Users\someone\Python\python.exe")),
+    ("user-home-case-variant",lambda d:d["python"].__setitem__("executable",r"C:\users\someone\python.exe")),
+    ("unserviced-claim-with-null-proof",lambda d:d["adk"].__setitem__("servicing_proof_sha256",None)),
+    ("serviced-claim-with-null-kb",lambda d:d["adk"].__setitem__("servicing_kb",None)),
+    ("timestamp-no-utc",lambda d:d.__setitem__("captured_utc","2026-10-06T00:00:00")),
+]
+for label,change in negative:
+    d=copy.deepcopy(fixture)
+    change(d)
+    errors=validate(d)
+    pass_case("reject-"+label,bool(errors))
+
+d=copy.deepcopy(fixture)
+d["adk"]["servicing_state"]="unresolved"
+d["adk"]["servicing_kb"]=None
+d["adk"]["servicing_proof_sha256"]=None
+d["adk"]["servicing_proof_kind"]=None
+pass_case("unresolved-servicing-is-representable-not-admitted",not validate(d))
+
+d=copy.deepcopy(fixture)
+d["fingerprint_sha256"]="0"*64
+pass_case("stored-fingerprint-tamper-rejected-by-identity",d["fingerprint_sha256"]!=digest(d))
+
+pass_case("runner-labels-ordinal-and-unique",fixture["runner"]["labels"]==sorted(set(fixture["runner"]["labels"])))
+print(json.dumps({"status":"PASS","count":len(results),"checks":results},separators=(",",":")))
+'@
+        $temporaryPy = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-fingerprint-{0}.py' -f [Guid]::NewGuid().ToString('N')
+        )
+        [IO.File]::WriteAllText(
+            $temporaryPy, $pythonCode, [Text.UTF8Encoding]::new($false)
+        )
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = @(& $script:PythonPath $temporaryPy $script:RepositoryRoot 2>&1 | ForEach-Object { [string]$_ })
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+            Remove-Item -LiteralPath $temporaryPy -Force -ErrorAction SilentlyContinue
+        }
+        $exitCode | Should -Be 0 -Because ($output -join [Environment]::NewLine)
+        $result = ($output -join [Environment]::NewLine) | ConvertFrom-Json
+        $result.status | Should -BeExactly 'PASS'
+        [int]$result.count | Should -Be 29
+        @($result.checks).Count | Should -Be 29
+    }
+
+    It 'recomputes the identical fingerprint identity using frozen PowerShell canonical JSON' {
+        $doc = Get-Content -LiteralPath $script:FixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $expected = [string]$doc.fingerprint_sha256
+        [void]$doc.PSObject.Properties.Remove('captured_utc')
+        [void]$doc.PSObject.Properties.Remove('fingerprint_sha256')
+        $json = ConvertTo-NxbCanonicalJson -InputObject $doc
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $observed = [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+        }
+        finally {
+            $hasher.Dispose()
+        }
+        $observed | Should -BeExactly $expected
+    }
+
+    It 'preserves strict source authority and excludes user-profile data from the synthetic fixture' {
+        $schema = Get-Content -LiteralPath $script:SchemaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $schema.'$id' | Should -BeExactly 'urn:nxb:schema:nxb-v11-environment-fingerprint:v1'
+        $schema.properties.authority.const | Should -BeExactly 'nxb-compatibility-environment-fingerprint-v1'
+        [bool]$schema.additionalProperties | Should -BeFalse
+        $fixture = Get-Content -LiteralPath $script:FixturePath -Raw -Encoding UTF8
+        $fixture | Should -Not -Match '[A-Za-z]:\\[Uu][Ss][Ee][Rr][Ss]\\'
+        $fixture | Should -Not -Match '"(?:ip_address|mac_address|machine_serial|hardware_uuid)"'
+    }
+}

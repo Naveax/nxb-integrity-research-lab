@@ -1,0 +1,99 @@
+{
+  "authority": "nxb-compatibility-environment-fingerprint-v1",
+  "schema_version": 1,
+  "status": "captured",
+  "captured_utc": "2026-10-06T00:00:00Z",
+  "repository": "Naveax/nxb-integrity-research-lab",
+  "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "head_tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "worktree_clean": true,
+  "cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+  "support_class": "primary",
+  "runner": {
+    "name": "synthetic-nxb-runner",
+    "os": "Windows",
+    "arch": "x64",
+    "labels": [
+      "self-hosted",
+      "windows",
+      "x64"
+    ]
+  },
+  "windows": {
+    "product_name": "Windows 11 Enterprise",
+    "edition_id": "Enterprise",
+    "display_version": "25H2",
+    "current_build": "26200",
+    "current_build_number": "26200",
+    "ubr": 9168,
+    "build_lab_ex": "26200.1.amd64fre.synthetic",
+    "installation_type": "Client",
+    "product_type": 1,
+    "architecture": "x64",
+    "servicing_channel": "gac"
+  },
+  "powershell": {
+    "edition": "Core",
+    "version": "7.6.6",
+    "git_commit_id": "v7.6.6",
+    "architecture": "x64",
+    "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "python": {
+    "executable": "C:\\ProgramData\\NXB\\Python312\\python.exe",
+    "version": "3.12.10",
+    "implementation": "CPython",
+    "architecture": "x64",
+    "executable_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "modules": {
+    "pester": {
+      "version": "5.9.1",
+      "module_tree_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "psscriptanalyzer": {
+      "version": "1.25.0",
+      "module_tree_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "python_packages": {
+    "pyyaml": {
+      "version": "6.0.3",
+      "distribution_tree_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "jsonschema": {
+      "version": "4.26.0",
+      "distribution_tree_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "wpt": {
+    "root": "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit",
+    "root_source": "kitsroot10",
+    "same_directory": true,
+    "same_kits_root": true,
+    "wpr": {
+      "relative_path": "wpr.exe",
+      "file_version": "10.1.26100.1",
+      "product_version": "10.1.26100.1",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "instancename_capable": true
+    },
+    "xperf": {
+      "relative_path": "xperf.exe",
+      "file_version": "10.1.26100.1",
+      "product_version": "10.1.26100.1",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  },
+  "adk": {
+    "kits_root10": "C:\\Program Files (x86)\\Windows Kits\\10",
+    "base_version": "10.1.26100.2454",
+    "servicing_state": "serviced",
+    "servicing_kb": "KB5121003",
+    "servicing_proof_kind": "synthetic-receipt",
+    "servicing_proof_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "policy_path": "config/nxb-v11-compatibility-policy.json",
+  "policy_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "fingerprint_sha256": "9de216a4202d1117cda3fa8d11de20a069c04e67dbd37d030752dd2a4c577146"
+}

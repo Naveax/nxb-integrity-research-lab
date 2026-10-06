@@ -1,0 +1,588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-environment-fingerprint:v1",
+  "title": "NXB V11 physical environment fingerprint identity v1",
+  "description": "Physical machine and selected toolchain evidence. Fingerprint identity SHA-256 omits captured_utc and fingerprint_sha256; no physical support claim follows from schema conformance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "status",
+    "captured_utc",
+    "repository",
+    "head_sha",
+    "head_tree_sha",
+    "worktree_clean",
+    "cell_id",
+    "support_class",
+    "runner",
+    "windows",
+    "powershell",
+    "python",
+    "modules",
+    "python_packages",
+    "wpt",
+    "adk",
+    "policy_path",
+    "policy_sha256",
+    "fingerprint_sha256"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-compatibility-environment-fingerprint-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "captured_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "repository": {
+      "const": "Naveax/nxb-integrity-research-lab"
+    },
+    "head_sha": {
+      "$ref": "#/$defs/gitSha"
+    },
+    "head_tree_sha": {
+      "$ref": "#/$defs/gitSha"
+    },
+    "worktree_clean": {
+      "const": true
+    },
+    "cell_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 256
+    },
+    "support_class": {
+      "enum": [
+        "primary",
+        "retained",
+        "previous-lts",
+        "legacy-esu",
+        "separate-hardware-class",
+        "replay-only"
+      ]
+    },
+    "runner": {
+      "$ref": "#/$defs/runner"
+    },
+    "windows": {
+      "$ref": "#/$defs/windows"
+    },
+    "powershell": {
+      "$ref": "#/$defs/powershell"
+    },
+    "python": {
+      "$ref": "#/$defs/python"
+    },
+    "modules": {
+      "$ref": "#/$defs/modules"
+    },
+    "python_packages": {
+      "$ref": "#/$defs/pythonPackages"
+    },
+    "wpt": {
+      "$ref": "#/$defs/wpt"
+    },
+    "adk": {
+      "$ref": "#/$defs/adk"
+    },
+    "policy_path": {
+      "const": "config/nxb-v11-compatibility-policy.json"
+    },
+    "policy_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "fingerprint_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+    },
+    "architecture": {
+      "enum": [
+        "x64",
+        "arm64"
+      ]
+    },
+    "wptRelativePath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|\\\\)\\.\\.?\\\\)[A-Za-z0-9 _+().-]+(?:\\\\[A-Za-z0-9 _+().-]+)*\\.exe$",
+      "maxLength": 512
+    },
+    "evidencePath": {
+      "type": "string",
+      "pattern": "^[A-Z]:\\\\(?![Uu][Ss][Ee][Rr][Ss]\\\\)(?!.*(?:^|\\\\)\\.\\.?\\\\)[^\\r\\n\\x00-\\x1f]+$",
+      "maxLength": 1024
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "os",
+        "arch",
+        "labels"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "os": {
+          "const": "Windows"
+        },
+        "arch": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          }
+        }
+      }
+    },
+    "windows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_name",
+        "edition_id",
+        "display_version",
+        "current_build",
+        "current_build_number",
+        "ubr",
+        "build_lab_ex",
+        "installation_type",
+        "product_type",
+        "architecture",
+        "servicing_channel"
+      ],
+      "properties": {
+        "product_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "edition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "current_build": {
+          "type": "string",
+          "pattern": "^[0-9]{4,6}$"
+        },
+        "current_build_number": {
+          "type": "string",
+          "pattern": "^[0-9]{4,6}$"
+        },
+        "ubr": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "build_lab_ex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "installation_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "product_type": {
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "servicing_channel": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      }
+    },
+    "powershell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edition",
+        "version",
+        "git_commit_id",
+        "architecture",
+        "executable_sha256"
+      ],
+      "properties": {
+        "edition": {
+          "enum": [
+            "Core",
+            "Desktop"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+        },
+        "git_commit_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "executable_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executable",
+        "version",
+        "implementation",
+        "architecture",
+        "executable_sha256"
+      ],
+      "properties": {
+        "executable": {
+          "$ref": "#/$defs/evidencePath"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+        },
+        "implementation": {
+          "enum": [
+            "CPython"
+          ]
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "executable_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "module_tree_sha256"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+        },
+        "module_tree_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pester",
+        "psscriptanalyzer"
+      ],
+      "properties": {
+        "pester": {
+          "$ref": "#/$defs/module"
+        },
+        "psscriptanalyzer": {
+          "$ref": "#/$defs/module"
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "distribution_tree_sha256"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+        },
+        "distribution_tree_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "pythonPackages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pyyaml",
+        "jsonschema"
+      ],
+      "properties": {
+        "pyyaml": {
+          "$ref": "#/$defs/package"
+        },
+        "jsonschema": {
+          "$ref": "#/$defs/package"
+        }
+      }
+    },
+    "wptArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "file_version",
+        "product_version",
+        "sha256"
+      ],
+      "properties": {
+        "relative_path": {
+          "$ref": "#/$defs/wptRelativePath"
+        },
+        "file_version": {
+          "$ref": "#/$defs/version"
+        },
+        "product_version": {
+          "$ref": "#/$defs/version"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "wpr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "file_version",
+        "product_version",
+        "sha256",
+        "instancename_capable"
+      ],
+      "properties": {
+        "relative_path": {
+          "$ref": "#/$defs/wptRelativePath"
+        },
+        "file_version": {
+          "$ref": "#/$defs/version"
+        },
+        "product_version": {
+          "$ref": "#/$defs/version"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "instancename_capable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "wpt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "root_source",
+        "same_directory",
+        "same_kits_root",
+        "wpr",
+        "xperf"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/evidencePath"
+        },
+        "root_source": {
+          "enum": [
+            "policy",
+            "kitsroot10",
+            "diagnostic-path"
+          ]
+        },
+        "same_directory": {
+          "const": true
+        },
+        "same_kits_root": {
+          "const": true
+        },
+        "wpr": {
+          "$ref": "#/$defs/wpr"
+        },
+        "xperf": {
+          "$ref": "#/$defs/wptArtifact"
+        }
+      }
+    },
+    "adk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kits_root10",
+        "base_version",
+        "servicing_state",
+        "servicing_kb",
+        "servicing_proof_kind",
+        "servicing_proof_sha256"
+      ],
+      "properties": {
+        "kits_root10": {
+          "$ref": "#/$defs/evidencePath"
+        },
+        "base_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+        },
+        "servicing_state": {
+          "enum": [
+            "serviced",
+            "unresolved",
+            "not-applicable"
+          ]
+        },
+        "servicing_kb": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^KB[0-9]{5,9}$"
+        },
+        "servicing_proof_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "servicing_proof_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "servicing_state": {
+                "const": "serviced"
+              }
+            },
+            "required": [
+              "servicing_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "servicing_kb": {
+                "type": "string",
+                "pattern": "^KB[0-9]{5,9}$"
+              },
+              "servicing_proof_kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "servicing_proof_sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "servicing_state": {
+                "const": "unresolved"
+              }
+            },
+            "required": [
+              "servicing_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "servicing_kb": {
+                "type": "null"
+              },
+              "servicing_proof_sha256": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
