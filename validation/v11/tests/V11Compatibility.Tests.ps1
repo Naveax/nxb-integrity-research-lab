@@ -1027,9 +1027,18 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
     else:
         raise AssertionError("unexpected swapped digest acceptance")
 '@
-        $run = Invoke-V11Python -Arguments @('-c', $probe, $tool)
-        $run.ExitCode | Should -Be 0
-        $run.Text | Should -Match 'SNAPSHOT_RACE_TEST_PASS'
-        $run.Text | Should -Match 'SWAPPED_DISK_CONTENT_REJECTED_PASS'
+        $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-race-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($tempRoot)
+        $probePath = Join-Path $tempRoot 'zip-snapshot-race.py'
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false, $true))
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            $run.ExitCode | Should -Be 0
+            $run.Text | Should -Match 'SNAPSHOT_RACE_TEST_PASS'
+            $run.Text | Should -Match 'SWAPPED_DISK_CONTENT_REJECTED_PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
