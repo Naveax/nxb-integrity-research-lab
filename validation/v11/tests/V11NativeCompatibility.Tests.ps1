@@ -149,3 +149,83 @@ print(json.dumps({"status":"PASS","count":len(results),"checks":results},separat
         $fixture | Should -Not -Match '"(?:ip_address|mac_address|machine_serial|hardware_uuid)"'
     }
 }
+Describe 'V11 claim-free fingerprint reconciliation boundary' {
+    BeforeAll {
+        $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $script:FingerprintReconciler = Join-Path $root 'validation\v11\scripts\Get-NxbCompatibilityEnvironmentFingerprint.ps1'
+        $script:FingerprintFixture = Join-Path $root 'validation\v11\fixtures\native-runtime\environment-fingerprint-v1.synthetic.json'
+        $script:FingerprintPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+        $script:FingerprintPython = if ($env:NXB_V11_PYTHON) {
+            [IO.Path]::GetFullPath($env:NXB_V11_PYTHON)
+        } else {
+            [IO.Path]::GetFullPath((Get-Command python -ErrorAction Stop).Source)
+        }
+        $script:FingerprintValidatorRoot = (
+            & $script:FingerprintPython -c 'import pathlib,jsonschema;print(pathlib.Path(jsonschema.__file__).resolve().parent.parent)'
+        ).Trim()
+        Test-Path -LiteralPath $script:FingerprintValidatorRoot -PathType Container | Should -BeTrue
+    }
+
+    It 'reconciles independent Python and frozen PowerShell canonical digests' {
+        $args = @('-NoLogo','-NoProfile','-File',$script:FingerprintReconciler,
+            '-ObservationJsonPath',$script:FingerprintFixture,
+            '-PythonExecutablePath',$script:FingerprintPython,
+            '-ValidatorPackageRoot',$script:FingerprintValidatorRoot)
+        $result = @(& $script:FingerprintPwsh @args)
+        $LASTEXITCODE | Should -Be 0
+        $doc = ($result -join [Environment]::NewLine) | ConvertFrom-Json
+        $doc.status | Should -BeExactly 'RECONCILED_CLAIM_FREE'
+        $doc.cross_runtime_hash_match | Should -BeTrue
+        $doc.physical_compatibility_claimed | Should -BeFalse
+        $doc.fingerprint_sha256 | Should -BeExactly '9de216a4202d1117cda3fa8d11de20a069c04e67dbd37d030752dd2a4c577146'
+    }
+
+    It 'seals canonical bytes with the original captured_utc string unchanged' {
+        $output = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-fingerprint-{0}.json' -f [Guid]::NewGuid().ToString('N'))
+        try {
+            $args = @('-NoLogo','-NoProfile','-File',$script:FingerprintReconciler,
+                '-ObservationJsonPath',$script:FingerprintFixture,
+                '-PythonExecutablePath',$script:FingerprintPython,
+                '-ValidatorPackageRoot',$script:FingerprintValidatorRoot,
+                '-OutputCanonicalJsonPath',$output)
+            $result = @(& $script:FingerprintPwsh @args)
+            $LASTEXITCODE | Should -Be 0
+            Test-Path -LiteralPath $output -PathType Leaf | Should -BeTrue
+            $bytes = [IO.File]::ReadAllBytes($output)
+            $bytes[$bytes.Length - 1] | Should -Not -Be 10
+            $text = [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+            $text | Should -Match '"captured_utc":"2026-10-06T00:00:00Z"'
+            $text | Should -Not -Match '00:00:00.0000000Z'
+        }
+        finally {
+            Remove-Item -LiteralPath $output -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects a tampered stored fingerprint' {
+        $path = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tampered-fingerprint-{0}.json' -f [Guid]::NewGuid().ToString('N'))
+        $source = Get-Content -LiteralPath $script:FingerprintFixture -Raw -Encoding UTF8
+        $old = '9de216a4202d1117cda3fa8d11de20a069c04e67dbd37d030752dd2a4c577146'
+        [IO.File]::WriteAllText($path,$source.Replace($old,('0' * 64)),[Text.UTF8Encoding]::new($false))
+        try {
+            $args = @('-NoLogo','-NoProfile','-File',$script:FingerprintReconciler,
+                '-ObservationJsonPath',$path,
+                '-PythonExecutablePath',$script:FingerprintPython,
+                '-ValidatorPackageRoot',$script:FingerprintValidatorRoot)
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $result = @(& $script:FingerprintPwsh @args 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+            $exitCode | Should -Not -Be 0
+            ($result -join [Environment]::NewLine) | Should -Match 'fingerprint SHA mismatch'
+        }
+        finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
