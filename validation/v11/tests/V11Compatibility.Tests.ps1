@@ -1789,3 +1789,124 @@ print("A0_HOSTED_PREDECESSOR_SCHEMA_PASS")
         }
     }
 }
+
+
+Describe 'V11 A0 hosted review schema DAG validator integration (claim-free)' {
+    It 'validates the exact hosted DAG and rejects cross-document authority drift' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $schemaRoot = Join-Path $script:RepositoryRoot 'schemas'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-a0-dag-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-a0-review.py'
+        $generator = @'
+import copy
+import hashlib
+import json
+import pathlib
+import sys
+import zipfile
+
+repo = pathlib.Path(sys.argv[1])
+destination = pathlib.Path(sys.argv[2])
+mode = sys.argv[3]
+fixture_path = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact" / "a0-hosted-substrate-v1.synthetic.json"
+fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+documents = copy.deepcopy(fixture["documents"])
+independent = documents["independent-validation.json"]
+receipt = documents["a0-substrate-receipt.json"]
+
+def canonical(document):
+    return json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+if mode == "bad-primary-hash":
+    independent["compatibility_policy_summary_sha256"] = "0" * 64
+    receipt["independent_validation_sha256"] = hashlib.sha256(canonical(independent)).hexdigest()
+elif mode == "bad-terminal-run":
+    receipt["run_id"] += 1
+elif mode == "bad-policy-lock":
+    independent["validation_toolchain_lock_sha256"] = "0" * 64
+    receipt["validation_toolchain_lock_sha256"] = "0" * 64
+    receipt["independent_validation_sha256"] = hashlib.sha256(canonical(independent)).hexdigest()
+elif mode == "bad-predecessor-binding":
+    receipt["predecessor_replay_artifact_id"] += 1
+elif mode == "bad-production-boundary":
+    receipt["production_signer_used"] = True
+elif mode != "good":
+    raise SystemExit("unknown mode")
+
+with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in sorted(documents):
+        archive.writestr(name, canonical(documents[name]))
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($case in @(
+                @{ mode = 'good'; accepted = $true; pattern = 'A0_HOSTED_SCHEMA_DAG_VALIDATED' },
+                @{ mode = 'bad-primary-hash'; accepted = $false; pattern = 'A0 independent-validation DAG hash mismatch for compatibility-policy-summary.json' },
+                @{ mode = 'bad-terminal-run'; accepted = $false; pattern = 'A0 terminal DAG identity mismatch: run_id' },
+                @{ mode = 'bad-policy-lock'; accepted = $false; pattern = 'A0 validation-toolchain lock mismatch in independent validation' },
+                @{ mode = 'bad-predecessor-binding'; accepted = $false; pattern = 'A0 terminal DAG identity mismatch: predecessor_replay_artifact_id' },
+                @{ mode = 'bad-production-boundary'; accepted = $false; pattern = 'A0 hosted schema semantic validation failed' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @(
+                    $generatorPath,
+                    $script:RepositoryRoot,
+                    $zip,
+                    [string]$case.mode
+                )
+                $made.ExitCode | Should -Be 0
+
+                $run = Invoke-V11Python -Arguments @(
+                    $tool,
+                    '--mode', 'a0-hosted-schema-dag-preflight',
+                    '--authority-mode', 'a0-hosted',
+                    '--zip', $zip,
+                    '--schema-root', $schemaRoot
+                )
+                if ($case.accepted) {
+                    $run.ExitCode | Should -Be 0
+                    $doc = $run.Text | ConvertFrom-Json
+                    [string]$doc.status | Should -BeExactly 'A0_HOSTED_SCHEMA_DAG_VALIDATED'
+                    [bool]$doc.a0_hosted_schema_validated | Should -BeTrue
+                    [bool]$doc.internal_evidence_dag_validated | Should -BeTrue
+                    [bool]$doc.admitted | Should -BeFalse
+                    [bool]$doc.physical_compatibility_claimed | Should -BeFalse
+                    @($doc.unverified_gates) | Should -Contain 'predecessor_replay_artifact_admission'
+                    @($doc.unverified_gates) | Should -Contain 'github_run_artifact_and_job_provenance'
+                }
+                else {
+                    $run.ExitCode | Should -Be 2
+                    $run.Text | Should -Match ([regex]::Escape([string]$case.pattern))
+                }
+            }
+
+            $wrongModeZip = Join-Path $root 'wrong-authority-mode.zip'
+            $made = Invoke-V11Python -Arguments @(
+                $generatorPath,
+                $script:RepositoryRoot,
+                $wrongModeZip,
+                'good'
+            )
+            $made.ExitCode | Should -Be 0
+            $wrong = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'a0-hosted-schema-dag-preflight',
+                '--authority-mode', 'physical-compatibility',
+                '--zip', $wrongModeZip,
+                '--schema-root', $schemaRoot
+            )
+            $wrong.ExitCode | Should -Be 2
+            $wrong.Text | Should -Match 'A0 hosted schema preflight requires a0-hosted authority mode'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
