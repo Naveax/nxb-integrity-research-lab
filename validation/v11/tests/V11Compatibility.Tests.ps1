@@ -1620,3 +1620,172 @@ with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as arch
         }
     }
 }
+
+
+Describe 'V11 A0 hosted and predecessor replay schema closure (claim-free)' {
+    It 'validates both frozen schemas and rejects claim, cycle and provenance drift' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-a0-schema-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probe = Join-Path $root 'validate-a0-schemas.py'
+        $source = @'
+import copy, json, pathlib, sys
+from importlib.metadata import version
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+
+repo = pathlib.Path(sys.argv[1])
+schemas = repo / "schemas"
+fixtures = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact"
+assert version("jsonschema") == "4.26.0"
+
+a0_schema = json.loads((schemas / "nxb-v11-a0-hosted-substrate.schema.json").read_text(encoding="utf-8"))
+a0 = json.loads((fixtures / "a0-hosted-substrate-v1.synthetic.json").read_text(encoding="utf-8"))
+pred_schema = json.loads((schemas / "nxb-v11-predecessor-replay-receipt.schema.json").read_text(encoding="utf-8"))
+pred = json.loads((fixtures / "predecessor-replay-receipt-v1.synthetic.json").read_text(encoding="utf-8"))
+
+assert a0_schema["$id"] == "urn:nxb:schema:nxb-v11-a0-hosted-substrate:v1"
+assert pred_schema["$id"] == "urn:nxb:schema:nxb-v11-predecessor-replay-receipt:v1"
+assert a0_schema["additionalProperties"] is False
+assert pred_schema["additionalProperties"] is False
+assert a0_schema["properties"]["authority"]["const"] == "nxb-v11-a0-hosted-substrate-v1"
+assert pred_schema["properties"]["authority"]["const"] == "nxb-v11-predecessor-replay-v1"
+assert a0_schema["properties"]["filename_set_sha256"]["const"] == "79ca4d7140bfccd859cd2952e70f7dc636a1612ad1b475f7509e57bd4cd7c977"
+
+expected_names = {
+    "compatibility-policy-summary.json",
+    "canonicalization-conformance.json",
+    "native-impact-classifier-fixtures.json",
+    "known-error-scan.json",
+    "independent-validation.json",
+    "a0-substrate-receipt.json",
+}
+docs_schema = a0_schema["properties"]["documents"]
+assert set(docs_schema["required"]) == expected_names
+assert set(docs_schema["properties"]) == expected_names
+
+authorities = {
+    "compatibility-policy-summary.json": "nxb-v11-a0-compatibility-policy-summary-v1",
+    "canonicalization-conformance.json": "nxb-v11-a0-canonicalization-conformance-v1",
+    "native-impact-classifier-fixtures.json": "nxb-v11-a0-native-impact-classifier-fixtures-v1",
+    "known-error-scan.json": "nxb-v11-known-error-scan-v1",
+    "independent-validation.json": "nxb-v11-a0-independent-validation-v1",
+    "a0-substrate-receipt.json": "nxb-v11-a0-substrate-receipt-v1",
+}
+for name, authority in authorities.items():
+    ref = docs_schema["properties"][name]["$ref"].rsplit("/", 1)[-1]
+    definition = a0_schema["$defs"][ref]
+    assert definition["additionalProperties"] is False
+    assert definition["properties"]["authority"]["const"] == authority
+
+independent = a0_schema["$defs"]["independentValidation"]
+receipt = a0_schema["$defs"]["a0SubstrateReceipt"]
+primaries = {
+    "compatibility_policy_summary_sha256",
+    "canonicalization_conformance_sha256",
+    "native_impact_classifier_fixtures_sha256",
+    "known_error_scan_sha256",
+}
+assert primaries <= set(independent["required"])
+assert primaries <= set(receipt["required"])
+assert "independent_validation_sha256" not in independent["properties"]
+assert "independent_validation_sha256" in receipt["required"]
+run_fields = {
+    "repository_id","workflow_id","workflow_path","workflow_blob_sha","run_id",
+    "run_attempt","event","pr_number","base_ref","head_ref",
+}
+assert run_fields <= set(independent["required"])
+assert run_fields <= set(receipt["required"])
+for terminal in (independent, receipt):
+    assert terminal["properties"]["repository_id"]["const"] == 1322938859
+    assert terminal["properties"]["workflow_path"]["const"] == ".github/workflows/nxb-v11-compatibility.yml"
+    assert terminal["properties"]["event"]["const"] == "pull_request"
+    assert terminal["properties"]["base_ref"]["const"] == "v11/a0-compatibility-substrate"
+assert "production_signer_used" in receipt["required"]
+assert receipt["properties"]["production_signer_used"]["const"] is False
+assert "production_merge_mutated" in receipt["required"]
+assert receipt["properties"]["production_merge_mutated"]["const"] is False
+for forbidden in ("receipt_sha256","a0_substrate_receipt_sha256","outer_zip_sha256","artifact_sha256"):
+    assert forbidden not in independent["properties"]
+    assert forbidden not in receipt["properties"]
+    assert forbidden not in pred_schema["properties"]
+
+assert pred_schema["properties"]["entry_count"]["const"] == 7
+assert pred_schema["properties"]["predecessor_source_semantics"]["const"] == "frozen-v1"
+assert pred_schema["properties"]["replay_environment_acquisition"]["const"] == "successor-locked"
+assert pred_schema["properties"]["historical_environment_byte_identity_claimed"]["const"] is False
+
+Draft202012Validator.check_schema(a0_schema)
+Draft202012Validator.check_schema(pred_schema)
+a0_validator = Draft202012Validator(a0_schema)
+pred_validator = Draft202012Validator(pred_schema)
+a0_validator.validate(a0)
+pred_validator.validate(pred)
+
+expected_artifact = (
+    "nxb-v11-predecessor-replay-v1-"
+    + pred["predecessor_main_sha"] + "-"
+    + pred["observer_successor_head_sha"] + "-"
+    + str(pred["run_id"]) + "-" + str(pred["run_attempt"])
+)
+assert pred["artifact_name"] == expected_artifact
+
+def rejected(validator, document):
+    try:
+        validator.validate(document)
+    except ValidationError:
+        return
+    raise AssertionError("negative control unexpectedly passed")
+
+for mutate in ("receipt", "outer", "claim", "release", "unknown"):
+    bad = copy.deepcopy(a0)
+    if mutate == "receipt":
+        bad["documents"]["independent-validation.json"]["receipt_hash_not_yet_available"] = False
+    elif mutate == "outer":
+        bad["documents"]["independent-validation.json"]["outer_zip_hash_not_yet_available"] = False
+    elif mutate == "claim":
+        bad["documents"]["a0-substrate-receipt.json"]["physical_compatibility_claims"] = 1
+    elif mutate == "release":
+        bad["documents"]["a0-substrate-receipt.json"]["production_release_updated"] = True
+    else:
+        bad["documents"]["compatibility-policy-summary.json"]["unexpected"] = True
+    rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["independent-validation.json"]["event"] = "workflow_dispatch"
+rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["a0-substrate-receipt.json"]["production_signer_used"] = True
+rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["a0-substrate-receipt.json"]["production_merge_mutated"] = True
+rejected(a0_validator, bad)
+
+for mutate in ("count", "historical", "ambient", "release", "self"):
+    bad = copy.deepcopy(pred)
+    if mutate == "count":
+        bad["entry_count"] = 6
+    elif mutate == "historical":
+        bad["historical_environment_byte_identity_claimed"] = True
+    elif mutate == "ambient":
+        bad["replay_environment_acquisition"] = "ambient"
+    elif mutate == "release":
+        bad["production_boundary"]["release_mutation"] = True
+    else:
+        bad["outer_zip_sha256"] = "0" * 64
+    rejected(pred_validator, bad)
+
+print("A0_HOSTED_PREDECESSOR_SCHEMA_PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probe, $source, [Text.UTF8Encoding]::new($false, $true))
+            $run = Invoke-V11Python -Arguments @($probe, $script:RepositoryRoot)
+            $run.ExitCode | Should -Be 0
+            $run.Text | Should -Match 'A0_HOSTED_PREDECESSOR_SCHEMA_PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
