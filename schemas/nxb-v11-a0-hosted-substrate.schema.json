@@ -464,6 +464,16 @@
         "schema_version",
         "status",
         "repository",
+        "repository_id",
+        "workflow_id",
+        "workflow_path",
+        "workflow_blob_sha",
+        "run_id",
+        "run_attempt",
+        "event",
+        "pr_number",
+        "base_ref",
+        "head_ref",
         "candidate_sha",
         "candidate_tree_sha",
         "base_sha",
@@ -511,6 +521,40 @@
         },
         "repository": {
           "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "repository_id": {
+          "const": 1322938859
+        },
+        "workflow_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "workflow_path": {
+          "const": ".github/workflows/nxb-v11-compatibility.yml"
+        },
+        "workflow_blob_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event": {
+          "const": "pull_request"
+        },
+        "pr_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "base_ref": {
+          "const": "v11/a0-compatibility-substrate"
+        },
+        "head_ref": {
+          "$ref": "#/$defs/nonempty"
         },
         "candidate_sha": {
           "$ref": "#/$defs/git40"
@@ -635,6 +679,16 @@
         "schema_version",
         "status",
         "repository",
+        "repository_id",
+        "workflow_id",
+        "workflow_path",
+        "workflow_blob_sha",
+        "run_id",
+        "run_attempt",
+        "event",
+        "pr_number",
+        "base_ref",
+        "head_ref",
         "candidate_sha",
         "candidate_tree_sha",
         "base_sha",
@@ -681,8 +735,10 @@
         "physical_compatibility_claims",
         "native_wpt_dispatch_performed",
         "production_private_key_used",
+        "production_signer_used",
         "production_tag_created",
         "production_release_updated",
+        "production_merge_mutated",
         "repository_protection_mutated",
         "admitted"
       ],
@@ -698,6 +754,40 @@
         },
         "repository": {
           "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "repository_id": {
+          "const": 1322938859
+        },
+        "workflow_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "workflow_path": {
+          "const": ".github/workflows/nxb-v11-compatibility.yml"
+        },
+        "workflow_blob_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event": {
+          "const": "pull_request"
+        },
+        "pr_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "base_ref": {
+          "const": "v11/a0-compatibility-substrate"
+        },
+        "head_ref": {
+          "$ref": "#/$defs/nonempty"
         },
         "candidate_sha": {
           "$ref": "#/$defs/git40"
@@ -840,10 +930,16 @@
         "production_private_key_used": {
           "const": false
         },
+        "production_signer_used": {
+          "const": false
+        },
         "production_tag_created": {
           "const": false
         },
         "production_release_updated": {
+          "const": false
+        },
+        "production_merge_mutated": {
           "const": false
         },
         "repository_protection_mutated": {

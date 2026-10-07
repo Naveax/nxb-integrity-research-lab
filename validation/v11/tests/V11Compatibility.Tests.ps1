@@ -1689,6 +1689,21 @@ assert primaries <= set(independent["required"])
 assert primaries <= set(receipt["required"])
 assert "independent_validation_sha256" not in independent["properties"]
 assert "independent_validation_sha256" in receipt["required"]
+run_fields = {
+    "repository_id","workflow_id","workflow_path","workflow_blob_sha","run_id",
+    "run_attempt","event","pr_number","base_ref","head_ref",
+}
+assert run_fields <= set(independent["required"])
+assert run_fields <= set(receipt["required"])
+for terminal in (independent, receipt):
+    assert terminal["properties"]["repository_id"]["const"] == 1322938859
+    assert terminal["properties"]["workflow_path"]["const"] == ".github/workflows/nxb-v11-compatibility.yml"
+    assert terminal["properties"]["event"]["const"] == "pull_request"
+    assert terminal["properties"]["base_ref"]["const"] == "v11/a0-compatibility-substrate"
+assert "production_signer_used" in receipt["required"]
+assert receipt["properties"]["production_signer_used"]["const"] is False
+assert "production_merge_mutated" in receipt["required"]
+assert receipt["properties"]["production_merge_mutated"]["const"] is False
 for forbidden in ("receipt_sha256","a0_substrate_receipt_sha256","outer_zip_sha256","artifact_sha256"):
     assert forbidden not in independent["properties"]
     assert forbidden not in receipt["properties"]
@@ -1734,6 +1749,18 @@ for mutate in ("receipt", "outer", "claim", "release", "unknown"):
     else:
         bad["documents"]["compatibility-policy-summary.json"]["unexpected"] = True
     rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["independent-validation.json"]["event"] = "workflow_dispatch"
+rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["a0-substrate-receipt.json"]["production_signer_used"] = True
+rejected(a0_validator, bad)
+
+bad = copy.deepcopy(a0)
+bad["documents"]["a0-substrate-receipt.json"]["production_merge_mutated"] = True
+rejected(a0_validator, bad)
 
 for mutate in ("count", "historical", "ambient", "release", "self"):
     bad = copy.deepcopy(pred)
