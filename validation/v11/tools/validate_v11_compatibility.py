@@ -63,6 +63,7 @@ KNOWN_AUTHORITY_BY_MODE = {
         "endurance-cycle-summary.json": "nxb-v11-endurance-cycle-summary-v1",
         "known-error-scan.json": "nxb-v11-known-error-scan-v1",
         "independent-validation.json": "nxb-v11-compatibility-independent-v1",
+        "compatibility-certification-receipt.json": "nxb-v11-compatibility-certification-receipt-v1",
     },
 }
 # These are deliberately conservative preflight limits, NOT policy admission.
@@ -103,6 +104,24 @@ PRIMARY_SCHEMA_BINDINGS = {
         "sha256": frozenset({
             "2ba6df7feca2bd46d480e61f06ab0a9a173c97411182470bdbfbc47f994ed3d4",
             "18de57a96b203cdaf6dd519df497adaa98a90cf2a742341f04fcb953cbc2a741",
+        }),
+    },
+}
+TERMINAL_SCHEMA_BINDINGS = {
+    "independent-validation.json": {
+        "filename": "nxb-v11-independent-validation.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-independent-validation:v1",
+        "sha256": frozenset({
+            "017403a3e71573cbbde562a2900a4c63b5bcdd6b43018db1d4baa0606baeb34c",
+            "0fc845e41da5592449232638c8ff8b5e90257679acd139f13ca7eaa8dd41c602",
+        }),
+    },
+    "compatibility-certification-receipt.json": {
+        "filename": "nxb-v11-compatibility-receipt.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-compatibility-receipt:v1",
+        "sha256": frozenset({
+            "d0968bc248da678bf52061c09b82a0bc7eace1194eaa663b53a68eff4aab39aa",
+            "787736cf6cca7872b8c8ee20d0f97dcb32eeba45d46aeb363236e0aaab394aac",
         }),
     },
 }
@@ -354,11 +373,256 @@ def _validate_primary_schema_documents(
     return jsonschema_version
 
 
+def _load_terminal_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
+    binding = TERMINAL_SCHEMA_BINDINGS[document_name]
+    schema_path = schema_root / binding["filename"]
+    try:
+        metadata = schema_path.lstat()
+        content = schema_path.read_bytes()
+    except OSError:
+        fail(f"{document_name}: terminal schema source absent or unreadable")
+    if not stat.S_ISREG(metadata.st_mode):
+        fail(f"{document_name}: terminal schema source is not a regular file")
+    if getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+    ):
+        fail(f"{document_name}: terminal schema source reparse-point forbidden")
+    digest = hashlib.sha256(content).hexdigest()
+    if digest not in binding["sha256"]:
+        fail(f"{document_name}: terminal schema source SHA-256 drift")
+    if content.startswith(b"\xef\xbb\xbf"):
+        fail(f"{document_name}: terminal schema UTF-8 BOM forbidden")
+    try:
+        schema = json.loads(
+            content.decode("utf-8", "strict"),
+            object_pairs_hook=_pairs_unique,
+            parse_int=_parse_integer,
+            parse_float=_parse_float,
+            parse_constant=_parse_constant,
+        )
+    except (UnicodeDecodeError, ValueError, TypeError, RecursionError):
+        fail(f"{document_name}: terminal schema source is invalid JSON")
+    if not isinstance(schema, dict):
+        fail(f"{document_name}: terminal schema root must be an object")
+    _check_strings(schema)
+    if schema.get("$id") != binding["schema_id"]:
+        fail(f"{document_name}: terminal schema ID drift")
+    if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+        fail(f"{document_name}: terminal schema dialect drift")
+    return schema
+
+
+def _validate_terminal_schema_documents(
+    documents: dict[str, dict[str, Any]], schema_root: Path
+) -> str:
+    _ordinary_schema_root(schema_root)
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema.exceptions import SchemaError, ValidationError
+        jsonschema_version = version("jsonschema")
+    except (ImportError, PackageNotFoundError):
+        fail("jsonschema package unavailable for terminal schema preflight")
+    if jsonschema_version != EXPECTED_JSONSCHEMA_VERSION:
+        fail("jsonschema package version differs from terminal schema preflight pin")
+    for document_name in TERMINAL_SCHEMA_BINDINGS:
+        if document_name not in documents:
+            fail(f"{document_name}: terminal review document missing")
+        schema = _load_terminal_schema(schema_root, document_name)
+        try:
+            Draft202012Validator.check_schema(schema)
+            Draft202012Validator(
+                schema, format_checker=FormatChecker()
+            ).validate(documents[document_name])
+        except SchemaError:
+            fail(f"{document_name}: terminal schema contract invalid")
+        except ValidationError:
+            fail(f"{document_name}: terminal schema semantic validation failed")
+    return jsonschema_version
+
+
+def _validate_review_schema_documents(
+    documents: dict[str, dict[str, Any]], schema_root: Path
+) -> str:
+    primary_version = _validate_primary_schema_documents(documents, schema_root)
+    terminal_version = _validate_terminal_schema_documents(documents, schema_root)
+    if primary_version != terminal_version:
+        fail("primary/terminal schema validator version mismatch")
+    return primary_version
+
+
+PRIMARY_HASH_FIELDS = {
+    "environment-fingerprint.json": "environment_fingerprint_sha256",
+    "compatibility-plan.json": "compatibility_plan_sha256",
+    "endurance-cycle-summary.json": "endurance_summary_sha256",
+    "known-error-scan.json": "known_error_scan_sha256",
+}
+
+DAG_COMMON_FIELDS = (
+    "repository",
+    "workflow_id",
+    "workflow_blob_sha",
+    "harness_manifest_sha256",
+    "dispatcher_sha",
+    "dispatcher_tree_sha",
+    "candidate_sha",
+    "candidate_tree_sha",
+    "base_sha",
+    "base_tree_sha",
+    "predecessor_main_sha",
+    "predecessor_tree_sha",
+    "cell_id",
+    "support_class",
+    "axis",
+    "intent_sha256",
+    "policy_sha256",
+    "fingerprint_sha256",
+    "predecessor_replay_artifact_id",
+    "predecessor_replay_sha256",
+    "predecessor_replay_receipt_sha256",
+)
+
+
+def _validate_internal_review_dag(
+    documents: dict[str, dict[str, Any]], entry_hashes: dict[str, str]
+) -> None:
+    independent = documents["independent-validation.json"]
+    receipt = documents["compatibility-certification-receipt.json"]
+
+    for document_name, field_name in PRIMARY_HASH_FIELDS.items():
+        expected = entry_hashes[document_name]
+        if independent.get(field_name) != expected:
+            fail(f"independent-validation DAG hash mismatch for {document_name}")
+        if receipt.get(field_name) != expected:
+            fail(f"certification receipt DAG hash mismatch for {document_name}")
+
+    if receipt.get("independent_validation_sha256") != entry_hashes[
+        "independent-validation.json"
+    ]:
+        fail("certification receipt independent-validation SHA-256 mismatch")
+
+    for field_name in DAG_COMMON_FIELDS:
+        if independent.get(field_name) != receipt.get(field_name):
+            fail(f"terminal DAG identity mismatch: {field_name}")
+
+    if independent.get("selector_provenance") != receipt.get("selector_provenance"):
+        fail("terminal DAG selector provenance mismatch")
+    selector = independent.get("selector_provenance")
+    if not isinstance(selector, dict):
+        fail("terminal DAG selector provenance must be an object")
+    if selector.get("compatibility_policy_sha256") != independent.get("policy_sha256"):
+        fail("independent validation policy/selector digest mismatch")
+    if receipt.get("selector_provenance", {}).get(
+        "compatibility_policy_sha256"
+    ) != receipt.get("policy_sha256"):
+        fail("certification receipt policy/selector digest mismatch")
+
+    for independent_field, receipt_field in (
+        ("run_id", "trusted_native_run_id"),
+        ("run_attempt", "trusted_native_run_attempt"),
+        ("job_id", "trusted_native_job_id"),
+        ("job_name", "trusted_native_job_name"),
+    ):
+        if independent.get(independent_field) != receipt.get(receipt_field):
+            fail(f"trusted-native DAG identity mismatch: {receipt_field}")
+
+    environment = documents["environment-fingerprint.json"]
+    plan = documents["compatibility-plan.json"]
+    endurance = documents["endurance-cycle-summary.json"]
+    known_error = documents["known-error-scan.json"]
+
+    candidate_sha = independent.get("candidate_sha")
+    candidate_tree = independent.get("candidate_tree_sha")
+    if environment.get("head_sha") != candidate_sha:
+        fail("environment/candidate SHA mismatch")
+    if environment.get("head_tree_sha") != candidate_tree:
+        fail("environment/candidate tree mismatch")
+    if plan.get("candidate", {}).get("sha") != candidate_sha:
+        fail("plan/candidate SHA mismatch")
+    if plan.get("candidate", {}).get("tree_sha") != candidate_tree:
+        fail("plan/candidate tree mismatch")
+    if endurance.get("candidate", {}).get("sha") != candidate_sha:
+        fail("endurance/candidate SHA mismatch")
+    if endurance.get("candidate", {}).get("tree_sha") != candidate_tree:
+        fail("endurance/candidate tree mismatch")
+
+    if plan.get("base", {}).get("sha") != independent.get("base_sha"):
+        fail("plan/base SHA mismatch")
+    if plan.get("base", {}).get("tree_sha") != independent.get("base_tree_sha"):
+        fail("plan/base tree mismatch")
+    if plan.get("predecessor", {}).get("main_sha") != independent.get(
+        "predecessor_main_sha"
+    ):
+        fail("plan/predecessor SHA mismatch")
+    if plan.get("predecessor", {}).get("main_tree_sha") != independent.get(
+        "predecessor_tree_sha"
+    ):
+        fail("plan/predecessor tree mismatch")
+
+    if environment.get("cell_id") != independent.get("cell_id"):
+        fail("environment/cell mismatch")
+    if environment.get("support_class") != independent.get("support_class"):
+        fail("environment/support class mismatch")
+    if plan.get("cell", {}).get("id") != independent.get("cell_id"):
+        fail("plan/cell mismatch")
+    if plan.get("cell", {}).get("support_class") != independent.get("support_class"):
+        fail("plan/support class mismatch")
+    if plan.get("cell", {}).get("axis") != independent.get("axis"):
+        fail("plan/axis mismatch")
+    if endurance.get("cell_id") != independent.get("cell_id"):
+        fail("endurance/cell mismatch")
+    if endurance.get("support_class") != independent.get("support_class"):
+        fail("endurance/support class mismatch")
+
+    if plan.get("intent", {}).get("sha256") != independent.get("intent_sha256"):
+        fail("plan/intent digest mismatch")
+    if endurance.get("intent_sha256") != independent.get("intent_sha256"):
+        fail("endurance/intent digest mismatch")
+    if environment.get("policy_sha256") != independent.get("policy_sha256"):
+        fail("environment/policy digest mismatch")
+    if plan.get("policy", {}).get("sha256") != independent.get("policy_sha256"):
+        fail("plan/policy digest mismatch")
+    if endurance.get("policy_sha256") != independent.get("policy_sha256"):
+        fail("endurance/policy digest mismatch")
+    if environment.get("fingerprint_sha256") != independent.get("fingerprint_sha256"):
+        fail("environment/fingerprint digest mismatch")
+    if endurance.get("fingerprint_sha256") != independent.get("fingerprint_sha256"):
+        fail("endurance/fingerprint digest mismatch")
+
+    production_boundary = independent.get("production_boundary")
+    if plan.get("production_boundary") != production_boundary:
+        fail("plan/production boundary mismatch")
+    if endurance.get("production_boundary") != production_boundary:
+        fail("endurance/production boundary mismatch")
+    if receipt.get("production_boundary") != production_boundary:
+        fail("terminal production boundary mismatch")
+
+    if plan.get("review", {}).get("entry_count") != 6:
+        fail("plan review cardinality mismatch")
+    if endurance.get("review", {}).get("entry_count") != 6:
+        fail("endurance review cardinality mismatch")
+    if receipt.get("review_entry_count") != 6:
+        fail("receipt review cardinality mismatch")
+
+    if known_error.get("status") != "passed":
+        fail("known-error scan did not pass")
+    if known_error.get("finding_count") != 0:
+        fail("known-error scan contains findings")
+    if known_error.get("failure_override_permitted") is not False:
+        fail("known-error failure override forbidden")
+
+    if independent.get("physical_compatibility_claimed") is not False:
+        fail("independent validation cannot claim physical compatibility")
+    if receipt.get("physical_compatibility_claimed") is not False:
+        fail("claim-free review DAG cannot claim physical compatibility")
+
+
 def inspect_zip(
     path: Path,
     authority_mode: str,
     expected_digest: str | None = None,
     schema_root: Path | None = None,
+    schema_scope: str = "primary",
 ) -> dict[str, Any]:
     """Check byte/path/canonical JSON structure only. Never return 'admitted'."""
     if authority_mode not in AUTHORITY_MODE_NAMES:
@@ -428,24 +692,48 @@ def inspect_zip(
     except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile):
         fail("malformed or unsupported ZIP envelope")
 
+    entry_hashes = {row["name"]: row["sha256"] for row in rows}
+    terminal_schema_documents_validated = 0
+    internal_evidence_dag_validated = False
     if schema_root is not None:
         if authority_mode != "physical-compatibility":
-            fail("primary schema preflight requires physical-compatibility authority mode")
-        schema_validator_version = _validate_primary_schema_documents(
-            documents, schema_root
-        )
-        status = "PRIMARY_SCHEMAS_VALIDATED"
-        schema_semantics_validated = True
-        unverified_gates = [
-            "validation_toolchain_provenance",
-            "internal_evidence_dag",
-            "policy_and_lock_bindings",
-            "predecessor_replay",
-            "github_run_artifact_and_job_provenance",
-            "trusted_native_identity",
-            "pre_post_environment_stability",
-            "negative_control_admission",
-        ]
+            fail("schema preflight requires physical-compatibility authority mode")
+        if schema_scope == "review":
+            schema_validator_version = _validate_review_schema_documents(
+                documents, schema_root
+            )
+            _validate_internal_review_dag(documents, entry_hashes)
+            status = "REVIEW_SCHEMAS_DAG_VALIDATED"
+            schema_semantics_validated = True
+            terminal_schema_documents_validated = len(TERMINAL_SCHEMA_BINDINGS)
+            internal_evidence_dag_validated = True
+            unverified_gates = [
+                "validation_toolchain_provenance",
+                "policy_and_lock_bindings",
+                "predecessor_replay",
+                "github_run_artifact_and_job_provenance",
+                "trusted_native_identity",
+                "pre_post_environment_stability",
+                "negative_control_admission",
+            ]
+        elif schema_scope == "primary":
+            schema_validator_version = _validate_primary_schema_documents(
+                documents, schema_root
+            )
+            status = "PRIMARY_SCHEMAS_VALIDATED"
+            schema_semantics_validated = True
+            unverified_gates = [
+                "validation_toolchain_provenance",
+                "internal_evidence_dag",
+                "policy_and_lock_bindings",
+                "predecessor_replay",
+                "github_run_artifact_and_job_provenance",
+                "trusted_native_identity",
+                "pre_post_environment_stability",
+                "negative_control_admission",
+            ]
+        else:
+            fail("unknown schema preflight scope")
     else:
         status = "STRUCTURE_ONLY"
         schema_semantics_validated = False
@@ -479,6 +767,8 @@ def inspect_zip(
         "primary_schema_documents_validated": (
             len(PRIMARY_SCHEMA_BINDINGS) if schema_semantics_validated else 0
         ),
+        "terminal_schema_documents_validated": terminal_schema_documents_validated,
+        "internal_evidence_dag_validated": internal_evidence_dag_validated,
         "schema_validator_version": schema_validator_version,
         "schema_validator_package_provenance_admitted": False,
         "unverified_gates": unverified_gates,
@@ -489,7 +779,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument(
         "--mode",
-        choices=["structural-preflight", "primary-schema-preflight"],
+        choices=[
+            "structural-preflight",
+            "primary-schema-preflight",
+            "review-schema-dag-preflight",
+        ],
         required=True,
     )
     parser.add_argument(
@@ -502,23 +796,27 @@ def main() -> int:
     parser.add_argument("--expected-zip-sha256", help="independently supplied lowercase ZIP SHA-256")
     parser.add_argument(
         "--schema-root",
-        help="absolute directory containing the exact frozen primary schemas",
+        help="absolute directory containing the exact frozen physical review schemas",
     )
     args = parser.parse_args()
     schema_root: Path | None = None
-    if args.mode == "primary-schema-preflight":
+    schema_scope = "primary"
+    if args.mode in ("primary-schema-preflight", "review-schema-dag-preflight"):
         if args.authority_mode != "physical-compatibility":
-            fail("primary schema preflight requires physical-compatibility authority mode")
+            fail("schema preflight requires physical-compatibility authority mode")
         if args.schema_root is None:
-            fail("primary schema preflight requires --schema-root")
+            fail("schema preflight requires --schema-root")
         schema_root = Path(args.schema_root)
+        if args.mode == "review-schema-dag-preflight":
+            schema_scope = "review"
     elif args.schema_root is not None:
-        fail("--schema-root is only valid with primary-schema-preflight")
+        fail("--schema-root is only valid with schema preflight modes")
     report = inspect_zip(
         Path(args.zip),
         args.authority_mode,
         args.expected_zip_sha256,
         schema_root,
+        schema_scope,
     )
     print(json.dumps(report, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
     return 0

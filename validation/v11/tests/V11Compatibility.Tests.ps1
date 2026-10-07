@@ -892,7 +892,7 @@ names = {
   'endurance-cycle-summary.json': 'nxb-v11-endurance-cycle-summary-v1',
   'known-error-scan.json': 'nxb-v11-known-error-scan-v1',
   'independent-validation.json': 'nxb-v11-compatibility-independent-v1',
-  'compatibility-certification-receipt.json': 'synthetic-not-admitted',
+  'compatibility-certification-receipt.json': 'nxb-v11-compatibility-certification-receipt-v1',
 }
 keys = sorted(names)
 with zipfile.ZipFile(sys.argv[1], 'w', compression=zipfile.ZIP_DEFLATED) as output:
@@ -1014,7 +1014,7 @@ names = {
  'endurance-cycle-summary.json':'nxb-v11-endurance-cycle-summary-v1',
  'known-error-scan.json':'nxb-v11-known-error-scan-v1',
  'independent-validation.json':'nxb-v11-compatibility-independent-v1',
- 'compatibility-certification-receipt.json':'synthetic-not-admitted',
+ 'compatibility-certification-receipt.json':'nxb-v11-compatibility-certification-receipt-v1',
 }
 mode = sys.argv[2]
 keys = sorted(names)
@@ -1077,7 +1077,7 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
     replacement = root / "replacement.zip"
     authority = {
         **module.KNOWN_AUTHORITY_BY_MODE["physical-compatibility"],
-        "compatibility-certification-receipt.json": "synthetic-not-admitted",
+        "compatibility-certification-receipt.json": "nxb-v11-compatibility-certification-receipt-v1",
     }
     def make(dest, state):
         content_hashes = {}
@@ -1153,7 +1153,7 @@ authorities = {
     "endurance-cycle-summary.json": "nxb-v11-endurance-cycle-summary-v1",
     "known-error-scan.json": "nxb-v11-known-error-scan-v1",
     "independent-validation.json": "nxb-v11-compatibility-independent-v1",
-    "compatibility-certification-receipt.json": "synthetic-not-admitted",
+    "compatibility-certification-receipt.json": "nxb-v11-compatibility-certification-receipt-v1",
 }
 mode = sys.argv[2]
 with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -1233,7 +1233,7 @@ documents = {
  "endurance-cycle-summary.json": json.loads((fixtures / "endurance-cycle-summary-v1.synthetic.json").read_text(encoding="utf-8")),
  "known-error-scan.json": {"authority":"nxb-v11-known-error-scan-v1","schema_version":1,"signature_policy_sha256":"7"*64,"entry_count":0,"rule_count":0,"finding_count":0,"status":"passed","failure_override_permitted":False,"findings":[]},
  "independent-validation.json": {"authority":"nxb-v11-compatibility-independent-v1","status":"synthetic"},
- "compatibility-certification-receipt.json": {"authority":"synthetic-not-admitted","status":"synthetic"},
+ "compatibility-certification-receipt.json": {"authority":"nxb-v11-compatibility-certification-receipt-v1","status":"synthetic"},
 }
 if mode == "bad-environment": documents["environment-fingerprint.json"]["worktree_clean"] = False
 with zipfile.ZipFile(destination,"w",compression=zipfile.ZIP_DEFLATED) as archive:
@@ -1277,7 +1277,7 @@ documents={
  "endurance-cycle-summary.json":json.loads((fixtures/"endurance-cycle-summary-v1.synthetic.json").read_text(encoding="utf-8")),
  "known-error-scan.json":{"authority":"nxb-v11-known-error-scan-v1","schema_version":1,"signature_policy_sha256":"7"*64,"entry_count":0,"rule_count":0,"finding_count":0,"status":"passed","failure_override_permitted":False,"findings":[]},
  "independent-validation.json":{"authority":"nxb-v11-compatibility-independent-v1","status":"synthetic"},
- "compatibility-certification-receipt.json":{"authority":"synthetic-not-admitted","status":"synthetic"}}
+ "compatibility-certification-receipt.json":{"authority":"nxb-v11-compatibility-certification-receipt-v1","status":"synthetic"}}
 if mode=="bad-environment": documents["environment-fingerprint.json"]["worktree_clean"]=False
 with zipfile.ZipFile(destination,"w",compression=zipfile.ZIP_DEFLATED) as archive:
  for name in sorted(documents): archive.writestr(name,json.dumps(documents[name],ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False).encode("utf-8"))
@@ -1311,7 +1311,7 @@ with zipfile.ZipFile(destination,"w",compression=zipfile.ZIP_DEFLATED) as archiv
         $generatorPath = Join-Path $root 'generate-structural.py'
         $generator = @'
 import json,sys,zipfile
-authorities={"environment-fingerprint.json":"nxb-compatibility-environment-fingerprint-v1","compatibility-plan.json":"nxb-v11-compatibility-plan-v1","endurance-cycle-summary.json":"nxb-v11-endurance-cycle-summary-v1","known-error-scan.json":"nxb-v11-known-error-scan-v1","independent-validation.json":"nxb-v11-compatibility-independent-v1","compatibility-certification-receipt.json":"synthetic-not-admitted"}
+authorities={"environment-fingerprint.json":"nxb-compatibility-environment-fingerprint-v1","compatibility-plan.json":"nxb-v11-compatibility-plan-v1","endurance-cycle-summary.json":"nxb-v11-endurance-cycle-summary-v1","known-error-scan.json":"nxb-v11-known-error-scan-v1","independent-validation.json":"nxb-v11-compatibility-independent-v1","compatibility-certification-receipt.json":"nxb-v11-compatibility-certification-receipt-v1"}
 with zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_DEFLATED) as archive:
  for name in sorted(authorities): archive.writestr(name,json.dumps({"authority":authorities[name],"status":"synthetic"},sort_keys=True,separators=(",",":")).encode("utf-8"))
 '@
@@ -1459,6 +1459,161 @@ print("TERMINAL_SCHEMA_DAG_PASS")
             $run = Invoke-V11Python -Arguments @($probe, $script:RepositoryRoot)
             $run.ExitCode | Should -Be 0
             $run.Text | Should -Match 'TERMINAL_SCHEMA_DAG_PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
+Describe 'V11 six-entry review schema DAG preflight (claim-free)' {
+    It 'validates the acyclic six-entry hash graph and rejects cross-document drift' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $schemaRoot = Join-Path $script:RepositoryRoot 'schemas'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-review-dag-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-review-dag.py'
+        $generator = @'
+import copy
+import hashlib
+import json
+import pathlib
+import sys
+import zipfile
+
+repo = pathlib.Path(sys.argv[1])
+destination = pathlib.Path(sys.argv[2])
+mode = sys.argv[3]
+native = repo / "validation" / "v11" / "fixtures" / "native-runtime"
+terminal = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact"
+
+def load(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+def canonical(document):
+    return json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+environment = load(native / "environment-fingerprint-v1.synthetic.json")
+plan = load(native / "compatibility-plan-v1.synthetic.json")
+endurance = load(native / "endurance-cycle-summary-v1.synthetic.json")
+known_error = {
+    "authority": "nxb-v11-known-error-scan-v1",
+    "schema_version": 1,
+    "signature_policy_sha256": "7" * 64,
+    "entry_count": 0,
+    "rule_count": 0,
+    "finding_count": 0,
+    "status": "passed",
+    "failure_override_permitted": False,
+    "findings": [],
+}
+independent = load(terminal / "independent-validation-v1.synthetic.json")
+receipt = load(terminal / "compatibility-receipt-v1.synthetic.json")
+
+policy_sha = independent["policy_sha256"]
+fingerprint_sha = independent["fingerprint_sha256"]
+intent_sha = independent["intent_sha256"]
+
+environment["policy_sha256"] = policy_sha
+environment["fingerprint_sha256"] = fingerprint_sha
+plan["policy"]["sha256"] = policy_sha
+plan["intent"]["sha256"] = intent_sha
+endurance["policy_sha256"] = policy_sha
+endurance["fingerprint_sha256"] = fingerprint_sha
+endurance["intent_sha256"] = intent_sha
+
+receipt["selector_provenance"] = copy.deepcopy(independent["selector_provenance"])
+for field in (
+    "predecessor_replay_artifact_id",
+    "predecessor_replay_sha256",
+    "predecessor_replay_receipt_sha256",
+):
+    receipt[field] = independent[field]
+
+primary = {
+    "environment-fingerprint.json": environment,
+    "compatibility-plan.json": plan,
+    "endurance-cycle-summary.json": endurance,
+    "known-error-scan.json": known_error,
+}
+primary_bytes = {name: canonical(doc) for name, doc in primary.items()}
+hash_fields = {
+    "environment-fingerprint.json": "environment_fingerprint_sha256",
+    "compatibility-plan.json": "compatibility_plan_sha256",
+    "endurance-cycle-summary.json": "endurance_summary_sha256",
+    "known-error-scan.json": "known_error_scan_sha256",
+}
+for name, field in hash_fields.items():
+    digest = hashlib.sha256(primary_bytes[name]).hexdigest()
+    independent[field] = digest
+    receipt[field] = digest
+
+if mode == "bad-primary-hash":
+    independent["environment_fingerprint_sha256"] = "0" * 64
+elif mode == "bad-terminal-identity":
+    receipt["candidate_sha"] = "c" * 40
+elif mode == "bad-native-join":
+    receipt["trusted_native_run_id"] = independent["run_id"] + 1
+elif mode == "bad-physical-claim":
+    receipt["physical_compatibility_claimed"] = True
+
+independent_bytes = canonical(independent)
+receipt["independent_validation_sha256"] = hashlib.sha256(independent_bytes).hexdigest()
+documents = dict(primary_bytes)
+documents["independent-validation.json"] = independent_bytes
+documents["compatibility-certification-receipt.json"] = canonical(receipt)
+
+with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in sorted(documents):
+        archive.writestr(name, documents[name])
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($case in @(
+                @{ mode = 'good'; accepted = $true; pattern = 'REVIEW_SCHEMAS_DAG_VALIDATED' },
+                @{ mode = 'bad-primary-hash'; accepted = $false; pattern = 'independent-validation DAG hash mismatch' },
+                @{ mode = 'bad-terminal-identity'; accepted = $false; pattern = 'terminal DAG identity mismatch' },
+                @{ mode = 'bad-native-join'; accepted = $false; pattern = 'trusted-native DAG identity mismatch' },
+                @{ mode = 'bad-physical-claim'; accepted = $false; pattern = 'claim-free review DAG cannot claim physical compatibility' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @($generatorPath, $script:RepositoryRoot, $zip, [string]$case.mode)
+                $made.ExitCode | Should -Be 0
+                $run = Invoke-V11Python -Arguments @(
+                    $tool,
+                    '--mode', 'review-schema-dag-preflight',
+                    '--authority-mode', 'physical-compatibility',
+                    '--zip', $zip,
+                    '--schema-root', $schemaRoot
+                )
+                if ($case.accepted) {
+                    $run.ExitCode | Should -Be 0
+                    $doc = $run.Text | ConvertFrom-Json
+                    [string]$doc.status | Should -BeExactly 'REVIEW_SCHEMAS_DAG_VALIDATED'
+                    [bool]$doc.schema_semantics_validated | Should -BeTrue
+                    [int]$doc.primary_schema_documents_validated | Should -Be 4
+                    [int]$doc.terminal_schema_documents_validated | Should -Be 2
+                    [bool]$doc.internal_evidence_dag_validated | Should -BeTrue
+                    [bool]$doc.admitted | Should -BeFalse
+                    [bool]$doc.physical_compatibility_claimed | Should -BeFalse
+                    @($doc.unverified_gates) | Should -Not -Contain 'schema_semantics'
+                    @($doc.unverified_gates) | Should -Not -Contain 'internal_evidence_dag'
+                    @($doc.unverified_gates) | Should -Contain 'policy_and_lock_bindings'
+                    @($doc.unverified_gates) | Should -Contain 'trusted_native_identity'
+                }
+                else {
+                    $run.ExitCode | Should -Be 2
+                    $run.Text | Should -Match 'NXB_V11_REVIEW_ZIP_PREFLIGHT_ERROR'
+                    $run.Text | Should -Match ([string]$case.pattern)
+                }
+            }
         }
         finally {
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
