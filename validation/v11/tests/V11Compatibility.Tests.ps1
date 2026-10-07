@@ -760,8 +760,11 @@ Describe 'V11 successor known-error scanner' {
         $entries = @(
             [ordered]@{ path = 'validation/v11/scripts/ConvertTo-NxbV11CanonicalAuthority.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/scripts/Expand-NxbV11VerifiedArchive.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/scripts/Get-NxbCompatibilityEnvironmentFingerprint.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CandidateDispatcher.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/tests/CanonicalJson.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tests/V11Compatibility.Tests.ps1'; validation_class = 'pester_test' },
+            [ordered]@{ path = 'validation/v11/tests/V11NativeCompatibility.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tools/build_artifact_tree_manifest.py'; validation_class = 'executable_python' },
             [ordered]@{ path = 'validation/v11/tools/materialize_python_requirements.py'; validation_class = 'executable_python' },
             [ordered]@{ path = 'validation/v11/tools/run_pinned_pip.py'; validation_class = 'executable_python' },
@@ -796,7 +799,7 @@ Describe 'V11 successor known-error scanner' {
             $run.ExitCode | Should -Be 0
             $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
             [string]$result.status | Should -BeExactly 'passed'
-            [int]$result.entry_count | Should -Be 10
+            [int]$result.entry_count | Should -Be 13
             [int]$result.finding_count | Should -Be 0
             @($result.findings).Count | Should -Be 0
             [bool]$result.failure_override_permitted | Should -BeFalse
@@ -2379,5 +2382,380 @@ Describe 'V11 compatibility authority documentation source contract' {
         $text | Should -Match 'pull_request_target.*forbidden'
         $text | Should -Match 'runtime / trusted-preparation execution chain remains a separate HOLD'
         $text | Should -Match 'Editing this file cannot make a disabled cell enabled'
+    }
+}
+
+
+Describe 'V11 candidate dispatcher exact intent binding' {
+    BeforeAll {
+        $script:DispatcherPath = Join-Path $script:RepositoryRoot 'validation\v11\scripts\Invoke-NxbV11CandidateDispatcher.ps1'
+        $script:PwshPath = [IO.Path]::GetFullPath((Get-Command pwsh -ErrorAction Stop).Source)
+
+        function Get-TestSha256Text {
+            param([Parameter(Mandatory = $true)][string]$Text)
+            $bytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($Text)
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+                $sha.Dispose()
+            }
+        }
+
+        function Invoke-TestGit {
+            param(
+                [Parameter(Mandatory = $true)][string]$Repository,
+                [Parameter(Mandatory = $true)][string[]]$Arguments
+            )
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& git -C $Repository @Arguments 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+            if ($exitCode -ne 0) {
+                throw "git $($Arguments -join ' ') failed: $($output -join ' | ')"
+            }
+            return @($output)
+        }
+
+        function Get-TestGitOne {
+            param(
+                [Parameter(Mandatory = $true)][string]$Repository,
+                [Parameter(Mandatory = $true)][string[]]$Arguments
+            )
+            $rows = @(Invoke-TestGit -Repository $Repository -Arguments $Arguments |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            if ($rows.Count -ne 1) {
+                throw "git $($Arguments -join ' ') expected one row, got $($rows.Count)"
+            }
+            return $rows[0].Trim()
+        }
+
+        function New-DispatcherFixture {
+            param([ValidateSet('enabled', 'provisional-disabled')][string]$CellStatus = 'enabled')
+
+            $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-dispatcher-' + [Guid]::NewGuid().ToString('N'))
+            $repository = Join-Path $outer 'repo'
+            $out = Join-Path $outer 'out'
+            [void][IO.Directory]::CreateDirectory($repository)
+            [void][IO.Directory]::CreateDirectory($out)
+
+            [void](Invoke-TestGit -Repository $repository -Arguments @('init', '--quiet'))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('config', 'user.name', 'NXB Test'))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('config', 'user.email', 'nxb-test@example.invalid'))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('config', 'core.autocrlf', 'false'))
+
+            [void][IO.Directory]::CreateDirectory((Join-Path $repository 'scripts'))
+            Copy-Item -LiteralPath $script:EvidenceStorePath -Destination (Join-Path $repository 'scripts\Nxb.EvidenceStore.psm1') -Force
+            (Get-FileHash -LiteralPath (Join-Path $repository 'scripts\Nxb.EvidenceStore.psm1') -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7'
+            Write-Utf8NoBom -Path (Join-Path $repository 'base.txt') -Text 'base'
+            [void](Invoke-TestGit -Repository $repository -Arguments @('add', '--', 'scripts/Nxb.EvidenceStore.psm1', 'base.txt'))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('commit', '--quiet', '-m', 'base'))
+            $baseSha = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD')
+            $baseTree = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD^{tree}')
+
+            Write-Utf8NoBom -Path (Join-Path $repository 'candidate.txt') -Text 'candidate'
+            [void](Invoke-TestGit -Repository $repository -Arguments @('add', '--', 'candidate.txt'))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('commit', '--quiet', '-m', 'candidate'))
+            $candidateSha = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD')
+            $candidateTree = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD^{tree}')
+
+            [void](Invoke-TestGit -Repository $repository -Arguments @('checkout', '--quiet', '-b', 'dispatcher', $baseSha))
+            [void][IO.Directory]::CreateDirectory((Join-Path $repository '.github\workflows'))
+            [void][IO.Directory]::CreateDirectory((Join-Path $repository 'config'))
+
+            $workflowText = @'
+name: NXB V11 Fixture
+on:
+  workflow_dispatch:
+jobs:
+  fixture:
+    runs-on: windows-2022
+    steps:
+      - run: Write-Output fixture
+'@
+            Write-Utf8NoBom -Path (Join-Path $repository '.github\workflows\nxb-v11-compatibility.yml') -Text $workflowText
+
+            $cell = [ordered]@{
+                id = 'win11-25h2-x64-ps76-py312-adk26100'
+                status = $CellStatus
+            }
+            $policy = [ordered]@{
+                authority = 'nxb-v11-compatibility-policy-v1'
+                schema_version = 1
+                cells = @($cell)
+            }
+            $canonicalPolicy = ConvertTo-NxbCanonicalJson -InputObject $policy
+            Write-Utf8NoBom -Path (Join-Path $repository 'config\nxb-v11-compatibility-policy.json') -Text $canonicalPolicy
+            $policySha = Get-TestSha256Text -Text $canonicalPolicy
+
+            [void](Invoke-TestGit -Repository $repository -Arguments @(
+                'add', '--',
+                '.github/workflows/nxb-v11-compatibility.yml',
+                'config/nxb-v11-compatibility-policy.json'
+            ))
+            [void](Invoke-TestGit -Repository $repository -Arguments @('commit', '--quiet', '-m', 'dispatcher'))
+            $dispatcherSha = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD')
+            $dispatcherTree = Get-TestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD^{tree}')
+            $workflowBlob = Get-TestGitOne -Repository $repository -Arguments @(
+                'rev-parse',
+                ($dispatcherSha + ':.github/workflows/nxb-v11-compatibility.yml')
+            )
+
+            $harnessSha = ('a' * 64)
+            $candidatePr = [long]123
+            $workflowId = [long]777
+            $intent = [ordered]@{
+                authority = 'nxb-v11-compatibility-dispatch-intent-v1'
+                execution_mode = 'candidate'
+                repository = 'Naveax/nxb-integrity-research-lab'
+                repository_id = [long]1322938859
+                workflow_path = '.github/workflows/nxb-v11-compatibility.yml'
+                workflow_id = $workflowId
+                admitted_dispatcher_sha = $dispatcherSha
+                admitted_dispatcher_tree = $dispatcherTree
+                admitted_workflow_blob_sha = $workflowBlob
+                harness_manifest_sha256 = $harnessSha
+                candidate_sha = $candidateSha
+                candidate_tree = $candidateTree
+                candidate_pr = $candidatePr
+                base_sha = $baseSha
+                base_tree = $baseTree
+                policy_sha256 = $policySha
+                cell_id = 'win11-25h2-x64-ps76-py312-adk26100'
+                endurance_tier = '1h'
+                runner_class = 'nxb-native'
+            }
+            $intentSha = Get-TestSha256Text -Text (ConvertTo-NxbCanonicalJson -InputObject $intent)
+
+            @((Invoke-TestGit -Repository $repository -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count | Should -Be 0
+
+            return [pscustomobject]@{
+                Outer = $outer
+                Repository = [IO.Path]::GetFullPath($repository)
+                OutputRoot = [IO.Path]::GetFullPath($out)
+                ModulePath = [IO.Path]::GetFullPath((Join-Path $repository 'scripts\Nxb.EvidenceStore.psm1'))
+                BaseSha = $baseSha
+                BaseTree = $baseTree
+                CandidateSha = $candidateSha
+                CandidateTree = $candidateTree
+                DispatcherSha = $dispatcherSha
+                DispatcherTree = $dispatcherTree
+                WorkflowBlob = $workflowBlob
+                WorkflowId = $workflowId
+                HarnessSha = $harnessSha
+                PolicySha = $policySha
+                CandidatePr = $candidatePr
+                IntentSha = $intentSha
+            }
+        }
+
+        function Invoke-DispatcherChild {
+            param(
+                [Parameter(Mandatory = $true)]$Fixture,
+                [string]$ExpectedIntentSha256,
+                [string]$OutputReceiptPath,
+                [long]$RunId = 987654321,
+                [long]$RunAttempt = 1
+            )
+
+            if ([string]::IsNullOrWhiteSpace($ExpectedIntentSha256)) {
+                $ExpectedIntentSha256 = [string]$Fixture.IntentSha
+            }
+            if ([string]::IsNullOrWhiteSpace($OutputReceiptPath)) {
+                $OutputReceiptPath = [IO.Path]::GetFullPath((Join-Path $Fixture.OutputRoot ('receipt-' + [Guid]::NewGuid().ToString('N') + '.json')))
+            }
+
+            $configPath = Join-Path $Fixture.OutputRoot ('config-' + [Guid]::NewGuid().ToString('N') + '.json')
+            $resultPath = Join-Path $Fixture.OutputRoot ('result-' + [Guid]::NewGuid().ToString('N') + '.json')
+            $runnerPath = Join-Path $Fixture.OutputRoot ('runner-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+
+            $config = [ordered]@{
+                RepositoryRoot = [string]$Fixture.Repository
+                ExecutionMode = 'candidate'
+                Repository = 'Naveax/nxb-integrity-research-lab'
+                RepositoryId = [long]1322938859
+                WorkflowPath = '.github/workflows/nxb-v11-compatibility.yml'
+                WorkflowId = [long]$Fixture.WorkflowId
+                AdmittedDispatcherSha = [string]$Fixture.DispatcherSha
+                AdmittedDispatcherTree = [string]$Fixture.DispatcherTree
+                AdmittedWorkflowBlobSha = [string]$Fixture.WorkflowBlob
+                HarnessManifestSha256 = [string]$Fixture.HarnessSha
+                CandidateSha = [string]$Fixture.CandidateSha
+                CandidateTree = [string]$Fixture.CandidateTree
+                CandidatePr = [long]$Fixture.CandidatePr
+                BaseSha = [string]$Fixture.BaseSha
+                BaseTree = [string]$Fixture.BaseTree
+                PolicySha256 = [string]$Fixture.PolicySha
+                CellId = 'win11-25h2-x64-ps76-py312-adk26100'
+                EnduranceTier = '1h'
+                RunnerClass = 'nxb-native'
+                ExpectedIntentSha256 = $ExpectedIntentSha256
+                EvidenceStoreModulePath = [string]$Fixture.ModulePath
+                OutputReceiptPath = $OutputReceiptPath
+                RunId = $RunId
+                RunAttempt = $RunAttempt
+                Event = 'workflow_dispatch'
+            }
+            Write-Utf8NoBom -Path $configPath -Text ($config | ConvertTo-Json -Compress -Depth 20)
+
+            $runner = @'
+param(
+    [Parameter(Mandatory = $true)][string]$DispatcherPath,
+    [Parameter(Mandatory = $true)][string]$ConfigPath,
+    [Parameter(Mandatory = $true)][string]$ResultPath
+)
+$ErrorActionPreference = 'Stop'
+try {
+    $c = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json -AsHashtable -Depth 50
+    $params = @{
+        RepositoryRoot = [string]$c.RepositoryRoot
+        ExecutionMode = [string]$c.ExecutionMode
+        Repository = [string]$c.Repository
+        RepositoryId = [long]$c.RepositoryId
+        WorkflowPath = [string]$c.WorkflowPath
+        WorkflowId = [long]$c.WorkflowId
+        AdmittedDispatcherSha = [string]$c.AdmittedDispatcherSha
+        AdmittedDispatcherTree = [string]$c.AdmittedDispatcherTree
+        AdmittedWorkflowBlobSha = [string]$c.AdmittedWorkflowBlobSha
+        HarnessManifestSha256 = [string]$c.HarnessManifestSha256
+        CandidateSha = [string]$c.CandidateSha
+        CandidateTree = [string]$c.CandidateTree
+        CandidatePr = [long]$c.CandidatePr
+        BaseSha = [string]$c.BaseSha
+        BaseTree = [string]$c.BaseTree
+        PolicySha256 = [string]$c.PolicySha256
+        CellId = [string]$c.CellId
+        EnduranceTier = [string]$c.EnduranceTier
+        RunnerClass = [string]$c.RunnerClass
+        ExpectedIntentSha256 = [string]$c.ExpectedIntentSha256
+        EvidenceStoreModulePath = [string]$c.EvidenceStoreModulePath
+        OutputReceiptPath = [string]$c.OutputReceiptPath
+        RunId = [long]$c.RunId
+        RunAttempt = [long]$c.RunAttempt
+        Event = [string]$c.Event
+        PassThru = $true
+    }
+    $result = & $DispatcherPath @params
+    $json = $result | ConvertTo-Json -Compress -Depth 20
+    [IO.File]::WriteAllText($ResultPath, $json, [Text.UTF8Encoding]::new($false, $true))
+    exit 0
+}
+catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+'@
+            Write-Utf8NoBom -Path $runnerPath -Text $runner
+
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& $script:PwshPath -NoLogo -NoProfile -File $runnerPath -DispatcherPath $script:DispatcherPath -ConfigPath $configPath -ResultPath $resultPath 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+
+            $result = $null
+            if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+                $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            }
+            return [pscustomobject]@{
+                ExitCode = [int]$exitCode
+                Text = ($output -join [Environment]::NewLine)
+                Result = $result
+                ReceiptPath = $OutputReceiptPath
+            }
+        }
+    }
+
+    It 'recomputes the exact candidate intent and writes only an external immutable receipt' {
+        $fixture = New-DispatcherFixture
+        try {
+            $run = Invoke-DispatcherChild -Fixture $fixture
+            $run.ExitCode | Should -Be 0
+            [string]$run.Result.status | Should -BeExactly 'passed'
+            [string]$run.Result.authority | Should -BeExactly 'nxb-v11-compatibility-dispatch-intent-v1'
+            [string]$run.Result.execution_mode | Should -BeExactly 'candidate'
+            [string]$run.Result.intent_sha256 | Should -BeExactly $fixture.IntentSha
+            [bool]$run.Result.receipt_written | Should -BeTrue
+            [bool]$run.Result.repository_mutated | Should -BeFalse
+            [bool]$run.Result.dispatch_performed_by_this_script | Should -BeFalse
+
+            Test-Path -LiteralPath $run.ReceiptPath -PathType Leaf | Should -BeTrue
+            $bytes = [IO.File]::ReadAllBytes($run.ReceiptPath)
+            ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+            $text = [Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+            $text.EndsWith([string][char]10) | Should -BeFalse
+            $receipt = $text | ConvertFrom-Json
+            [string]$receipt.authority | Should -BeExactly 'nxb-v11-compatibility-dispatch-intent-receipt-v1'
+            [string]$receipt.status | Should -BeExactly 'passed'
+            [string]$receipt.intent_sha256 | Should -BeExactly $fixture.IntentSha
+            [long]$receipt.run_id | Should -Be 987654321
+            [long]$receipt.run_attempt | Should -Be 1
+            [string]$receipt.event | Should -BeExactly 'workflow_dispatch'
+            [bool]$receipt.intent_recomputed_valid | Should -BeTrue
+            [bool]$receipt.repository_mutated | Should -BeFalse
+            [bool]$receipt.dispatch_performed_by_this_script | Should -BeFalse
+
+            @((Invoke-TestGit -Repository $fixture.Repository -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count | Should -Be 0
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'fails closed on intent drift, dirty checkout, in-repository receipt and disabled cell' {
+        $fixture = New-DispatcherFixture
+        try {
+            $wrongIntent = Invoke-DispatcherChild -Fixture $fixture -ExpectedIntentSha256 ('0' * 64)
+            $wrongIntent.ExitCode | Should -Be 1
+            $wrongIntent.Text | Should -Match 'intent SHA-256 mismatch'
+
+            Write-Utf8NoBom -Path (Join-Path $fixture.Repository 'dirty.txt') -Text 'dirty'
+            $dirty = Invoke-DispatcherChild -Fixture $fixture
+            $dirty.ExitCode | Should -Be 1
+            $dirty.Text | Should -Match 'worktree must be clean'
+            Remove-Item -LiteralPath (Join-Path $fixture.Repository 'dirty.txt') -Force
+
+            $insideReceipt = [IO.Path]::GetFullPath((Join-Path $fixture.Repository 'receipt.json'))
+            $inside = Invoke-DispatcherChild -Fixture $fixture -OutputReceiptPath $insideReceipt
+            $inside.ExitCode | Should -Be 1
+            $inside.Text | Should -Match 'must be outside the trusted repository worktree'
+            Test-Path -LiteralPath $insideReceipt | Should -BeFalse
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $disabled = New-DispatcherFixture -CellStatus provisional-disabled
+        try {
+            $run = Invoke-DispatcherChild -Fixture $disabled
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'CellId is not enabled'
+        }
+        finally {
+            Remove-Item -LiteralPath $disabled.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'remains verification-only and contains no dispatch or network mutation primitive' {
+        $source = Get-Content -LiteralPath $script:DispatcherPath -Raw
+        $source | Should -Not -Match '(?im)\bgh\s+(api|workflow|run)\b'
+        $source | Should -Not -Match '(?i)\bInvoke-(WebRequest|RestMethod)\b'
+        $source | Should -Not -Match '(?i)\bStart-Process\b'
+        $source | Should -Not -Match '(?im)\bgit\s+(push|commit|merge|tag|reset|checkout)\b'
+        $source | Should -Not -Match '(?i)\b(upload-artifact|download-artifact)\b'
+        $source | Should -Match 'dispatch_performed_by_this_script\s*=\s*\$false'
     }
 }
