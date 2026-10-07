@@ -14,11 +14,20 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw 'PowerShell 7 required'
+}
 
 $ExpectedContractId = 'nxb-artifact-tree-manifest-v1'
 $ExpectedSchemaId = 'urn:nxb:schema:nxb-artifact-tree-manifest:v1'
-$ExpectedSchemaSha256 = '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f'
-$ExpectedEvidenceStoreSha256 = 'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
+$ExpectedSchemaSha256 = @(
+    '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f',
+    '8952dfcee0732679249d5de2a0e5eabacd8ab1cce2698974c6f5c48b322a4785'
+)
+$ExpectedEvidenceStoreSha256 = @(
+    '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7',
+    'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
+)
 $RootRolePattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
 $Sha256Pattern = '^[0-9a-f]{64}$'
 
@@ -48,8 +57,7 @@ function Get-FullPathStrict {
         Fail "$Label is empty."
     }
     $full = [IO.Path]::GetFullPath($Path)
-    if (-not [IO.Path]::IsPathFullyQualified($Path) -or
-        -not $full.Equals($Path, [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $full.Equals($Path, [StringComparison]::OrdinalIgnoreCase)) {
         Fail "$Label must be an absolute normalized path: $Path"
     }
     return $full
@@ -303,8 +311,8 @@ $schema = Assert-OrdinaryFile -Path $SchemaPath -Label 'SchemaPath'
 $module = Assert-OrdinaryFile -Path $EvidenceStoreModulePath -Label 'EvidenceStoreModulePath'
 
 $schemaSha = (Get-FileHash -LiteralPath $schema -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($schemaSha -cne $ExpectedSchemaSha256) {
-    Fail "Schema raw SHA-256 drift: expected=$ExpectedSchemaSha256 actual=$schemaSha"
+if ($ExpectedSchemaSha256 -cnotcontains $schemaSha) {
+    Fail "Schema raw SHA-256 drift: expected one of $($ExpectedSchemaSha256 -join ',') actual=$schemaSha"
 }
 
 $output = Get-FullPathStrict `
@@ -323,8 +331,8 @@ if (-not $module.Equals($expectedModulePath, [StringComparison]::OrdinalIgnoreCa
     Fail "EvidenceStoreModulePath is not the exact shared module in the seed worktree: $module"
 }
 $moduleSha = (Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($moduleSha -cne $ExpectedEvidenceStoreSha256) {
-    Fail "EvidenceStore raw SHA-256 drift: expected=$ExpectedEvidenceStoreSha256 actual=$moduleSha"
+if ($ExpectedEvidenceStoreSha256 -cnotcontains $moduleSha) {
+    Fail "EvidenceStore raw SHA-256 drift: expected one of $($ExpectedEvidenceStoreSha256 -join ',') actual=$moduleSha"
 }
 
 $schemaDocument = Read-Utf8JsonDocument -Path $schema -Label 'schema'

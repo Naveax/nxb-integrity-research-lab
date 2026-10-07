@@ -153,6 +153,7 @@ Describe 'V11 claim-free fingerprint reconciliation boundary' {
     BeforeAll {
         $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         $script:FingerprintReconciler = Join-Path $root 'validation\v11\scripts\Get-NxbCompatibilityEnvironmentFingerprint.ps1'
+        $script:FingerprintSchema = Join-Path $root 'schemas\nxb-v11-environment-fingerprint.schema.json'
         $script:FingerprintFixture = Join-Path $root 'validation\v11\fixtures\native-runtime\environment-fingerprint-v1.synthetic.json'
         $script:FingerprintPwsh = (Get-Command pwsh -ErrorAction Stop).Source
         $script:FingerprintPython = if ($env:NXB_V11_PYTHON) {
@@ -164,6 +165,31 @@ Describe 'V11 claim-free fingerprint reconciliation boundary' {
             & $script:FingerprintPython -c 'import pathlib,jsonschema;print(pathlib.Path(jsonschema.__file__).resolve().parent.parent)'
         ).Trim()
         Test-Path -LiteralPath $script:FingerprintValidatorRoot -PathType Container | Should -BeTrue
+    }
+
+    It 'binds the environment schema to the exact admitted LF and CRLF byte identities' {
+        $utf8 = [Text.UTF8Encoding]::new($false, $true)
+        $raw = [IO.File]::ReadAllBytes($script:FingerprintSchema)
+        $text = $utf8.GetString($raw)
+        $lf = $utf8.GetBytes($text.Replace("`r`n", "`n"))
+        $crlf = $utf8.GetBytes($text.Replace("`r`n", "`n").Replace("`n", "`r`n"))
+        $getSha256 = {
+            param([byte[]]$Bytes)
+            $hash = [Security.Cryptography.SHA256]::Create()
+            try {
+                ([BitConverter]::ToString($hash.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+                $hash.Dispose()
+            }
+        }
+
+        (& $getSha256 $lf) | Should -BeExactly '04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144'
+        (& $getSha256 $crlf) | Should -BeExactly 'bd1996bb06b8e9714b579115d0124866bd45dd7f8d802421f8b973ea6218671c'
+        @(
+            '04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144',
+            'bd1996bb06b8e9714b579115d0124866bd45dd7f8d802421f8b973ea6218671c'
+        ) | Should -Contain (& $getSha256 $raw)
     }
 
     It 'reconciles independent Python and frozen PowerShell canonical digests' {

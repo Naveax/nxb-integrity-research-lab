@@ -40,12 +40,31 @@ BeforeAll {
             [Text.UTF8Encoding]::new($false, $true)
         )
     }
+
+    function ConvertFrom-V11TestJson {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [string]$Text,
+            [int]$Depth = 20
+        )
+
+        process {
+            $command = Get-Command ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
+            if ($command.Parameters.ContainsKey('Depth')) {
+                $Text | ConvertFrom-Json -Depth $Depth
+            }
+            else {
+                $Text | ConvertFrom-Json
+            }
+        }
+    }
 }
 
 Describe 'V11 A0/S1 canonical bootstrap seed' {
     It 'preserves the frozen predecessor canonical JSON smoke vector' {
         $fixture = Get-Content -LiteralPath $script:CanonicalFixturePath -Raw |
-            ConvertFrom-Json -Depth 20
+            ConvertFrom-V11TestJson -Depth 20
 
         $inputObject = [ordered]@{
             z = 1
@@ -110,6 +129,154 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
         }
     }
 
+    It 'accepts only the exact admitted LF or CRLF schema and EvidenceStore byte identities' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
+        $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-evidence-eol-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        $schemasRoot = Join-Path $temporaryRoot 'schemas'
+        $scriptsRoot = Join-Path $temporaryRoot 'scripts'
+        [void][IO.Directory]::CreateDirectory($schemasRoot)
+        [void][IO.Directory]::CreateDirectory($scriptsRoot)
+        $temporarySchema = Join-Path $schemasRoot 'nxb-artifact-tree-manifest.schema.json'
+        $temporaryModule = Join-Path $scriptsRoot 'Nxb.EvidenceStore.psm1'
+        $output = Join-Path $temporaryRoot 'manifest.canonical.json'
+
+        try {
+            Copy-Item -LiteralPath $script:SchemaPath -Destination $temporarySchema
+            $schemaBytes = [IO.File]::ReadAllBytes($script:SchemaPath)
+            $schemaText = [Text.UTF8Encoding]::new($false, $true).GetString($schemaBytes)
+            $schemaLfText = $schemaText.Replace("`r`n", "`n")
+            $schemaCrlfText = $schemaLfText.Replace("`n", "`r`n")
+            $moduleBytes = [IO.File]::ReadAllBytes($script:EvidenceStorePath)
+            $moduleText = [Text.UTF8Encoding]::new($false, $true).GetString($moduleBytes)
+            $lfText = $moduleText.Replace("`r`n", "`n")
+            $crlfText = $lfText.Replace("`n", "`r`n")
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaCrlfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            [IO.File]::WriteAllText(
+                $temporaryModule,
+                $crlfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+
+            (Get-FileHash -LiteralPath $temporarySchema -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '8952dfcee0732679249d5de2a0e5eabacd8ab1cce2698974c6f5c48b322a4785'
+            (Get-FileHash -LiteralPath $temporaryModule -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly 'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
+
+            & $script:CanonicalWrapperPath `
+                -InputJsonPath $script:ManifestFixturePath `
+                -OutputCanonicalJsonPath $output `
+                -SchemaPath $temporarySchema `
+                -EvidenceStoreModulePath $temporaryModule
+            Test-Path -LiteralPath $output -PathType Leaf | Should -BeTrue
+
+            Remove-Item -LiteralPath $output -Force
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaLfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            [IO.File]::WriteAllText(
+                $temporaryModule,
+                $lfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            (Get-FileHash -LiteralPath $temporarySchema -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f'
+            (Get-FileHash -LiteralPath $temporaryModule -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7'
+
+            & $script:CanonicalWrapperPath `
+                -InputJsonPath $script:ManifestFixturePath `
+                -OutputCanonicalJsonPath $output `
+                -SchemaPath $temporarySchema `
+                -EvidenceStoreModulePath $temporaryModule
+            Test-Path -LiteralPath $output -PathType Leaf | Should -BeTrue
+
+            Remove-Item -LiteralPath $output -Force
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                ($schemaLfText + ' '),
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            {
+                & $script:CanonicalWrapperPath `
+                    -InputJsonPath $script:ManifestFixturePath `
+                    -OutputCanonicalJsonPath $output `
+                    -SchemaPath $temporarySchema `
+                    -EvidenceStoreModulePath $temporaryModule
+            } | Should -Throw '*Schema raw SHA-256 drift*'
+            Test-Path -LiteralPath $output | Should -BeFalse
+
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaLfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            [IO.File]::WriteAllText(
+                $temporaryModule,
+                ($crlfText + '# byte drift'),
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            {
+                & $script:CanonicalWrapperPath `
+                    -InputJsonPath $script:ManifestFixturePath `
+                    -OutputCanonicalJsonPath $output `
+                    -SchemaPath $temporarySchema `
+                    -EvidenceStoreModulePath $temporaryModule
+            } | Should -Throw '*EvidenceStore raw SHA-256 drift*'
+            Test-Path -LiteralPath $output | Should -BeFalse
+        }
+        finally {
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Import-Module $script:EvidenceStorePath -Force
+        }
+    }
+
+    It 'rejects relative archive paths before extraction state is touched' {
+        $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
+            'nxb-v11-extractor-path-{0}' -f [Guid]::NewGuid().ToString('N')
+        )
+        [void][IO.Directory]::CreateDirectory($temporaryRoot)
+        $resultPath = Join-Path $temporaryRoot 'result.json'
+        $previousMaterializationRoot = [Environment]::GetEnvironmentVariable(
+            'NXB_V11_MATERIALIZATION_ROOT',
+            'Process'
+        )
+        [Environment]::SetEnvironmentVariable(
+            'NXB_V11_MATERIALIZATION_ROOT',
+            $temporaryRoot,
+            'Process'
+        )
+        try {
+            {
+                & $script:ExtractorPath `
+                    -ArchivePath 'relative.zip' `
+                    -ArchiveKind 'python-wheel' `
+                    -DestinationRoot $temporaryRoot `
+                    -ExpectedSha256 ('0' * 64) `
+                    -MaxEntries 1 `
+                    -MaxEntryBytes 1 `
+                    -MaxTotalBytes 1 `
+                    -MaxCompressionRatio 1 `
+                    -ResultPath $resultPath
+            } | Should -Throw '*absolute normalized path*'
+            Test-Path -LiteralPath $resultPath | Should -BeFalse
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable(
+                'NXB_V11_MATERIALIZATION_ROOT',
+                $previousMaterializationRoot,
+                'Process'
+            )
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'binds the exact artifact-tree schema contract markers' {
         $schemaBytes = [IO.File]::ReadAllBytes($script:SchemaPath)
         $schemaBytes.Length | Should -BeGreaterThan 0
@@ -119,7 +286,7 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
         }
 
         $schema = [Text.UTF8Encoding]::new($false, $true).GetString($schemaBytes) |
-            ConvertFrom-Json -Depth 20
+            ConvertFrom-V11TestJson -Depth 20
         [string]$schema.'$schema' |
             Should -BeExactly 'https://json-schema.org/draft/2020-12/schema'
         [string]$schema.'$id' |
@@ -130,9 +297,9 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
             Should -BeExactly 'nxb-artifact-tree-manifest-v1'
     }
 
-    It 'canonicalizes the admitted logical manifest through the predecessor primitive' {
+    It 'canonicalizes the admitted logical manifest through the predecessor primitive' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
         $fixture = Get-Content -LiteralPath $script:CanonicalFixturePath -Raw |
-            ConvertFrom-Json -Depth 20
+            ConvertFrom-V11TestJson -Depth 20
         $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
             'nxb-v11-canonical-{0}' -f [Guid]::NewGuid().ToString('N')
         )
@@ -161,7 +328,7 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
         }
     }
 
-    It 'rejects duplicate raw JSON properties before object conversion can launder them' {
+    It 'rejects duplicate raw JSON properties before object conversion can launder them' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
         $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
             'nxb-v11-duplicate-{0}' -f [Guid]::NewGuid().ToString('N')
         )
@@ -187,7 +354,7 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
         }
     }
 
-    It 'rejects artifact rows that are not strict ordinal UTF-8 path order' {
+    It 'rejects artifact rows that are not strict ordinal UTF-8 path order' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
         $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
             'nxb-v11-order-{0}' -f [Guid]::NewGuid().ToString('N')
         )
@@ -215,7 +382,7 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
 
     It 'keeps hostile verified-archive names as fixture data rather than repository paths' {
         $fixture = Get-Content -LiteralPath $script:ArchiveCasesPath -Raw |
-            ConvertFrom-Json -Depth 20
+            ConvertFrom-V11TestJson -Depth 20
 
         [string]$fixture.profile |
             Should -BeExactly 'nxb-v11-verified-archive-fixture-cases-v1'
