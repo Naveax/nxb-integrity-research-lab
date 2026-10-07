@@ -72,6 +72,41 @@ MAX_ZIP_BYTES = 12 * 1024 * 1024
 I64_MAX = (1 << 63) - 1
 I64_MIN = -(1 << 63)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+PRIMARY_SCHEMA_BINDINGS = {
+    "environment-fingerprint.json": {
+        "filename": "nxb-v11-environment-fingerprint.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-environment-fingerprint:v1",
+        "sha256": frozenset({
+            "04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144",
+            "bd1996bb06b8e9714b579115d0124866bd45dd7f8d802421f8b973ea6218671c",
+        }),
+    },
+    "compatibility-plan.json": {
+        "filename": "nxb-v11-compatibility-plan.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-compatibility-plan:v1",
+        "sha256": frozenset({
+            "0b9d94321c17e5ea1ccc1d72062ac39f2e61f514f19dd228c125b909db76f4ab",
+            "541d5d055421a2e520f373921f64c60210a625954511b554574eecaaacf5afec",
+        }),
+    },
+    "endurance-cycle-summary.json": {
+        "filename": "nxb-v11-endurance-cycle-summary.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-endurance-cycle-summary:v1",
+        "sha256": frozenset({
+            "2264e2c646fe0d1ce3c34535b36ffb2fa8c900067eaff5ba225a64732a1af818",
+            "0a195596f187ba40b233833c900fdd8df0c80128d6af0631a3eea7d2996dd0a8",
+        }),
+    },
+    "known-error-scan.json": {
+        "filename": "nxb-v11-known-error-scan.schema.json",
+        "schema_id": "urn:nxb:schema:nxb-v11-known-error-scan:v1",
+        "sha256": frozenset({
+            "2ba6df7feca2bd46d480e61f06ab0a9a173c97411182470bdbfbc47f994ed3d4",
+            "18de57a96b203cdaf6dd519df497adaa98a90cf2a742341f04fcb953cbc2a741",
+        }),
+    },
+}
+EXPECTED_JSONSCHEMA_VERSION = "4.26.0"
 
 
 class PreflightError(ValueError):
@@ -235,10 +270,95 @@ def _ordinary_zip(path: Path) -> None:
         current = current.parent
 
 
+def _ordinary_schema_root(path: Path) -> None:
+    if not path.is_absolute():
+        fail("schema root must be absolute")
+    try:
+        metadata = path.lstat()
+    except OSError:
+        fail("schema root is absent or unreadable")
+    if not stat.S_ISDIR(metadata.st_mode):
+        fail("schema root must be an ordinary directory")
+    if getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+    ):
+        fail("schema root reparse-point forbidden")
+
+
+def _load_primary_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
+    binding = PRIMARY_SCHEMA_BINDINGS[document_name]
+    schema_path = schema_root / binding["filename"]
+    try:
+        metadata = schema_path.lstat()
+        content = schema_path.read_bytes()
+    except OSError:
+        fail(f"{document_name}: primary schema source absent or unreadable")
+    if not stat.S_ISREG(metadata.st_mode):
+        fail(f"{document_name}: primary schema source is not a regular file")
+    if getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+    ):
+        fail(f"{document_name}: primary schema source reparse-point forbidden")
+    digest = hashlib.sha256(content).hexdigest()
+    if digest not in binding["sha256"]:
+        fail(f"{document_name}: primary schema source SHA-256 drift")
+    if content.startswith(b"\xef\xbb\xbf"):
+        fail(f"{document_name}: primary schema UTF-8 BOM forbidden")
+    try:
+        decoded = content.decode("utf-8", "strict")
+        schema = json.loads(
+            decoded,
+            object_pairs_hook=_pairs_unique,
+            parse_int=_parse_integer,
+            parse_float=_parse_float,
+            parse_constant=_parse_constant,
+        )
+    except (UnicodeDecodeError, ValueError, TypeError, RecursionError):
+        fail(f"{document_name}: primary schema source is invalid JSON")
+    if not isinstance(schema, dict):
+        fail(f"{document_name}: primary schema root must be an object")
+    _check_strings(schema)
+    if schema.get("$id") != binding["schema_id"]:
+        fail(f"{document_name}: primary schema ID drift")
+    if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+        fail(f"{document_name}: primary schema dialect drift")
+    return schema
+
+
+def _validate_primary_schema_documents(
+    documents: dict[str, dict[str, Any]], schema_root: Path
+) -> str:
+    _ordinary_schema_root(schema_root)
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema.exceptions import SchemaError, ValidationError
+        jsonschema_version = version("jsonschema")
+    except (ImportError, PackageNotFoundError):
+        fail("jsonschema package unavailable for primary schema preflight")
+    if jsonschema_version != EXPECTED_JSONSCHEMA_VERSION:
+        fail("jsonschema package version differs from primary schema preflight pin")
+    for document_name in PRIMARY_SCHEMA_BINDINGS:
+        if document_name not in documents:
+            fail(f"{document_name}: primary review document missing")
+        schema = _load_primary_schema(schema_root, document_name)
+        try:
+            Draft202012Validator.check_schema(schema)
+            Draft202012Validator(
+                schema, format_checker=FormatChecker()
+            ).validate(documents[document_name])
+        except SchemaError:
+            fail(f"{document_name}: primary schema contract invalid")
+        except ValidationError:
+            fail(f"{document_name}: primary schema semantic validation failed")
+    return jsonschema_version
+
+
 def inspect_zip(
     path: Path,
     authority_mode: str,
     expected_digest: str | None = None,
+    schema_root: Path | None = None,
 ) -> dict[str, Any]:
     """Check byte/path/canonical JSON structure only. Never return 'admitted'."""
     if authority_mode not in AUTHORITY_MODE_NAMES:
@@ -286,6 +406,7 @@ def inspect_zip(
             if sum(entry.file_size for entry in entries) > MAX_TOTAL_UNCOMPRESSED:
                 fail("review uncompressed bytes exceed preflight ceiling")
             rows: list[dict[str, Any]] = []
+            documents: dict[str, dict[str, Any]] = {}
             for entry in sorted(entries, key=lambda item: item.filename.encode("utf-8")):
                 try:
                     with archive.open(entry, "r") as data:
@@ -296,7 +417,9 @@ def inspect_zip(
                     if isinstance(exc, PreflightError):
                         raise
                     fail("ZIP entry failed decompression/CRC verification")
-                _canonical_document(content, entry.filename, authority_mode)
+                documents[entry.filename] = _canonical_document(
+                    content, entry.filename, authority_mode
+                )
                 rows.append({
                     "name": entry.filename,
                     "byte_length": len(content),
@@ -305,9 +428,42 @@ def inspect_zip(
     except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile):
         fail("malformed or unsupported ZIP envelope")
 
+    if schema_root is not None:
+        if authority_mode != "physical-compatibility":
+            fail("primary schema preflight requires physical-compatibility authority mode")
+        schema_validator_version = _validate_primary_schema_documents(
+            documents, schema_root
+        )
+        status = "PRIMARY_SCHEMAS_VALIDATED"
+        schema_semantics_validated = True
+        unverified_gates = [
+            "validation_toolchain_provenance",
+            "internal_evidence_dag",
+            "policy_and_lock_bindings",
+            "predecessor_replay",
+            "github_run_artifact_and_job_provenance",
+            "trusted_native_identity",
+            "pre_post_environment_stability",
+            "negative_control_admission",
+        ]
+    else:
+        status = "STRUCTURE_ONLY"
+        schema_semantics_validated = False
+        schema_validator_version = None
+        unverified_gates = [
+            "schema_semantics",
+            "internal_evidence_dag",
+            "policy_and_lock_bindings",
+            "predecessor_replay",
+            "github_run_artifact_and_job_provenance",
+            "trusted_native_identity",
+            "pre_post_environment_stability",
+            "negative_control_admission",
+        ]
+
     return {
         "authority": AUTHORITY,
-        "status": "STRUCTURE_ONLY",
+        "status": status,
         "authority_mode": authority_mode,
         "expected_filename_set_sha256": expected_filename_set_sha,
         "observed_filename_set_sha256": observed_filename_set_sha,
@@ -319,22 +475,23 @@ def inspect_zip(
         "zip_sha256": outer_sha,
         "entry_count": len(rows),
         "entries": rows,
-        "unverified_gates": [
-            "schema_semantics",
-            "internal_evidence_dag",
-            "policy_and_lock_bindings",
-            "predecessor_replay",
-            "github_run_artifact_and_job_provenance",
-            "trusted_native_identity",
-            "pre_post_environment_stability",
-            "negative_control_admission",
-        ],
+        "schema_semantics_validated": schema_semantics_validated,
+        "primary_schema_documents_validated": (
+            len(PRIMARY_SCHEMA_BINDINGS) if schema_semantics_validated else 0
+        ),
+        "schema_validator_version": schema_validator_version,
+        "schema_validator_package_provenance_admitted": False,
+        "unverified_gates": unverified_gates,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument("--mode", choices=["structural-preflight"], required=True)
+    parser.add_argument(
+        "--mode",
+        choices=["structural-preflight", "primary-schema-preflight"],
+        required=True,
+    )
     parser.add_argument(
         "--authority-mode",
         choices=sorted(AUTHORITY_MODE_NAMES),
@@ -343,11 +500,25 @@ def main() -> int:
     )
     parser.add_argument("--zip", required=True, help="absolute path to six-entry review ZIP")
     parser.add_argument("--expected-zip-sha256", help="independently supplied lowercase ZIP SHA-256")
+    parser.add_argument(
+        "--schema-root",
+        help="absolute directory containing the exact frozen primary schemas",
+    )
     args = parser.parse_args()
+    schema_root: Path | None = None
+    if args.mode == "primary-schema-preflight":
+        if args.authority_mode != "physical-compatibility":
+            fail("primary schema preflight requires physical-compatibility authority mode")
+        if args.schema_root is None:
+            fail("primary schema preflight requires --schema-root")
+        schema_root = Path(args.schema_root)
+    elif args.schema_root is not None:
+        fail("--schema-root is only valid with primary-schema-preflight")
     report = inspect_zip(
         Path(args.zip),
         args.authority_mode,
         args.expected_zip_sha256,
+        schema_root,
     )
     print(json.dumps(report, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
     return 0
