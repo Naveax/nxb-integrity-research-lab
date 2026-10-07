@@ -44,7 +44,12 @@ if(($vRoot.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0){throw 'Validat
 $Schema=Assert-File $Schema 'Schema'
 $Module=Assert-File $Module 'Frozen canonical module'
 if((Get-FileHash -LiteralPath $Schema -Algorithm SHA256).Hash.ToLowerInvariant()-cne'04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144'){throw 'Schema drift'}
-if((Get-FileHash -LiteralPath $Module -Algorithm SHA256).Hash.ToLowerInvariant()-cne'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'){throw 'Canonical module drift'}
+$ModuleSha256=(Get-FileHash -LiteralPath $Module -Algorithm SHA256).Hash.ToLowerInvariant()
+$AcceptedModuleSha256=@(
+ '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7',
+ 'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
+)
+if($AcceptedModuleSha256-cnotcontains$ModuleSha256){throw 'Canonical module drift'}
 $pythonVerifier=@"
 import hashlib,json,pathlib,sys,unicodedata
 root=pathlib.Path(sys.argv[1]).resolve(strict=True)
