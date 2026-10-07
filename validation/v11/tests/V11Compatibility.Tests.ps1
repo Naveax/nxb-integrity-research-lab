@@ -762,6 +762,7 @@ Describe 'V11 successor known-error scanner' {
             [ordered]@{ path = 'validation/v11/scripts/Expand-NxbV11VerifiedArchive.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/scripts/Get-NxbCompatibilityEnvironmentFingerprint.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CandidateDispatcher.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CompatibilityHostedValidation.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/tests/CanonicalJson.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tests/V11Compatibility.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tests/V11NativeCompatibility.Tests.ps1'; validation_class = 'pester_test' },
@@ -799,7 +800,7 @@ Describe 'V11 successor known-error scanner' {
             $run.ExitCode | Should -Be 0
             $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
             [string]$result.status | Should -BeExactly 'passed'
-            [int]$result.entry_count | Should -Be 13
+            [int]$result.entry_count | Should -Be 14
             [int]$result.finding_count | Should -Be 0
             @($result.findings).Count | Should -Be 0
             [bool]$result.failure_override_permitted | Should -BeFalse
@@ -2757,5 +2758,254 @@ catch {
         $source | Should -Not -Match '(?im)\bgit\s+(push|commit|merge|tag|reset|checkout)\b'
         $source | Should -Not -Match '(?i)\b(upload-artifact|download-artifact)\b'
         $source | Should -Match 'dispatch_performed_by_this_script\s*=\s*\$false'
+    }
+}
+
+
+Describe 'V11 A0 hosted source preflight (claim-free)' {
+    BeforeAll {
+        $script:HostedPreflightPath = Join-Path $script:RepositoryRoot 'validation\v11\scripts\Invoke-NxbV11CompatibilityHostedValidation.ps1'
+        $script:HostedPwshPath = [IO.Path]::GetFullPath((Get-Command pwsh -ErrorAction Stop).Source)
+
+        function Invoke-HostedTestGit {
+            param(
+                [Parameter(Mandatory = $true)][string]$Repository,
+                [Parameter(Mandatory = $true)][string[]]$Arguments
+            )
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& git -C $Repository @Arguments 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+            if ($exitCode -ne 0) {
+                throw "git $($Arguments -join ' ') failed: $($output -join ' | ')"
+            }
+            return @($output)
+        }
+
+        function Get-HostedTestGitOne {
+            param(
+                [Parameter(Mandatory = $true)][string]$Repository,
+                [Parameter(Mandatory = $true)][string[]]$Arguments
+            )
+            $rows = @(Invoke-HostedTestGit -Repository $Repository -Arguments $Arguments | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            if ($rows.Count -ne 1) {
+                throw "git $($Arguments -join ' ') expected one row, got $($rows.Count)"
+            }
+            return $rows[0].Trim()
+        }
+
+        function New-HostedSourceFixture {
+            param(
+                [ValidateSet('allowed', 'outside', 'script-fixture')]
+                [string]$Mode = 'allowed',
+                [switch]$Dirty
+            )
+
+            $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-hosted-preflight-' + [Guid]::NewGuid().ToString('N'))
+            $repository = Join-Path $outer 'repo'
+            [void][IO.Directory]::CreateDirectory($outer)
+
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $cloneOutput = @(& git clone --quiet --no-hardlinks $script:RepositoryRoot $repository 2>&1 | ForEach-Object { [string]$_ })
+                $cloneExit = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+            if ($cloneExit -ne 0) {
+                throw "fixture clone failed: $($cloneOutput -join ' | ')"
+            }
+
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('config', 'user.name', 'NXB Test'))
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('config', 'user.email', 'nxb-test@example.invalid'))
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('config', 'core.autocrlf', 'false'))
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('checkout', '--quiet', '--detach', '9203ab9f89ff4383832119683eb4e19df5490213'))
+
+            switch ($Mode) {
+                'allowed' {
+                    $relative = 'validation/v11/fixtures/compatibility-artifact/source-preflight.synthetic.json'
+                    $content = '{}'
+                }
+                'outside' {
+                    $relative = 'outside-v11.txt'
+                    $content = 'outside'
+                }
+                'script-fixture' {
+                    $relative = 'validation/v11/fixtures/compatibility-artifact/hidden.ps1'
+                    $content = 'Write-Output hidden'
+                }
+            }
+
+            $full = Join-Path $repository ($relative.Replace('/', '\'))
+            [void][IO.Directory]::CreateDirectory((Split-Path -Parent $full))
+            Write-Utf8NoBom -Path $full -Text $content
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('add', '--', $relative))
+            [void](Invoke-HostedTestGit -Repository $repository -Arguments @('commit', '--quiet', '-m', 'hosted preflight fixture'))
+
+            $candidateSha = Get-HostedTestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD')
+            $candidateTree = Get-HostedTestGitOne -Repository $repository -Arguments @('rev-parse', 'HEAD^{tree}')
+
+            if ($Dirty) {
+                Write-Utf8NoBom -Path $full -Text ($content + ' dirty')
+            }
+
+            return [pscustomobject]@{
+                Outer = $outer
+                Repository = [IO.Path]::GetFullPath($repository)
+                ModulePath = [IO.Path]::GetFullPath((Join-Path $repository 'scripts\Nxb.EvidenceStore.psm1'))
+                CandidateSha = $candidateSha
+                CandidateTree = $candidateTree
+            }
+        }
+
+        function Invoke-HostedPreflightChild {
+            param(
+                [Parameter(Mandatory = $true)]$Fixture,
+                [string]$CandidateTree
+            )
+
+            if ([string]::IsNullOrWhiteSpace($CandidateTree)) {
+                $CandidateTree = [string]$Fixture.CandidateTree
+            }
+
+            $runnerPath = Join-Path $Fixture.Outer ('runner-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+            $runner = @'
+param(
+    [Parameter(Mandatory = $true)][string]$HostedPath,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)][string]$CandidateSha,
+    [Parameter(Mandatory = $true)][string]$CandidateTree,
+    [Parameter(Mandatory = $true)][string]$EvidenceStoreModulePath
+)
+$ErrorActionPreference = 'Stop'
+try {
+    $result = & $HostedPath -RepositoryRoot $RepositoryRoot -CandidateSha $CandidateSha -CandidateTree $CandidateTree -EvidenceStoreModulePath $EvidenceStoreModulePath -PassThru
+    $result | ConvertTo-Json -Compress -Depth 30
+    exit 0
+}
+catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+'@
+            Write-Utf8NoBom -Path $runnerPath -Text $runner
+
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& $script:HostedPwshPath -NoLogo -NoProfile -File $runnerPath -HostedPath $script:HostedPreflightPath -RepositoryRoot $Fixture.Repository -CandidateSha $Fixture.CandidateSha -CandidateTree $CandidateTree -EvidenceStoreModulePath $Fixture.ModulePath 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+
+            $text = $output -join [Environment]::NewLine
+            $result = $null
+            if ($exitCode -eq 0) {
+                $result = $text | ConvertFrom-Json
+            }
+            return [pscustomobject]@{
+                ExitCode = [int]$exitCode
+                Text = $text
+                Result = $result
+            }
+        }
+    }
+
+    It 'reconstructs frozen allowlist and coverage while remaining non-admitting' {
+        $fixture = New-HostedSourceFixture -Mode allowed
+        try {
+            $run = Invoke-HostedPreflightChild -Fixture $fixture
+            $run.ExitCode | Should -Be 0
+            [string]$run.Result.status | Should -BeExactly 'SOURCE_PREFLIGHT_ONLY'
+            [bool]$run.Result.admitted | Should -BeFalse
+            [int]$run.Result.physical_compatibility_claims | Should -Be 0
+            [bool]$run.Result.native_wpt_dispatch_performed | Should -BeFalse
+            [bool]$run.Result.repository_mutated | Should -BeFalse
+            [int]$run.Result.allowlist_version | Should -Be 6
+            [long]$run.Result.allowlist_authority_comment_id | Should -Be 5426682541
+            [int]$run.Result.a0_allowlist_exact_path_count | Should -Be 44
+            [int]$run.Result.a0_allowlist_subtree_rule_count | Should -Be 7
+            [string]$run.Result.a0_allowlist_sha256 | Should -BeExactly '5764ed8ff14b6816c28935d1e317197512ae39e888bf4ecf61fee9ebd9ceb57e'
+            [int]$run.Result.a0_changed_path_count | Should -Be 1
+            [string]$run.Result.a0_changed_path_set_sha256 | Should -Match '^[0-9a-f]{64}$'
+            [string]$run.Result.validation_coverage_sha256 | Should -Match '^[0-9a-f]{64}$'
+            [int]$run.Result.validation_class_counts.logical_fixture_spec | Should -Be 1
+            [bool]$run.Result.source_surface_complete | Should -BeFalse
+            @($run.Result.missing_mandatory_paths).Count | Should -BeGreaterThan 0
+            [string]$run.Result.candidate_sha | Should -BeExactly $fixture.CandidateSha
+            [string]$run.Result.candidate_tree_sha | Should -BeExactly $fixture.CandidateTree
+            [string]$run.Result.predecessor_main_sha | Should -BeExactly '9203ab9f89ff4383832119683eb4e19df5490213'
+            [string]$run.Result.predecessor_tree_sha | Should -BeExactly '241d3086e9bcb5a847445258cab25bff4fd34da8'
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects out-of-scope and executable-like fixture changes' {
+        $outside = New-HostedSourceFixture -Mode outside
+        try {
+            $run = Invoke-HostedPreflightChild -Fixture $outside
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'outside or ambiguously inside A0 allowlist v6'
+        }
+        finally {
+            Remove-Item -LiteralPath $outside.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $scriptFixture = New-HostedSourceFixture -Mode script-fixture
+        try {
+            $run = Invoke-HostedPreflightChild -Fixture $scriptFixture
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'fixture path has executable/package-like content extension'
+        }
+        finally {
+            Remove-Item -LiteralPath $scriptFixture.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects dirty candidate state and candidate tree drift' {
+        $dirty = New-HostedSourceFixture -Mode allowed -Dirty
+        try {
+            $run = Invoke-HostedPreflightChild -Fixture $dirty
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'requires a clean candidate worktree'
+        }
+        finally {
+            Remove-Item -LiteralPath $dirty.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $treeDrift = New-HostedSourceFixture -Mode allowed
+        try {
+            $run = Invoke-HostedPreflightChild -Fixture $treeDrift -CandidateTree ('0' * 40)
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'candidate tree mismatch'
+        }
+        finally {
+            Remove-Item -LiteralPath $treeDrift.Outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'keeps this slice offline, read-only and unable to emit authority artifacts' {
+        $source = Get-Content -LiteralPath $script:HostedPreflightPath -Raw
+        $source | Should -Not -Match '(?i)\bInvoke-(WebRequest|RestMethod)\b'
+        $source | Should -Not -Match '(?im)\bgh\s+(api|workflow|run)\b'
+        $source | Should -Not -Match '(?i)\bStart-Process\b'
+        $source | Should -Not -Match '(?im)\bgit\s+(push|commit|merge|tag|reset|checkout)\b'
+        $source | Should -Not -Match '(?i)\b(upload-artifact|download-artifact|setup-python)\b'
+        $source | Should -Not -Match '(?i)\b(Invoke-Pester|Invoke-ScriptAnalyzer)\b'
+        $source | Should -Not -Match '(?i)\b(Set-Content|Add-Content|Out-File|WriteAllText|WriteAllBytes|CreateNew)\b'
+        $source | Should -Not -Match 'a0-substrate-receipt\.json'
+        $source | Should -Match "status\s*=\s*'SOURCE_PREFLIGHT_ONLY'"
+        $source | Should -Match 'admitted\s*=\s*\$false'
     }
 }
