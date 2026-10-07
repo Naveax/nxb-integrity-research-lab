@@ -763,6 +763,7 @@ Describe 'V11 successor known-error scanner' {
             [ordered]@{ path = 'validation/v11/scripts/Get-NxbCompatibilityEnvironmentFingerprint.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CandidateDispatcher.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CompatibilityHostedValidation.ps1'; validation_class = 'executable_powershell' },
+            [ordered]@{ path = 'validation/v11/scripts/Invoke-NxbV11CompatibilityNativeValidation.ps1'; validation_class = 'executable_powershell' },
             [ordered]@{ path = 'validation/v11/tests/CanonicalJson.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tests/V11Compatibility.Tests.ps1'; validation_class = 'pester_test' },
             [ordered]@{ path = 'validation/v11/tests/V11NativeCompatibility.Tests.ps1'; validation_class = 'pester_test' },
@@ -800,7 +801,7 @@ Describe 'V11 successor known-error scanner' {
             $run.ExitCode | Should -Be 0
             $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
             [string]$result.status | Should -BeExactly 'passed'
-            [int]$result.entry_count | Should -Be 14
+            [int]$result.entry_count | Should -Be 15
             [int]$result.finding_count | Should -Be 0
             @($result.findings).Count | Should -Be 0
             [bool]$result.failure_override_permitted | Should -BeFalse
