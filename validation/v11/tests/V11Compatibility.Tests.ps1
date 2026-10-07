@@ -879,7 +879,7 @@ Describe 'V11 successor known-error scanner' {
 
 
 Describe 'V11 review ZIP structural preflight (no admission)' {
-    It 'requires explicit structural-only mode and never claims physical authority' {
+    It 'requires explicit structural and authority modes and never claims physical authority' {
         $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-' + [Guid]::NewGuid().ToString('N'))
         [void][IO.Directory]::CreateDirectory($root)
@@ -904,17 +904,98 @@ with zipfile.ZipFile(sys.argv[1], 'w', compression=zipfile.ZIP_DEFLATED) as outp
         try {
             $made = Invoke-V11Python -Arguments @('-c', $generator, $zip)
             $made.ExitCode | Should -Be 0
-            $missingMode = Invoke-V11Python -Arguments @($tool, '--zip', $zip)
+            $missingMode = Invoke-V11Python -Arguments @(
+                $tool,
+                '--authority-mode', 'physical-compatibility',
+                '--zip', $zip
+            )
             $missingMode.ExitCode | Should -Be 2
             $missingMode.Text | Should -Match '--mode'
-            $inspection = Invoke-V11Python -Arguments @($tool, '--mode', 'structural-preflight', '--zip', $zip)
+
+            $missingAuthorityMode = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'structural-preflight',
+                '--zip', $zip
+            )
+            $missingAuthorityMode.ExitCode | Should -Be 2
+            $missingAuthorityMode.Text | Should -Match '--authority-mode'
+
+            $inspection = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'structural-preflight',
+                '--authority-mode', 'physical-compatibility',
+                '--zip', $zip
+            )
             $inspection.ExitCode | Should -Be 0
             $doc = $inspection.Text | ConvertFrom-Json
             [string]$doc.status | Should -BeExactly 'STRUCTURE_ONLY'
+            [string]$doc.authority_mode | Should -BeExactly 'physical-compatibility'
+            [string]$doc.expected_filename_set_sha256 |
+                Should -BeExactly '5874922efe9cc136886e8d590b05ebe7c3604e8b509314ea767788467b711d17'
+            [string]$doc.observed_filename_set_sha256 |
+                Should -BeExactly '5874922efe9cc136886e8d590b05ebe7c3604e8b509314ea767788467b711d17'
+            [int]$doc.filename_count | Should -Be 6
             [bool]$doc.admitted | Should -BeFalse
             [bool]$doc.physical_compatibility_claimed | Should -BeFalse
             [int]$doc.entry_count | Should -Be 6
             @($doc.unverified_gates).Count | Should -BeGreaterThan 0
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'separates A0-hosted from physical six-entry artifacts by trusted caller mode' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-a0-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $zip = Join-Path $root 'a0-review.zip'
+        $generator = @'
+import json, sys, zipfile
+names = {
+  'compatibility-policy-summary.json': 'synthetic-policy-summary',
+  'canonicalization-conformance.json': 'synthetic-canonicalization',
+  'native-impact-classifier-fixtures.json': 'synthetic-native-impact',
+  'known-error-scan.json': 'nxb-v11-known-error-scan-v1',
+  'independent-validation.json': 'synthetic-a0-independent',
+  'a0-substrate-receipt.json': 'nxb-v11-a0-substrate-receipt-v1',
+}
+with zipfile.ZipFile(sys.argv[1], 'w', compression=zipfile.ZIP_DEFLATED) as output:
+    for key in sorted(names):
+        data = {'authority': names[key], 'status': 'synthetic'}
+        output.writestr(
+            key,
+            json.dumps(data, sort_keys=True, separators=(',', ':')).encode('utf-8'),
+        )
+'@
+        try {
+            $made = Invoke-V11Python -Arguments @('-c', $generator, $zip)
+            $made.ExitCode | Should -Be 0
+
+            $a0 = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'structural-preflight',
+                '--authority-mode', 'a0-hosted',
+                '--zip', $zip
+            )
+            $a0.ExitCode | Should -Be 0
+            $doc = $a0.Text | ConvertFrom-Json
+            [string]$doc.authority_mode | Should -BeExactly 'a0-hosted'
+            [string]$doc.expected_filename_set_sha256 |
+                Should -BeExactly '79ca4d7140bfccd859cd2952e70f7dc636a1612ad1b475f7509e57bd4cd7c977'
+            [string]$doc.observed_filename_set_sha256 |
+                Should -BeExactly '79ca4d7140bfccd859cd2952e70f7dc636a1612ad1b475f7509e57bd4cd7c977'
+            [int]$doc.filename_count | Should -Be 6
+            [bool]$doc.admitted | Should -BeFalse
+
+            $wrongMode = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'structural-preflight',
+                '--authority-mode', 'physical-compatibility',
+                '--zip', $zip
+            )
+            $wrongMode.ExitCode | Should -Be 2
+            $wrongMode.Text | Should -Match 'names differ from selected authority-mode contract'
         }
         finally {
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
@@ -955,7 +1036,12 @@ with zipfile.ZipFile(sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED) as output
                 $zip = Join-Path $root (([string]$case.mode) + '.zip')
                 $made = Invoke-V11Python -Arguments @('-c', $generator, $zip, [string]$case.mode)
                 $made.ExitCode | Should -Be 0
-                $run = Invoke-V11Python -Arguments @($tool, '--mode', 'structural-preflight', '--zip', $zip)
+                $run = Invoke-V11Python -Arguments @(
+                    $tool,
+                    '--mode', 'structural-preflight',
+                    '--authority-mode', 'physical-compatibility',
+                    '--zip', $zip
+                )
                 $run.ExitCode | Should -Be 2
                 $run.Text | Should -Match ([regex]::Escape([string]$case.error))
             }
@@ -989,11 +1075,14 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
     root = Path(base)
     original = root / "review.zip"
     replacement = root / "replacement.zip"
-    authority = {**module.KNOWN_AUTHORITY, "compatibility-certification-receipt.json": "synthetic-not-admitted"}
+    authority = {
+        **module.KNOWN_AUTHORITY_BY_MODE["physical-compatibility"],
+        "compatibility-certification-receipt.json": "synthetic-not-admitted",
+    }
     def make(dest, state):
         content_hashes = {}
         with zipfile.ZipFile(dest, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for name in sorted(module.EXPECTED_NAMES):
+            for name in sorted(module.AUTHORITY_MODE_NAMES["physical-compatibility"]):
                 data = json.dumps({"authority": authority[name], "status": state}, sort_keys=True, separators=(",", ":")).encode("utf-8")
                 archive.writestr(name, data)
                 content_hashes[name] = hashlib.sha256(data).hexdigest()
@@ -1009,7 +1098,9 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
         return real_zipfile(file, *args, **kwargs)
     zipfile.ZipFile = swap_before_parse
     try:
-        report = module.inspect_zip(original, original_digest)
+        report = module.inspect_zip(
+            original, "physical-compatibility", original_digest
+        )
     finally:
         zipfile.ZipFile = real_zipfile
     assert len(seen) == 1, seen
@@ -1020,7 +1111,9 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
     assert hashlib.sha256(original.read_bytes()).hexdigest() != original_digest
     print("SNAPSHOT_RACE_TEST_PASS: digest and six inspected entries came from original in-memory bytes")
     try:
-        module.inspect_zip(original, original_digest)
+        module.inspect_zip(
+            original, "physical-compatibility", original_digest
+        )
     except module.PreflightError as e:
         assert "digest mismatch" in str(e), str(e)
         print("SWAPPED_DISK_CONTENT_REJECTED_PASS")
@@ -1039,6 +1132,80 @@ with tempfile.TemporaryDirectory(prefix="nxb-zip-snapshot-") as base:
         }
         finally {
             Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'V11 ZIP malformed Unicode and nesting fail-closed behavior' {
+    It 'rejects unpaired surrogate keys/values and deeply nested JSON with exit 2' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-zip-json-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-json-edge-zip.py'
+        $generator = @'
+import json
+import sys
+import zipfile
+
+authorities = {
+    "environment-fingerprint.json": "nxb-compatibility-environment-fingerprint-v1",
+    "compatibility-plan.json": "nxb-v11-compatibility-plan-v1",
+    "endurance-cycle-summary.json": "nxb-v11-endurance-cycle-summary-v1",
+    "known-error-scan.json": "nxb-v11-known-error-scan-v1",
+    "independent-validation.json": "nxb-v11-compatibility-independent-v1",
+    "compatibility-certification-receipt.json": "synthetic-not-admitted",
+}
+mode = sys.argv[2]
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in sorted(authorities):
+        payload = {"authority": authorities[name], "status": "synthetic"}
+        if name == "compatibility-plan.json" and mode == "surrogate-value":
+            payload["bad"] = chr(0xD800)
+        if name == "compatibility-plan.json" and mode == "surrogate-key":
+            payload[chr(0xD800)] = "bad"
+        if name == "compatibility-plan.json" and mode == "deeply-nested":
+            content = (
+                '{"authority":"nxb-v11-compatibility-plan-v1","nested":'
+                + "[" * 1200 + "0" + "]" * 1200 + "}"
+            ).encode("utf-8")
+        else:
+            content = json.dumps(
+                payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        archive.writestr(name, content)
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($case in @(
+                @{ mode = 'valid'; accepted = $true; pattern = 'STRUCTURE_ONLY' },
+                @{ mode = 'surrogate-value'; accepted = $false; pattern = 'unpaired Unicode surrogate' },
+                @{ mode = 'surrogate-key'; accepted = $false; pattern = 'unpaired Unicode surrogate' },
+                @{ mode = 'deeply-nested'; accepted = $false; pattern = 'malformed JSON|JSON nesting' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @($generatorPath, $zip, [string]$case.mode)
+                $made.ExitCode | Should -Be 0
+                $run = Invoke-V11Python -Arguments @(
+                    $tool,
+                    '--mode', 'structural-preflight',
+                    '--authority-mode', 'physical-compatibility',
+                    '--zip', $zip
+                )
+                if ($case.accepted) {
+                    $run.ExitCode | Should -Be 0
+                    $doc = $run.Text | ConvertFrom-Json
+                    [string]$doc.status | Should -BeExactly 'STRUCTURE_ONLY'
+                    [bool]$doc.admitted | Should -BeFalse
+                }
+                else {
+                    $run.ExitCode | Should -Be 2
+                    $run.Text | Should -Match 'NXB_V11_REVIEW_ZIP_PREFLIGHT_ERROR'
+                    $run.Text | Should -Match ([string]$case.pattern)
+                }
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
