@@ -129,7 +129,7 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
         }
     }
 
-    It 'accepts only the exact admitted LF or CRLF EvidenceStore byte identities' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
+    It 'accepts only the exact admitted LF or CRLF schema and EvidenceStore byte identities' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
         $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
             'nxb-v11-evidence-eol-{0}' -f [Guid]::NewGuid().ToString('N')
         )
@@ -143,16 +143,27 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
 
         try {
             Copy-Item -LiteralPath $script:SchemaPath -Destination $temporarySchema
+            $schemaBytes = [IO.File]::ReadAllBytes($script:SchemaPath)
+            $schemaText = [Text.UTF8Encoding]::new($false, $true).GetString($schemaBytes)
+            $schemaLfText = $schemaText.Replace("`r`n", "`n")
+            $schemaCrlfText = $schemaLfText.Replace("`n", "`r`n")
             $moduleBytes = [IO.File]::ReadAllBytes($script:EvidenceStorePath)
             $moduleText = [Text.UTF8Encoding]::new($false, $true).GetString($moduleBytes)
             $lfText = $moduleText.Replace("`r`n", "`n")
             $crlfText = $lfText.Replace("`n", "`r`n")
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaCrlfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
             [IO.File]::WriteAllText(
                 $temporaryModule,
                 $crlfText,
                 [Text.UTF8Encoding]::new($false, $true)
             )
 
+            (Get-FileHash -LiteralPath $temporarySchema -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '8952dfcee0732679249d5de2a0e5eabacd8ab1cce2698974c6f5c48b322a4785'
             (Get-FileHash -LiteralPath $temporaryModule -Algorithm SHA256).Hash.ToLowerInvariant() |
                 Should -BeExactly 'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
 
@@ -164,6 +175,48 @@ Describe 'V11 A0/S1 canonical bootstrap seed' {
             Test-Path -LiteralPath $output -PathType Leaf | Should -BeTrue
 
             Remove-Item -LiteralPath $output -Force
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaLfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            [IO.File]::WriteAllText(
+                $temporaryModule,
+                $lfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            (Get-FileHash -LiteralPath $temporarySchema -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f'
+            (Get-FileHash -LiteralPath $temporaryModule -Algorithm SHA256).Hash.ToLowerInvariant() |
+                Should -BeExactly '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7'
+
+            & $script:CanonicalWrapperPath `
+                -InputJsonPath $script:ManifestFixturePath `
+                -OutputCanonicalJsonPath $output `
+                -SchemaPath $temporarySchema `
+                -EvidenceStoreModulePath $temporaryModule
+            Test-Path -LiteralPath $output -PathType Leaf | Should -BeTrue
+
+            Remove-Item -LiteralPath $output -Force
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                ($schemaLfText + ' '),
+                [Text.UTF8Encoding]::new($false, $true)
+            )
+            {
+                & $script:CanonicalWrapperPath `
+                    -InputJsonPath $script:ManifestFixturePath `
+                    -OutputCanonicalJsonPath $output `
+                    -SchemaPath $temporarySchema `
+                    -EvidenceStoreModulePath $temporaryModule
+            } | Should -Throw '*Schema raw SHA-256 drift*'
+            Test-Path -LiteralPath $output | Should -BeFalse
+
+            [IO.File]::WriteAllText(
+                $temporarySchema,
+                $schemaLfText,
+                [Text.UTF8Encoding]::new($false, $true)
+            )
             [IO.File]::WriteAllText(
                 $temporaryModule,
                 ($crlfText + '# byte drift'),

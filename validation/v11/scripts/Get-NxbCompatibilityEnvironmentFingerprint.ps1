@@ -43,7 +43,12 @@ $vRoot=Get-Item -LiteralPath $ValidatorPackageRoot -Force
 if(($vRoot.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0){throw 'Validator package root is reparse-backed'}
 $Schema=Assert-File $Schema 'Schema'
 $Module=Assert-File $Module 'Frozen canonical module'
-if((Get-FileHash -LiteralPath $Schema -Algorithm SHA256).Hash.ToLowerInvariant()-cne'04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144'){throw 'Schema drift'}
+$SchemaSha256=(Get-FileHash -LiteralPath $Schema -Algorithm SHA256).Hash.ToLowerInvariant()
+$AcceptedSchemaSha256=@(
+ '04698ce35e2765e042f64582a11de77b3f60bded5a0f176857e84df1f51c9144',
+ 'bd1996bb06b8e9714b579115d0124866bd45dd7f8d802421f8b973ea6218671c'
+)
+if($AcceptedSchemaSha256-cnotcontains$SchemaSha256){throw 'Schema drift'}
 $ModuleSha256=(Get-FileHash -LiteralPath $Module -Algorithm SHA256).Hash.ToLowerInvariant()
 $AcceptedModuleSha256=@(
  '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7',

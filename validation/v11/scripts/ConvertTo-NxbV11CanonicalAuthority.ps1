@@ -20,7 +20,10 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 $ExpectedContractId = 'nxb-artifact-tree-manifest-v1'
 $ExpectedSchemaId = 'urn:nxb:schema:nxb-artifact-tree-manifest:v1'
-$ExpectedSchemaSha256 = '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f'
+$ExpectedSchemaSha256 = @(
+    '208f84e22e7604c252a95307b5009acf7f524d89d51d609c96aed40b1bfe492f',
+    '8952dfcee0732679249d5de2a0e5eabacd8ab1cce2698974c6f5c48b322a4785'
+)
 $ExpectedEvidenceStoreSha256 = @(
     '207a3e379e411fa6761f21cf01810135572d87033779ec8f791fa0befcd17cd7',
     'baa711b12592dff95d1155953f183454f44af31e72f61b05d6388add9555d4f3'
@@ -308,8 +311,8 @@ $schema = Assert-OrdinaryFile -Path $SchemaPath -Label 'SchemaPath'
 $module = Assert-OrdinaryFile -Path $EvidenceStoreModulePath -Label 'EvidenceStoreModulePath'
 
 $schemaSha = (Get-FileHash -LiteralPath $schema -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($schemaSha -cne $ExpectedSchemaSha256) {
-    Fail "Schema raw SHA-256 drift: expected=$ExpectedSchemaSha256 actual=$schemaSha"
+if ($ExpectedSchemaSha256 -cnotcontains $schemaSha) {
+    Fail "Schema raw SHA-256 drift: expected one of $($ExpectedSchemaSha256 -join ',') actual=$schemaSha"
 }
 
 $output = Get-FullPathStrict `
