@@ -1209,3 +1209,122 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as arch
         }
     }
 }
+
+
+Describe 'V11 primary schema semantic preflight (claim-free)' {
+    It 'validates exactly the four frozen primary schemas without admission' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $schemaRoot = Join-Path $script:RepositoryRoot 'schemas'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-primary-schema-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-primary-review.py'
+        $generator = @'
+import json
+import pathlib
+import sys
+import zipfile
+repo = pathlib.Path(sys.argv[1])
+destination = pathlib.Path(sys.argv[2])
+mode = sys.argv[3]
+fixtures = repo / "validation" / "v11" / "fixtures" / "native-runtime"
+documents = {
+ "environment-fingerprint.json": json.loads((fixtures / "environment-fingerprint-v1.synthetic.json").read_text(encoding="utf-8")),
+ "compatibility-plan.json": json.loads((fixtures / "compatibility-plan-v1.synthetic.json").read_text(encoding="utf-8")),
+ "endurance-cycle-summary.json": json.loads((fixtures / "endurance-cycle-summary-v1.synthetic.json").read_text(encoding="utf-8")),
+ "known-error-scan.json": {"authority":"nxb-v11-known-error-scan-v1","schema_version":1,"signature_policy_sha256":"7"*64,"entry_count":0,"rule_count":0,"finding_count":0,"status":"passed","failure_override_permitted":False,"findings":[]},
+ "independent-validation.json": {"authority":"nxb-v11-compatibility-independent-v1","status":"synthetic"},
+ "compatibility-certification-receipt.json": {"authority":"synthetic-not-admitted","status":"synthetic"},
+}
+if mode == "bad-environment": documents["environment-fingerprint.json"]["worktree_clean"] = False
+with zipfile.ZipFile(destination,"w",compression=zipfile.ZIP_DEFLATED) as archive:
+ for name in sorted(documents): archive.writestr(name,json.dumps(documents[name],ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False).encode("utf-8"))
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            $zip = Join-Path $root 'good.zip'
+            (Invoke-V11Python -Arguments @($generatorPath, $script:RepositoryRoot, $zip, 'good')).ExitCode | Should -Be 0
+            $run = Invoke-V11Python -Arguments @($tool,'--mode','primary-schema-preflight','--authority-mode','physical-compatibility','--zip',$zip,'--schema-root',$schemaRoot)
+            $run.ExitCode | Should -Be 0
+            $doc = $run.Text | ConvertFrom-Json
+            [string]$doc.status | Should -BeExactly 'PRIMARY_SCHEMAS_VALIDATED'
+            [bool]$doc.schema_semantics_validated | Should -BeTrue
+            [int]$doc.primary_schema_documents_validated | Should -Be 4
+            [string]$doc.schema_validator_version | Should -BeExactly '4.26.0'
+            [bool]$doc.schema_validator_package_provenance_admitted | Should -BeFalse
+            [bool]$doc.admitted | Should -BeFalse
+            [bool]$doc.physical_compatibility_claimed | Should -BeFalse
+            @($doc.unverified_gates) | Should -Not -Contain 'schema_semantics'
+            @($doc.unverified_gates) | Should -Contain 'validation_toolchain_provenance'
+            @($doc.unverified_gates) | Should -Contain 'internal_evidence_dag'
+            @($doc.unverified_gates) | Should -Contain 'policy_and_lock_bindings'
+        }
+        finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'rejects primary semantic drift and any non-admitted schema byte identity' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-primary-schema-negative-' + [Guid]::NewGuid().ToString('N'))
+        $schemaRoot = Join-Path $root 'schemas'
+        [void][IO.Directory]::CreateDirectory($schemaRoot)
+        $generatorPath = Join-Path $root 'generate-primary-review.py'
+        $generator = @'
+import json,pathlib,sys,zipfile
+repo=pathlib.Path(sys.argv[1]); destination=pathlib.Path(sys.argv[2]); mode=sys.argv[3]
+fixtures=repo/"validation"/"v11"/"fixtures"/"native-runtime"
+documents={
+ "environment-fingerprint.json":json.loads((fixtures/"environment-fingerprint-v1.synthetic.json").read_text(encoding="utf-8")),
+ "compatibility-plan.json":json.loads((fixtures/"compatibility-plan-v1.synthetic.json").read_text(encoding="utf-8")),
+ "endurance-cycle-summary.json":json.loads((fixtures/"endurance-cycle-summary-v1.synthetic.json").read_text(encoding="utf-8")),
+ "known-error-scan.json":{"authority":"nxb-v11-known-error-scan-v1","schema_version":1,"signature_policy_sha256":"7"*64,"entry_count":0,"rule_count":0,"finding_count":0,"status":"passed","failure_override_permitted":False,"findings":[]},
+ "independent-validation.json":{"authority":"nxb-v11-compatibility-independent-v1","status":"synthetic"},
+ "compatibility-certification-receipt.json":{"authority":"synthetic-not-admitted","status":"synthetic"}}
+if mode=="bad-environment": documents["environment-fingerprint.json"]["worktree_clean"]=False
+with zipfile.ZipFile(destination,"w",compression=zipfile.ZIP_DEFLATED) as archive:
+ for name in sorted(documents): archive.writestr(name,json.dumps(documents[name],ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False).encode("utf-8"))
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($schemaName in @('nxb-v11-environment-fingerprint.schema.json','nxb-v11-compatibility-plan.schema.json','nxb-v11-endurance-cycle-summary.schema.json','nxb-v11-known-error-scan.schema.json')) {
+                Copy-Item -LiteralPath (Join-Path $script:RepositoryRoot ('schemas\' + $schemaName)) -Destination (Join-Path $schemaRoot $schemaName)
+            }
+            $badZip = Join-Path $root 'bad-environment.zip'
+            (Invoke-V11Python -Arguments @($generatorPath,$script:RepositoryRoot,$badZip,'bad-environment')).ExitCode | Should -Be 0
+            $semantic = Invoke-V11Python -Arguments @($tool,'--mode','primary-schema-preflight','--authority-mode','physical-compatibility','--zip',$badZip,'--schema-root',$schemaRoot)
+            $semantic.ExitCode | Should -Be 2
+            $semantic.Text | Should -Match 'primary schema semantic validation failed'
+            $goodZip = Join-Path $root 'good.zip'
+            (Invoke-V11Python -Arguments @($generatorPath,$script:RepositoryRoot,$goodZip,'good')).ExitCode | Should -Be 0
+            $environmentSchema = Join-Path $schemaRoot 'nxb-v11-environment-fingerprint.schema.json'
+            [IO.File]::AppendAllText($environmentSchema, ' ', [Text.UTF8Encoding]::new($false, $true))
+            $schemaDrift = Invoke-V11Python -Arguments @($tool,'--mode','primary-schema-preflight','--authority-mode','physical-compatibility','--zip',$goodZip,'--schema-root',$schemaRoot)
+            $schemaDrift.ExitCode | Should -Be 2
+            $schemaDrift.Text | Should -Match 'primary schema source SHA-256 drift'
+        }
+        finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'keeps structural preflight stdlib-only and rejects misplaced schema-root input' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-structural-stdlib-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $zip = Join-Path $root 'review.zip'
+        $generatorPath = Join-Path $root 'generate-structural.py'
+        $generator = @'
+import json,sys,zipfile
+authorities={"environment-fingerprint.json":"nxb-compatibility-environment-fingerprint-v1","compatibility-plan.json":"nxb-v11-compatibility-plan-v1","endurance-cycle-summary.json":"nxb-v11-endurance-cycle-summary-v1","known-error-scan.json":"nxb-v11-known-error-scan-v1","independent-validation.json":"nxb-v11-compatibility-independent-v1","compatibility-certification-receipt.json":"synthetic-not-admitted"}
+with zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_DEFLATED) as archive:
+ for name in sorted(authorities): archive.writestr(name,json.dumps({"authority":authorities[name],"status":"synthetic"},sort_keys=True,separators=(",",":")).encode("utf-8"))
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            (Invoke-V11Python -Arguments @($generatorPath,$zip)).ExitCode | Should -Be 0
+            $stdlib = Invoke-V11Python -Arguments @('-S',$tool,'--mode','structural-preflight','--authority-mode','physical-compatibility','--zip',$zip)
+            $stdlib.ExitCode | Should -Be 0
+            [string](($stdlib.Text | ConvertFrom-Json).status) | Should -BeExactly 'STRUCTURE_ONLY'
+            $misplaced = Invoke-V11Python -Arguments @($tool,'--mode','structural-preflight','--authority-mode','physical-compatibility','--zip',$zip,'--schema-root',(Join-Path $script:RepositoryRoot 'schemas'))
+            $misplaced.ExitCode | Should -Be 2
+            $misplaced.Text | Should -Match 'schema-root is only valid'
+        }
+        finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
