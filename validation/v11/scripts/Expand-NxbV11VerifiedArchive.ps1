@@ -59,8 +59,7 @@ function Get-FullPathStrict {
     }
 
     $full = [IO.Path]::GetFullPath($Path)
-    if (-not [IO.Path]::IsPathFullyQualified($Path) -or
-        -not $full.Equals($Path, [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $full.Equals($Path, [StringComparison]::OrdinalIgnoreCase)) {
         Fail "$Label must be an absolute normalized path: $Path"
     }
     return $full
