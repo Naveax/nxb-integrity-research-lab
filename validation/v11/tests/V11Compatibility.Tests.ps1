@@ -1910,3 +1910,222 @@ with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as arch
         }
     }
 }
+
+
+Describe 'V11 predecessor replay seven-entry external preflight (claim-free)' {
+    It 'validates frozen predecessor bytes and rejects hash, tuple, partition, runner and production drift' {
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_predecessor_replay.py'
+        $schemaRoot = Join-Path $script:RepositoryRoot 'schemas'
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pred-replay-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $generatorPath = Join-Path $root 'generate-predecessor-replay.py'
+        $generator = @'
+import base64
+import copy
+import hashlib
+import json
+import pathlib
+import sys
+import zipfile
+
+repo = pathlib.Path(sys.argv[1])
+destination = pathlib.Path(sys.argv[2])
+mode = sys.argv[3]
+fixture_path = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact" / "predecessor-replay-receipt-v1.synthetic.json"
+wrapper = copy.deepcopy(json.loads(fixture_path.read_text(encoding="utf-8")))
+
+predecessor = "1111111111111111111111111111111111111111"
+tree = "2222222222222222222222222222222222222222"
+successor = "3333333333333333333333333333333333333333"
+run_id = 123456789
+attempt = 1
+artifact_name = f"nxb-v11-predecessor-replay-v1-{predecessor}-{successor}-{run_id}-{attempt}"
+
+wrapper["predecessor_main_sha"] = predecessor
+wrapper["predecessor_tree_sha"] = tree
+wrapper["observer_successor_head_sha"] = successor
+wrapper["run_id"] = run_id
+wrapper["run_attempt"] = attempt
+wrapper["artifact_name"] = artifact_name
+wrapper["predecessor_policy_sha256"] = "a" * 64
+
+hosted = {
+    "schema_version": 1,
+    "status": "passed",
+    "authority": "nxb-v1-ci-hosted-v1",
+    "head_sha": predecessor,
+    "pester_version": "5.7.1",
+    "psscriptanalyzer_version": "1.25.0",
+    "python_version": "Python 3.12.10",
+    "known_error_authority": "nxb-v1-ci-known-error-scan-v1",
+    "known_error_findings": 0,
+    "analyzer_findings": 0,
+    "analyzer_process_isolated": True,
+    "ps7_passed": 916,
+    "ps7_total": 916,
+    "ps7_not_run": 0,
+    "ps51_passed": 909,
+    "ps51_total": 916,
+    "ps51_not_run": 7,
+    "ps51_excluded_tag": "PS7Only",
+    "ps51_expected_excluded": 7,
+    "production_release_updated": False,
+}
+known_error = {
+    "schema_version": 1,
+    "status": "passed",
+    "authority": "nxb-v1-ci-known-error-scan-v1",
+    "finding_count": 0,
+    "failed_contracts": [],
+    "findings": {"base": [], "ci": []},
+}
+summary = {
+    "passed": 909,
+    "failed": 0,
+    "skipped": 0,
+    "not_run": 7,
+    "total": 916,
+    "excluded_tag": "PS7Only",
+    "expected_excluded": 7,
+}
+ps7_xml = b'<?xml version="1.0" encoding="utf-8"?><test-results name="Pester" total="916" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" />'
+ps51_xml = b'<?xml version="1.0" encoding="utf-8"?><test-results name="Pester" total="909" errors="0" failures="0" not-run="7" inconclusive="0" ignored="0" skipped="0" invalid="0" />'
+runner = base64.b64decode(
+    "cGFyYW0oW3N0cmluZ10kVGVzdHNQYXRoLFtzdHJpbmddJE1vZHVsZVBhdGgsW3N0cmluZ10kUmVzdWx0UGF0aCxbc3RyaW5nXSRTdW1tYXJ5UGF0aCxbc3RyaW5nXSRFeGNsdWRlZFRhZyxbaW50XSRFeHBlY3RlZEV4Y2x1ZGVkQ291bnQpDQokRXJyb3JBY3Rpb25QcmVmZXJlbmNlPSdTdG9wJw0KSW1wb3J0LU1vZHVsZSAkTW9kdWxlUGF0aCAtRm9yY2UNCiRjb25maWc9TmV3LVBlc3RlckNvbmZpZ3VyYXRpb24NCiRjb25maWcuUnVuLlBhdGg9QCgkVGVzdHNQYXRoKQ0KJGNvbmZpZy5SdW4uUGFzc1RocnU9JHRydWUNCiRjb25maWcuRmlsdGVyLkV4Y2x1ZGVUYWc9QCgkRXhjbHVkZWRUYWcpDQokY29uZmlnLk91dHB1dC5WZXJib3NpdHk9J05vcm1hbCcNCiRjb25maWcuVGVzdFJlc3VsdC5FbmFibGVkPSR0cnVlDQokY29uZmlnLlRlc3RSZXN1bHQuT3V0cHV0Rm9ybWF0PSdOVW5pdFhtbCcNCiRjb25maWcuVGVzdFJlc3VsdC5PdXRwdXRQYXRoPSRSZXN1bHRQYXRoDQokcmVzdWx0PUludm9rZS1QZXN0ZXIgLUNvbmZpZ3VyYXRpb24gJGNvbmZpZw0KJHN1bW1hcnk9W3BzY3VzdG9tb2JqZWN0XVtvcmRlcmVkXUB7IHBhc3NlZD1baW50XSRyZXN1bHQuUGFzc2VkQ291bnQ7IGZhaWxlZD1baW50XSRyZXN1bHQuRmFpbGVkQ291bnQ7IHNraXBwZWQ9W2ludF0kcmVzdWx0LlNraXBwZWRDb3VudDsgbm90X3J1bj1baW50XSRyZXN1bHQuTm90UnVuQ291bnQ7IHRvdGFsPVtpbnRdJHJlc3VsdC5Ub3RhbENvdW50OyBleGNsdWRlZF90YWc9JEV4Y2x1ZGVkVGFnOyBleHBlY3RlZF9leGNsdWRlZD1baW50XSRFeHBlY3RlZEV4Y2x1ZGVkQ291bnQgfQ0KW0lPLkZpbGVdOjpXcml0ZUFsbFRleHQoJFN1bW1hcnlQYXRoLCgoJHN1bW1hcnl8Q29udmVydFRvLUpzb24gLURlcHRoIDQpK1tFbnZpcm9ubWVudF06Ok5ld0xpbmUpLFtUZXh0LlVURjhFbmNvZGluZ106Om5ldygkZmFsc2UpKQ0KaWYgKCRzdW1tYXJ5LmZhaWxlZCAtbmUgMCAtb3IgJHN1bW1hcnkuc2tpcHBlZCAtbmUgMCAtb3IgJHN1bW1hcnkubm90X3J1biAtbmUgJEV4cGVjdGVkRXhjbHVkZWRDb3VudCAtb3IgKCRzdW1tYXJ5LnBhc3NlZCArICRzdW1tYXJ5Lm5vdF9ydW4pIC1uZSAkc3VtbWFyeS50b3RhbCkgeyBleGl0IDEgfQ=="
+)
+
+if mode == "bad-hosted-head":
+    hosted["head_sha"] = "f" * 40
+elif mode == "bad-partition":
+    summary["passed"] = 908
+elif mode == "bad-runner":
+    runner += b" "
+elif mode == "bad-name":
+    wrapper["artifact_name"] = f"nxb-v11-predecessor-replay-v1-{predecessor}-{successor}-{run_id + 1}-{attempt}"
+elif mode == "bad-production":
+    wrapper["production_boundary"]["signer_used"] = True
+elif mode == "bad-xml":
+    ps7_xml = b'<!DOCTYPE x [<!ENTITY x "boom">]><test-results name="Pester" total="916" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" />'
+elif mode not in ("good", "bad-child"):
+    raise SystemExit("unknown mode")
+
+def canonical(document):
+    return json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+
+contents = {
+    "hosted-ci-receipt.json": canonical(hosted),
+    "known-error-scan.json": canonical(known_error),
+    "pester-ps51.xml": ps51_xml,
+    "pester-ps7.xml": ps7_xml,
+    "ps51-summary.json": canonical(summary),
+    "run-ps51.ps1": runner,
+}
+hash_fields = {
+    "hosted-ci-receipt.json": "hosted_ci_receipt_sha256",
+    "known-error-scan.json": "known_error_scan_sha256",
+    "pester-ps51.xml": "pester_ps51_xml_sha256",
+    "pester-ps7.xml": "pester_ps7_xml_sha256",
+    "ps51-summary.json": "ps51_summary_sha256",
+    "run-ps51.ps1": "run_ps51_sha256",
+}
+for name, field in hash_fields.items():
+    wrapper[field] = hashlib.sha256(contents[name]).hexdigest()
+
+if mode == "bad-child":
+    contents["known-error-scan.json"] += b" "
+
+contents["predecessor-replay-receipt.json"] = canonical(wrapper)
+with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in sorted(contents):
+        archive.writestr(name, contents[name])
+
+print(hashlib.sha256(destination.read_bytes()).hexdigest())
+print(artifact_name)
+'@
+        try {
+            [IO.File]::WriteAllText($generatorPath, $generator, [Text.UTF8Encoding]::new($false, $true))
+            foreach ($case in @(
+                @{ mode = 'good'; accepted = $true; pattern = 'PREDECESSOR_REPLAY_ARTIFACT_VALIDATED' },
+                @{ mode = 'bad-child'; accepted = $false; pattern = 'predecessor replay child SHA-256 mismatch for known-error-scan.json' },
+                @{ mode = 'bad-hosted-head'; accepted = $false; pattern = 'frozen hosted receipt predecessor head mismatch' },
+                @{ mode = 'bad-partition'; accepted = $false; pattern = 'frozen PS5.1 summary partition mismatch: passed' },
+                @{ mode = 'bad-runner'; accepted = $false; pattern = 'frozen predecessor run-ps51.ps1 byte identity drift' },
+                @{ mode = 'bad-name'; accepted = $false; pattern = 'predecessor replay independent tuple mismatch: artifact_name' },
+                @{ mode = 'bad-production'; accepted = $false; pattern = 'predecessor replay wrapper schema semantic validation failed' },
+                @{ mode = 'bad-xml'; accepted = $false; pattern = 'pester-ps7.xml: XML DTD/entity declarations forbidden' }
+            )) {
+                $zip = Join-Path $root (([string]$case.mode) + '.zip')
+                $made = Invoke-V11Python -Arguments @(
+                    $generatorPath,
+                    $script:RepositoryRoot,
+                    $zip,
+                    [string]$case.mode
+                )
+                $made.ExitCode | Should -Be 0
+                $lines = @($made.Text.Trim().Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries))
+                $zipHash = [string]$lines[0]
+                $artifactName = [string]$lines[1]
+
+                $run = Invoke-V11Python -Arguments @(
+                    $tool,
+                    '--mode', 'external-binding-preflight',
+                    '--zip', $zip,
+                    '--schema-root', $schemaRoot,
+                    '--expected-zip-sha256', $zipHash,
+                    '--expected-predecessor-main-sha', '1111111111111111111111111111111111111111',
+                    '--expected-predecessor-tree-sha', '2222222222222222222222222222222222222222',
+                    '--expected-observer-successor-head-sha', '3333333333333333333333333333333333333333',
+                    '--expected-run-id', '123456789',
+                    '--expected-run-attempt', '1',
+                    '--expected-artifact-name', $artifactName,
+                    '--expected-predecessor-policy-sha256', ('a' * 64)
+                )
+                if ($case.accepted) {
+                    $run.ExitCode | Should -Be 0
+                    $doc = $run.Text | ConvertFrom-Json
+                    [string]$doc.status | Should -BeExactly 'PREDECESSOR_REPLAY_ARTIFACT_VALIDATED'
+                    [bool]$doc.wrapper_schema_validated | Should -BeTrue
+                    [bool]$doc.child_hash_bindings_validated | Should -BeTrue
+                    [bool]$doc.frozen_pester_partition_validated | Should -BeTrue
+                    [bool]$doc.frozen_run_ps51_identity_validated | Should -BeTrue
+                    [bool]$doc.admitted | Should -BeFalse
+                    @($doc.unverified_gates) | Should -Contain 'github_run_and_artifact_metadata_provenance'
+                    @($doc.unverified_gates) | Should -Contain 'runtime_and_package_byte_provenance'
+                }
+                else {
+                    $run.ExitCode | Should -Be 2
+                    $run.Text | Should -Match ([regex]::Escape([string]$case.pattern))
+                }
+            }
+
+            $goodZip = Join-Path $root 'wrong-digest.zip'
+            $made = Invoke-V11Python -Arguments @(
+                $generatorPath,
+                $script:RepositoryRoot,
+                $goodZip,
+                'good'
+            )
+            $made.ExitCode | Should -Be 0
+            $lines = @($made.Text.Trim().Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries))
+            $wrongDigest = Invoke-V11Python -Arguments @(
+                $tool,
+                '--mode', 'external-binding-preflight',
+                '--zip', $goodZip,
+                '--schema-root', $schemaRoot,
+                '--expected-zip-sha256', ('0' * 64),
+                '--expected-predecessor-main-sha', '1111111111111111111111111111111111111111',
+                '--expected-predecessor-tree-sha', '2222222222222222222222222222222222222222',
+                '--expected-observer-successor-head-sha', '3333333333333333333333333333333333333333',
+                '--expected-run-id', '123456789',
+                '--expected-run-attempt', '1',
+                '--expected-artifact-name', [string]$lines[1],
+                '--expected-predecessor-policy-sha256', ('a' * 64)
+            )
+            $wrongDigest.ExitCode | Should -Be 2
+            $wrongDigest.Text | Should -Match 'independently supplied predecessor replay ZIP digest mismatch'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
