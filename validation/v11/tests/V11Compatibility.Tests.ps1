@@ -2129,3 +2129,203 @@ print(artifact_name)
         }
     }
 }
+
+
+Describe 'V11 A0 central toolchain and compatibility-policy schema closure (claim-free)' {
+    It 'validates strict ownership schemas and rejects recursive, stale, fake and prematurely-enabled authority' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-central-policy-schema-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probe = Join-Path $root 'validate-central-policy-schemas.py'
+        $source = @'
+import copy
+import json
+import pathlib
+import sys
+from importlib.metadata import version
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+
+repo = pathlib.Path(sys.argv[1])
+schemas = repo / "schemas"
+fixtures = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact"
+
+assert version("jsonschema") == "4.26.0"
+
+central_schema = json.loads(
+    (schemas / "nxb-v11-validation-toolchain-lock.schema.json").read_text(encoding="utf-8")
+)
+central = json.loads(
+    (fixtures / "validation-toolchain-lock-v1.synthetic.json").read_text(encoding="utf-8")
+)
+policy_schema = json.loads(
+    (schemas / "nxb-v11-compatibility-policy.schema.json").read_text(encoding="utf-8")
+)
+policy = json.loads(
+    (fixtures / "compatibility-policy-v1.synthetic.json").read_text(encoding="utf-8")
+)
+
+assert central_schema["$id"] == "urn:nxb:schema:nxb-v11-validation-toolchain-lock:v1"
+assert policy_schema["$id"] == "urn:nxb:schema:nxb-v11-compatibility-policy:v1"
+assert central_schema["additionalProperties"] is False
+assert policy_schema["additionalProperties"] is False
+assert central_schema["properties"]["authority"]["const"] == "nxb-v11-validation-toolchain-lock-v1"
+assert policy_schema["properties"]["authority"]["const"] == "nxb-v11-compatibility-policy-v1"
+
+for forbidden in (
+    "validation_toolchain_lock_sha256",
+    "pester_package_sha256",
+    "psscriptanalyzer_package_sha256",
+    "packages",
+    "modules",
+):
+    assert forbidden not in central_schema["properties"]
+
+for forbidden in ("policy_sha256", "compatibility_policy_sha256", "shared_pins"):
+    assert forbidden not in policy_schema["properties"]
+
+assert central_schema["properties"]["action_pin_set_sha256"]["const"] == (
+    "3bd5b7957b1b599e40c5d7e7d6afebf755d2b4021d62fa316d016b4ff7eccf0b"
+)
+assert central_schema["properties"]["powershell_runtime_admission_authority"]["const"] == (
+    "nxb-v11-powershell-runtime-admission-v2"
+)
+assert central_schema["properties"]["selected_host_python_dependency_lock_path"]["const"] == (
+    "validation/v11/locks/validator-py312.lock"
+)
+
+actions = central_schema["$defs"]["actions"]["prefixItems"]
+assert [(x["properties"]["repository"]["const"], x["properties"]["commit_sha"]["const"]) for x in actions] == [
+    ("actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"),
+    ("actions/setup-python", "5fda3b95a4ea91299a34e894583c3862153e4b97"),
+    ("actions/upload-artifact", "ea165f8d65b6e75b540449e92b4886f43607fa02"),
+]
+
+expected_ids = {
+    "win11-25h2-x64-ps76-py312-adk26100",
+    "win11-25h2-x64-ps76-py314-adk26100",
+    "win11-25h2-x64-ps76-py313-adk26100",
+    "win11-25h2-x64-ps75-py312-adk26100",
+    "win11-25h2-x64-ps74-py312-adk26100",
+    "win11-24h2-enterprise-education-x64-ps76-py312-adk26100",
+    "win10-22h2-x64-ps76-py312-adk26100-legacy-esu",
+    "win11-26h1-arm64-ps76-py312-adk28000",
+}
+assert {cell["id"] for cell in policy["cells"]} == expected_ids
+assert len(policy["cells"]) == 8
+assert all(cell["status"] == "provisional-disabled" for cell in policy["cells"])
+assert all("selectors" not in cell for cell in policy["cells"])
+assert policy["predecessor"] == {
+    "main_sha": "9203ab9f89ff4383832119683eb4e19df5490213",
+    "main_tree_sha": "241d3086e9bcb5a847445258cab25bff4fd34da8",
+    "issue": 26,
+    "pr": 48,
+}
+assert policy["review"] == {"entry_count": 6, "retention_days": 7}
+
+Draft202012Validator.check_schema(central_schema)
+Draft202012Validator.check_schema(policy_schema)
+central_validator = Draft202012Validator(central_schema)
+policy_validator = Draft202012Validator(policy_schema)
+central_validator.validate(central)
+policy_validator.validate(policy)
+
+def rejected(validator, document):
+    try:
+        validator.validate(document)
+    except ValidationError:
+        return
+    raise AssertionError("negative control unexpectedly passed")
+
+bad = copy.deepcopy(central)
+bad["validation_toolchain_lock_sha256"] = "0" * 64
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["pester_package_sha256"] = "0" * 64
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["actions"][2]["commit_sha"] = "0" * 40
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["actions"][0], bad["actions"][1] = bad["actions"][1], bad["actions"][0]
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["powershell_runtime_admission_authority"] = "nxb-v11-powershell-runtime-admission-v1"
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["selected_host_python_dependency_lock_path"] = "validation/v11/locks/validator-py313.lock"
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["validation_host_powershell"]["version"] = "7.6.5"
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(central)
+bad["validation_host_python"]["version"] = "3.12.11"
+rejected(central_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["policy_sha256"] = "0" * 64
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["compatibility_policy_sha256"] = "0" * 64
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["shared_pins"] = {}
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["predecessor"]["main_sha"] = "0" * 40
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["review"]["entry_count"] = 7
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["cells"].pop()
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["cells"][0]["status"] = "enabled"
+del bad["cells"][0]["disabled_reason"]
+del bad["cells"][0]["unresolved_gates"]
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+del bad["cells"][0]["unresolved_gates"]
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["cells"][0]["selectors"] = {
+    "modules": {
+        "powershell_module_lock_path": "validation/v11/locks/powershell-modules.lock.json",
+        "powershell_module_lock_sha256": "TBD",
+    }
+}
+rejected(policy_validator, bad)
+
+bad = copy.deepcopy(policy)
+bad["cells"][0]["package_inventory"] = []
+rejected(policy_validator, bad)
+
+print("CENTRAL_POLICY_SCHEMA_PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probe, $source, [Text.UTF8Encoding]::new($false, $true))
+            $run = Invoke-V11Python -Arguments @($probe, $script:RepositoryRoot)
+            $run.ExitCode | Should -Be 0
+            $run.Text | Should -Match 'CENTRAL_POLICY_SCHEMA_PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}

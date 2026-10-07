@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-validation-toolchain-lock:v1",
+  "title": "NXB V11 validation toolchain lock v1",
+  "description": "Claim-free A0 validation-host composition. Package/module byte inventories remain owned by child locks; all lock identities are external digests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "hosted_runner",
+    "validation_host_powershell",
+    "validation_host_python",
+    "powershell_runtime_admission_authority",
+    "powershell_runtime_admission_receipt_sha256",
+    "trusted_preparation_receipt_sha256",
+    "powershell_module_lock_path",
+    "powershell_module_lock_sha256",
+    "selected_host_python_dependency_lock_path",
+    "selected_host_python_dependency_lock_sha256",
+    "actions",
+    "action_pin_set_sha256",
+    "artifact_tree_contract",
+    "verified_archive_contract"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-v11-validation-toolchain-lock-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "hosted_runner": {
+      "$ref": "#/$defs/hostedRunner"
+    },
+    "validation_host_powershell": {
+      "$ref": "#/$defs/validationHostPowerShell"
+    },
+    "validation_host_python": {
+      "$ref": "#/$defs/validationHostPython"
+    },
+    "powershell_runtime_admission_authority": {
+      "const": "nxb-v11-powershell-runtime-admission-v2"
+    },
+    "powershell_runtime_admission_receipt_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "trusted_preparation_receipt_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "powershell_module_lock_path": {
+      "const": "validation/v11/locks/powershell-modules.lock.json"
+    },
+    "powershell_module_lock_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "selected_host_python_dependency_lock_path": {
+      "const": "validation/v11/locks/validator-py312.lock"
+    },
+    "selected_host_python_dependency_lock_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "actions": {
+      "$ref": "#/$defs/actions"
+    },
+    "action_pin_set_sha256": {
+      "const": "3bd5b7957b1b599e40c5d7e7d6afebf755d2b4021d62fa316d016b4ff7eccf0b"
+    },
+    "artifact_tree_contract": {
+      "$ref": "#/$defs/artifactTreeContract"
+    },
+    "verified_archive_contract": {
+      "$ref": "#/$defs/verifiedArchiveContract"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonempty": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\\\\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f:])[^/]+(?:/[^/]+)*$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hostedRunner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "architecture",
+        "execution_class"
+      ],
+      "properties": {
+        "label": {
+          "const": "windows-2022"
+        },
+        "architecture": {
+          "const": "X64"
+        },
+        "execution_class": {
+          "const": "hosted-static"
+        }
+      }
+    },
+    "validationHostPowerShell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "architecture",
+        "source_repository",
+        "release_id",
+        "release_tag",
+        "asset_id",
+        "asset_name",
+        "asset_size_bytes",
+        "archive_expected_sha256",
+        "bootstrap_tree_profile",
+        "bootstrap_tree_sha256",
+        "bootstrap_tree_file_count",
+        "bootstrap_tree_total_file_bytes",
+        "runtime_tree_profile",
+        "runtime_tree_sha256",
+        "pwsh_relative_path",
+        "pwsh_exe_sha256"
+      ],
+      "properties": {
+        "version": {
+          "const": "7.6.6"
+        },
+        "architecture": {
+          "const": "x64"
+        },
+        "source_repository": {
+          "const": "PowerShell/PowerShell"
+        },
+        "release_id": {
+          "const": 385023724
+        },
+        "release_tag": {
+          "const": "v7.6.6"
+        },
+        "asset_id": {
+          "const": 551207033
+        },
+        "asset_name": {
+          "const": "PowerShell-7.6.6-win-x64.zip"
+        },
+        "asset_size_bytes": {
+          "const": 106328873
+        },
+        "archive_expected_sha256": {
+          "const": "02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860"
+        },
+        "bootstrap_tree_profile": {
+          "const": "nxb-a0-host-powershell-bootstrap-tree-v1"
+        },
+        "bootstrap_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bootstrap_tree_file_count": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "bootstrap_tree_total_file_bytes": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "runtime_tree_profile": {
+          "const": "nxb-artifact-tree-manifest-v1"
+        },
+        "runtime_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pwsh_relative_path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "pwsh_exe_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sourcePackageProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_repository",
+        "version",
+        "asset_name",
+        "source_identity",
+        "archive_sha256"
+      ],
+      "properties": {
+        "source_repository": {
+          "const": "actions/python-versions"
+        },
+        "version": {
+          "const": "3.12.10"
+        },
+        "asset_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "hostedToolcacheIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolcache_relative_role",
+        "complete_marker_present",
+        "python_executable_sha256",
+        "bootstrap_tree_profile",
+        "bootstrap_tree_sha256",
+        "runtime_tree_profile",
+        "runtime_tree_sha256",
+        "file_count",
+        "total_bytes"
+      ],
+      "properties": {
+        "toolcache_relative_role": {
+          "const": "Python/3.12.10/x64"
+        },
+        "complete_marker_present": {
+          "const": true
+        },
+        "python_executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bootstrap_tree_profile": {
+          "const": "nxb-a0-host-python-bootstrap-tree-v1"
+        },
+        "bootstrap_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_tree_profile": {
+          "const": "nxb-artifact-tree-manifest-v1"
+        },
+        "runtime_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "file_count": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "total_bytes": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "validationHostPython": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "architecture",
+        "acquisition_profile",
+        "source_package_provenance",
+        "expected_hosted_toolcache_identity"
+      ],
+      "properties": {
+        "version": {
+          "const": "3.12.10"
+        },
+        "architecture": {
+          "const": "x64"
+        },
+        "acquisition_profile": {
+          "const": "setup-python-toolcache-v1"
+        },
+        "source_package_provenance": {
+          "$ref": "#/$defs/sourcePackageProvenance"
+        },
+        "expected_hosted_toolcache_identity": {
+          "$ref": "#/$defs/hostedToolcacheIdentity"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit_sha"
+      ],
+      "properties": {
+        "repository": {
+          "enum": [
+            "actions/checkout",
+            "actions/setup-python",
+            "actions/upload-artifact"
+          ]
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit_sha"
+          ],
+          "properties": {
+            "repository": {
+              "const": "actions/checkout"
+            },
+            "commit_sha": {
+              "const": "3d3c42e5aac5ba805825da76410c181273ba90b1"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit_sha"
+          ],
+          "properties": {
+            "repository": {
+              "const": "actions/setup-python"
+            },
+            "commit_sha": {
+              "const": "5fda3b95a4ea91299a34e894583c3862153e4b97"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit_sha"
+          ],
+          "properties": {
+            "repository": {
+              "const": "actions/upload-artifact"
+            },
+            "commit_sha": {
+              "const": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "artifactTreeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "schema_path",
+        "schema_sha256",
+        "implementation_path",
+        "implementation_sha256",
+        "canonical_wrapper_path",
+        "canonical_wrapper_sha256"
+      ],
+      "properties": {
+        "profile": {
+          "const": "nxb-artifact-tree-manifest-v1"
+        },
+        "schema_path": {
+          "const": "schemas/nxb-artifact-tree-manifest.schema.json"
+        },
+        "schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "implementation_path": {
+          "const": "validation/v11/tools/build_artifact_tree_manifest.py"
+        },
+        "implementation_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonical_wrapper_path": {
+          "const": "validation/v11/scripts/ConvertTo-NxbV11CanonicalAuthority.ps1"
+        },
+        "canonical_wrapper_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "verifiedArchiveContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "implementation_path",
+        "implementation_sha256"
+      ],
+      "properties": {
+        "profile": {
+          "const": "nxb-v11-verified-archive-extraction-v1"
+        },
+        "implementation_path": {
+          "const": "validation/v11/scripts/Expand-NxbV11VerifiedArchive.ps1"
+        },
+        "implementation_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

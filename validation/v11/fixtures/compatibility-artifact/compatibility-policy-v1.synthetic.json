@@ -1,0 +1,665 @@
+{
+  "authority": "nxb-v11-compatibility-policy-v1",
+  "schema_version": 1,
+  "predecessor": {
+    "main_sha": "9203ab9f89ff4383832119683eb4e19df5490213",
+    "main_tree_sha": "241d3086e9bcb5a847445258cab25bff4fd34da8",
+    "issue": 26,
+    "pr": 48
+  },
+  "validation_toolchain_lock_path": "config/nxb-v11-validation-toolchain-lock.json",
+  "validation_toolchain_lock_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "review": {
+    "entry_count": 6,
+    "retention_days": 7
+  },
+  "cells": [
+    {
+      "id": "win11-25h2-x64-ps76-py312-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "primary",
+      "axis": "baseline",
+      "baseline_cell_id": null,
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "25H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-25h2-x64-ps76-py314-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "primary",
+      "axis": "python",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "25H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.14.7"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-25h2-x64-ps76-py313-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "primary",
+      "axis": "python",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "25H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.13.15"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-25h2-x64-ps75-py312-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "retained",
+      "axis": "powershell",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "25H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.5.11"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-25h2-x64-ps74-py312-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "previous-lts",
+      "axis": "powershell",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "25H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.4.20"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-24h2-enterprise-education-x64-ps76-py312-adk26100",
+      "status": "provisional-disabled",
+      "support_class": "retained",
+      "axis": "windows",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "24H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win10-22h2-x64-ps76-py312-adk26100-legacy-esu",
+      "status": "provisional-disabled",
+      "support_class": "legacy-esu",
+      "axis": "windows",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "22H2",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "x64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.26100.2454"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    },
+    {
+      "id": "win11-26h1-arm64-ps76-py312-adk28000",
+      "status": "provisional-disabled",
+      "support_class": "separate-hardware-class",
+      "axis": "hardware",
+      "baseline_cell_id": "win11-25h2-x64-ps76-py312-adk26100",
+      "claim_scope": "physical-compatibility",
+      "windows": {
+        "product_type": "workstation",
+        "display_version": "26H1",
+        "allowed_editions": [
+          "Education",
+          "Enterprise",
+          "Pro"
+        ],
+        "architecture": "arm64",
+        "build_policy": "exact-observed-and-supported"
+      },
+      "powershell": {
+        "edition": "Core",
+        "allowed_exact_versions": [
+          "7.6.6"
+        ]
+      },
+      "python": {
+        "implementation": "CPython",
+        "allowed_exact_versions": [
+          "3.12.10"
+        ]
+      },
+      "modules": {
+        "pester_allowed_exact_versions": [
+          "5.9.1"
+        ],
+        "psscriptanalyzer_allowed_exact_versions": [
+          "1.25.0"
+        ]
+      },
+      "python_packages": {
+        "pyyaml_allowed_exact_versions": [
+          "6.0.3"
+        ],
+        "jsonschema_allowed_exact_versions": [
+          "4.26.0"
+        ]
+      },
+      "adk": {
+        "allowed_base_versions": [
+          "10.1.28000.1"
+        ],
+        "servicing_identity_required": true
+      },
+      "wpt": {
+        "require_wpr": true,
+        "require_xperf": true
+      },
+      "execution": {
+        "hosted_required": true,
+        "trusted_native_required": true,
+        "allowed_endurance_tiers": [
+          "1h",
+          "6h",
+          "24h"
+        ]
+      },
+      "evidence": {
+        "environment_fingerprint_authority": "nxb-compatibility-environment-fingerprint-v1",
+        "review_entry_count": 6
+      },
+      "production_boundary": {
+        "private_key_allowed": false,
+        "tag_mutation_allowed": false,
+        "release_mutation_allowed": false,
+        "merge_allowed": false,
+        "repository_protection_mutation_allowed": false
+      },
+      "disabled_reason": "A0 claim-free policy: exact physical selector preparation is not admitted yet.",
+      "unresolved_gates": [
+        "a1-selector-preparation"
+      ]
+    }
+  ]
+}
