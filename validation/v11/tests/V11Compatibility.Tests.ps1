@@ -1920,7 +1920,7 @@ with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as arch
 
 Describe 'V11 predecessor replay seven-entry external preflight (claim-free)' {
     It 'validates frozen predecessor bytes and rejects hash, tuple, partition, runner and production drift' {
-        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_predecessor_replay.py'
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
         $schemaRoot = Join-Path $script:RepositoryRoot 'schemas'
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pred-replay-' + [Guid]::NewGuid().ToString('N'))
         [void][IO.Directory]::CreateDirectory($root)
@@ -2074,7 +2074,7 @@ print(artifact_name)
 
                 $run = Invoke-V11Python -Arguments @(
                     $tool,
-                    '--mode', 'external-binding-preflight',
+                    '--mode', 'predecessor-replay-external-preflight',
                     '--zip', $zip,
                     '--schema-root', $schemaRoot,
                     '--expected-zip-sha256', $zipHash,
@@ -2115,7 +2115,7 @@ print(artifact_name)
             $lines = @($made.Text.Trim().Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries))
             $wrongDigest = Invoke-V11Python -Arguments @(
                 $tool,
-                '--mode', 'external-binding-preflight',
+                '--mode', 'predecessor-replay-external-preflight',
                 '--zip', $goodZip,
                 '--schema-root', $schemaRoot,
                 '--expected-zip-sha256', ('0' * 64),
