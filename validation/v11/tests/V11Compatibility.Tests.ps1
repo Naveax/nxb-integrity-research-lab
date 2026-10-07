@@ -2329,3 +2329,55 @@ print("CENTRAL_POLICY_SCHEMA_PASS")
         }
     }
 }
+
+
+Describe 'V11 compatibility authority documentation source contract' {
+    It 'keeps the public authority map claim-free and bound to frozen identities' {
+        $path = Join-Path $script:RepositoryRoot 'docs\NXB-V11-COMPATIBILITY-AUTHORITY.md'
+        Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
+        $bytes = [IO.File]::ReadAllBytes($path)
+        $bytes.Length | Should -BeGreaterThan 0
+        ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+        $text = [Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+
+        foreach ($token in @(
+            'A0_ALLOWLIST_VERSION=6',
+            'A0_ALLOWLIST_AUTHORITY_COMMENT=5426682541',
+            'A0_HOSTED_ARTIFACT_AUTHORITY=nxb-v11-a0-hosted-substrate-v1',
+            'A0_SUBSTRATE_RECEIPT_AUTHORITY=nxb-v11-a0-substrate-receipt-v1',
+            'PREDECESSOR_REPLAY_AUTHORITY=nxb-v11-predecessor-replay-v1',
+            'CENTRAL_TOOLCHAIN_AUTHORITY=nxb-v11-validation-toolchain-lock-v1',
+            'COMPATIBILITY_POLICY_AUTHORITY=nxb-v11-compatibility-policy-v1',
+            'PHYSICAL_COMPATIBILITY_CLAIMS=0',
+            'NATIVE_WPT_DISPATCH_PERFORMED=false',
+            '9203ab9f89ff4383832119683eb4e19df5490213',
+            '241d3086e9bcb5a847445258cab25bff4fd34da8',
+            '3d3c42e5aac5ba805825da76410c181273ba90b1',
+            '5fda3b95a4ea91299a34e894583c3862153e4b97',
+            'ea165f8d65b6e75b540449e92b4886f43607fa02',
+            '3bd5b7957b1b599e40c5d7e7d6afebf755d2b4021d62fa316d016b4ff7eccf0b',
+            '035ac21a439c448be6ad6d946bd3526162f678b1858d09562b69c5616a49397b',
+            'compatibility-policy-summary.json',
+            'canonicalization-conformance.json',
+            'native-impact-classifier-fixtures.json',
+            'known-error-scan.json',
+            'independent-validation.json',
+            'a0-substrate-receipt.json',
+            'hosted-ci-receipt.json',
+            'pester-ps51.xml',
+            'pester-ps7.xml',
+            'ps51-summary.json',
+            'run-ps51.ps1',
+            'predecessor-replay-receipt.json',
+            'This document is explanatory source.'
+        )) {
+            ([regex]::Matches($text, [regex]::Escape($token))).Count | Should -BeGreaterThan 0
+        }
+
+        $text | Should -Not -Match 'PHYSICAL_COMPATIBILITY_CLAIMS=1'
+        $text | Should -Not -Match 'NATIVE_WPT_DISPATCH_PERFORMED=true'
+        $text | Should -Match 'pull_request_target.*forbidden'
+        $text | Should -Match 'runtime / trusted-preparation execution chain remains a separate HOLD'
+        $text | Should -Match 'Editing this file cannot make a disabled cell enabled'
+    }
+}
