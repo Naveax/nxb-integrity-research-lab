@@ -760,3 +760,205 @@ catch {
         $source | Should -Match 'workload_executed\s*=\s*\$false'
     }
 }
+
+
+Describe 'V11 endurance-cycle semantic evaluator (claim-free)' {
+    BeforeAll {
+        $script:EnduranceCyclePath = Join-Path $script:RepositoryRoot 'validation\v11\scripts\Invoke-NxbV11EnduranceCycle.ps1'
+        $script:EnduranceSummaryFixture = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-runtime\endurance-cycle-summary-v1.synthetic.json'
+        $script:EndurancePwsh = [IO.Path]::GetFullPath((Get-Command pwsh -ErrorAction Stop).Source)
+
+        function Get-EnduranceTestSha256 {
+            param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+                $sha.Dispose()
+            }
+        }
+
+        function New-EnduranceCycleFixture {
+            param(
+                [ValidateSet('stable', 'ticks-over', 'queue-over', 'disk-over', 'fingerprint-drift', 'reverse-time', 'raw-hash-uppercase')]
+                [string]$Mode = 'stable'
+            )
+
+            $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-endurance-cycle-' + [Guid]::NewGuid().ToString('N'))
+            [void][IO.Directory]::CreateDirectory($root)
+            $cyclePath = Join-Path $root 'cycle.json'
+
+            $summary = Get-Content -LiteralPath $script:EnduranceSummaryFixture -Raw -Encoding UTF8 | ConvertFrom-Json
+            $cycle = ($summary.cycles[0] | ConvertTo-Json -Compress -Depth 100) | ConvertFrom-Json
+            $cycle.started_utc = '2026-10-06T00:00:00Z'
+            $cycle.finished_utc = '2026-10-06T01:00:00Z'
+
+            switch ($Mode) {
+                'ticks-over' {
+                    $cycle.part4.max_ticks_observed = 257
+                }
+                'queue-over' {
+                    $cycle.part3.max_queue_depth_observed = 9
+                }
+                'disk-over' {
+                    $cycle.observability.disk_bytes = 536870913
+                }
+                'fingerprint-drift' {
+                    $cycle.fingerprint_after_sha256 = ('9' * 64)
+                }
+                'reverse-time' {
+                    $cycle.finished_utc = '2026-10-05T23:59:59Z'
+                }
+                'raw-hash-uppercase' {
+                    $cycle.raw_evidence_sha256.part3 = ('A' * 64)
+                }
+            }
+
+            $canonical = ConvertTo-NxbCanonicalJson -InputObject $cycle
+            [IO.File]::WriteAllText($cyclePath, $canonical, [Text.UTF8Encoding]::new($false, $true))
+            $cycleSha = Get-EnduranceTestSha256 -Bytes ([Text.UTF8Encoding]::new($false, $true).GetBytes($canonical))
+
+            return [pscustomobject]@{
+                Root = $root
+                CyclePath = [IO.Path]::GetFullPath($cyclePath)
+                CycleSha256 = $cycleSha
+                CandidateSha = [string]$summary.candidate.sha
+                CandidateTree = [string]$summary.candidate.tree_sha
+                CellId = [string]$summary.cell_id
+                FingerprintSha256 = [string]$summary.fingerprint_sha256
+                PolicySha256 = [string]$summary.policy_sha256
+                IntentSha256 = [string]$summary.intent_sha256
+            }
+        }
+
+        function Invoke-EnduranceCycleChild {
+            param([Parameter(Mandatory = $true)]$Fixture)
+
+            $runnerPath = Join-Path $Fixture.Root ('runner-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+            $runner = @'
+param(
+    [Parameter(Mandatory = $true)][string]$EndurancePath,
+    [Parameter(Mandatory = $true)][string]$CyclePath,
+    [Parameter(Mandatory = $true)][string]$CandidateSha,
+    [Parameter(Mandatory = $true)][string]$CandidateTree,
+    [Parameter(Mandatory = $true)][string]$CellId,
+    [Parameter(Mandatory = $true)][string]$FingerprintSha256,
+    [Parameter(Mandatory = $true)][string]$PolicySha256,
+    [Parameter(Mandatory = $true)][string]$IntentSha256,
+    [Parameter(Mandatory = $true)][string]$ModulePath
+)
+$ErrorActionPreference = 'Stop'
+try {
+    $result = & $EndurancePath -CycleObservationJsonPath $CyclePath -ExpectedCandidateSha $CandidateSha -ExpectedCandidateTree $CandidateTree -ExpectedCellId $CellId -ExpectedFingerprintSha256 $FingerprintSha256 -ExpectedPolicySha256 $PolicySha256 -ExpectedIntentSha256 $IntentSha256 -EvidenceStoreModulePath $ModulePath -PassThru
+    $result | ConvertTo-Json -Compress -Depth 20
+    exit 0
+}
+catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+'@
+            [IO.File]::WriteAllText($runnerPath, $runner, [Text.UTF8Encoding]::new($false, $true))
+
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& $script:EndurancePwsh -NoLogo -NoProfile -File $runnerPath -EndurancePath $script:EnduranceCyclePath -CyclePath $Fixture.CyclePath -CandidateSha $Fixture.CandidateSha -CandidateTree $Fixture.CandidateTree -CellId $Fixture.CellId -FingerprintSha256 $Fixture.FingerprintSha256 -PolicySha256 $Fixture.PolicySha256 -IntentSha256 $Fixture.IntentSha256 -ModulePath $script:EvidenceStorePath 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+
+            $text = $output -join [Environment]::NewLine
+            $result = $null
+            if ($exitCode -eq 0) {
+                $result = $text | ConvertFrom-Json
+            }
+
+            return [pscustomobject]@{
+                ExitCode = [int]$exitCode
+                Text = $text
+                Result = $result
+            }
+        }
+    }
+
+    It 'accepts the bounded synthetic cycle and returns only claim-free context' {
+        $fixture = New-EnduranceCycleFixture -Mode stable
+        try {
+            $run = Invoke-EnduranceCycleChild -Fixture $fixture
+            $run.ExitCode | Should -Be 0
+            [string]$run.Result.status | Should -BeExactly 'ENDURANCE_CYCLE_PREFLIGHT_ONLY'
+            [bool]$run.Result.admitted | Should -BeFalse
+            [bool]$run.Result.physical_compatibility_claimed | Should -BeFalse
+            [bool]$run.Result.workload_executed | Should -BeFalse
+            [bool]$run.Result.wpt_capture_executed | Should -BeFalse
+            [bool]$run.Result.repository_mutated | Should -BeFalse
+            [int]$run.Result.cycle_index | Should -Be 1
+            [int]$run.Result.elapsed_seconds | Should -Be 3600
+            [string]$run.Result.candidate_sha | Should -BeExactly $fixture.CandidateSha
+            [string]$run.Result.candidate_tree_sha | Should -BeExactly $fixture.CandidateTree
+            [string]$run.Result.cell_id | Should -BeExactly $fixture.CellId
+            [string]$run.Result.fingerprint_sha256 | Should -BeExactly $fixture.FingerprintSha256
+            [string]$run.Result.policy_sha256 | Should -BeExactly $fixture.PolicySha256
+            [string]$run.Result.intent_sha256 | Should -BeExactly $fixture.IntentSha256
+            [string]$run.Result.cycle_observation_sha256 | Should -BeExactly $fixture.CycleSha256
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'fails closed when Part 4, Part 3 or observability budgets are exceeded' {
+        foreach ($case in @(
+            [pscustomobject]@{ Mode = 'ticks-over'; Pattern = 'part4 max_ticks_observed is outside' },
+            [pscustomobject]@{ Mode = 'queue-over'; Pattern = 'part3 max_queue_depth_observed is outside' },
+            [pscustomobject]@{ Mode = 'disk-over'; Pattern = 'observability disk_bytes is outside' }
+        )) {
+            $fixture = New-EnduranceCycleFixture -Mode $case.Mode
+            try {
+                $run = Invoke-EnduranceCycleChild -Fixture $fixture
+                $run.ExitCode | Should -Be 1
+                $run.Text | Should -Match $case.Pattern
+            }
+            finally {
+                Remove-Item -LiteralPath $fixture.Root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    It 'rejects fingerprint drift, invalid time order and noncanonical evidence hashes' {
+        foreach ($case in @(
+            [pscustomobject]@{ Mode = 'fingerprint-drift'; Pattern = 'fingerprint_after_sha256 mismatch' },
+            [pscustomobject]@{ Mode = 'reverse-time'; Pattern = 'finished_utc must be later than started_utc' },
+            [pscustomobject]@{ Mode = 'raw-hash-uppercase'; Pattern = 'raw_evidence_sha256.part3 has invalid lowercase hexadecimal form' }
+        )) {
+            $fixture = New-EnduranceCycleFixture -Mode $case.Mode
+            try {
+                $run = Invoke-EnduranceCycleChild -Fixture $fixture
+                $run.ExitCode | Should -Be 1
+                $run.Text | Should -Match $case.Pattern
+            }
+            finally {
+                Remove-Item -LiteralPath $fixture.Root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    It 'remains offline and cannot execute workload, WPT, soak, dispatch or artifact operations' {
+        $source = Get-Content -LiteralPath $script:EnduranceCyclePath -Raw
+        $source | Should -Not -Match '(?i)\bInvoke-(WebRequest|RestMethod)\b'
+        $source | Should -Not -Match '(?im)\bgh\s+(api|workflow|run)\b'
+        $source | Should -Not -Match '(?i)\bStart-Process\b'
+        $source | Should -Not -Match '(?im)\bgit\s+(push|commit|merge|tag|reset|checkout)\b'
+        $source | Should -Not -Match '(?i)&\s*[^\r\n]*(?:wpr|xperf)(?:\.exe)?\b'
+        $source | Should -Not -Match '(?i)\bStart-Sleep\b'
+        $source | Should -Not -Match '(?i)\b(upload-artifact|download-artifact)\b'
+        $source | Should -Not -Match '(?i)\b(Set-Content|Add-Content|Out-File|WriteAllText|WriteAllBytes|CreateNew)\b'
+        $source | Should -Match "status\s*=\s*'ENDURANCE_CYCLE_PREFLIGHT_ONLY'"
+        $source | Should -Match 'workload_executed\s*=\s*\$false'
+        $source | Should -Match 'wpt_capture_executed\s*=\s*\$false'
+    }
+}
