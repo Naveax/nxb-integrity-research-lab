@@ -1,0 +1,839 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-compatibility-policy:v1",
+  "title": "NXB V11 compatibility policy v1",
+  "description": "Cell-selection policy. Digests are externally derived; child package inventories remain owned by their locks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "predecessor",
+    "validation_toolchain_lock_path",
+    "validation_toolchain_lock_sha256",
+    "review",
+    "cells"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-v11-compatibility-policy-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "predecessor": {
+      "$ref": "#/$defs/predecessor"
+    },
+    "validation_toolchain_lock_path": {
+      "const": "config/nxb-v11-validation-toolchain-lock.json"
+    },
+    "validation_toolchain_lock_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "review": {
+      "$ref": "#/$defs/review"
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/cell"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-25h2-x64-ps76-py312-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-25h2-x64-ps76-py314-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-25h2-x64-ps76-py313-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-25h2-x64-ps75-py312-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-25h2-x64-ps74-py312-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-24h2-enterprise-education-x64-ps76-py312-adk26100"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win10-22h2-x64-ps76-py312-adk26100-legacy-esu"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "win11-26h1-arm64-ps76-py312-adk28000"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "nonempty": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "exactVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+!-]*$"
+    },
+    "nonemptyArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonempty"
+      }
+    },
+    "versionArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/exactVersion"
+      }
+    },
+    "predecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "main_sha",
+        "main_tree_sha",
+        "issue",
+        "pr"
+      ],
+      "properties": {
+        "main_sha": {
+          "const": "9203ab9f89ff4383832119683eb4e19df5490213"
+        },
+        "main_tree_sha": {
+          "const": "241d3086e9bcb5a847445258cab25bff4fd34da8"
+        },
+        "issue": {
+          "const": 26
+        },
+        "pr": {
+          "const": 48
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_count",
+        "retention_days"
+      ],
+      "properties": {
+        "entry_count": {
+          "const": 6
+        },
+        "retention_days": {
+          "const": 7
+        }
+      }
+    },
+    "windows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_type",
+        "display_version",
+        "allowed_editions",
+        "architecture",
+        "build_policy"
+      ],
+      "properties": {
+        "product_type": {
+          "const": "workstation"
+        },
+        "display_version": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "allowed_editions": {
+          "$ref": "#/$defs/nonemptyArray"
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "build_policy": {
+          "const": "exact-observed-and-supported"
+        }
+      }
+    },
+    "powershell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edition",
+        "allowed_exact_versions"
+      ],
+      "properties": {
+        "edition": {
+          "const": "Core"
+        },
+        "allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        }
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation",
+        "allowed_exact_versions"
+      ],
+      "properties": {
+        "implementation": {
+          "const": "CPython"
+        },
+        "allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pester_allowed_exact_versions",
+        "psscriptanalyzer_allowed_exact_versions"
+      ],
+      "properties": {
+        "pester_allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        },
+        "psscriptanalyzer_allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        }
+      }
+    },
+    "pythonPackages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pyyaml_allowed_exact_versions",
+        "jsonschema_allowed_exact_versions"
+      ],
+      "properties": {
+        "pyyaml_allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        },
+        "jsonschema_allowed_exact_versions": {
+          "$ref": "#/$defs/versionArray"
+        }
+      }
+    },
+    "adk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_base_versions",
+        "servicing_identity_required"
+      ],
+      "properties": {
+        "allowed_base_versions": {
+          "$ref": "#/$defs/versionArray"
+        },
+        "servicing_identity_required": {
+          "const": true
+        }
+      }
+    },
+    "wpt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "require_wpr",
+        "require_xperf"
+      ],
+      "properties": {
+        "require_wpr": {
+          "const": true
+        },
+        "require_xperf": {
+          "const": true
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hosted_required",
+        "trusted_native_required",
+        "allowed_endurance_tiers"
+      ],
+      "properties": {
+        "hosted_required": {
+          "const": true
+        },
+        "trusted_native_required": {
+          "const": true
+        },
+        "allowed_endurance_tiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "1h",
+              "6h",
+              "24h"
+            ]
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment_fingerprint_authority",
+        "review_entry_count"
+      ],
+      "properties": {
+        "environment_fingerprint_authority": {
+          "const": "nxb-compatibility-environment-fingerprint-v1"
+        },
+        "review_entry_count": {
+          "const": 6
+        }
+      }
+    },
+    "productionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "private_key_allowed",
+        "tag_mutation_allowed",
+        "release_mutation_allowed",
+        "merge_allowed",
+        "repository_protection_mutation_allowed"
+      ],
+      "properties": {
+        "private_key_allowed": {
+          "const": false
+        },
+        "tag_mutation_allowed": {
+          "const": false
+        },
+        "release_mutation_allowed": {
+          "const": false
+        },
+        "merge_allowed": {
+          "const": false
+        },
+        "repository_protection_mutation_allowed": {
+          "const": false
+        }
+      }
+    },
+    "powerShellSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_line",
+        "exact_version",
+        "architecture",
+        "asset_name",
+        "source_identity",
+        "archive_sha256",
+        "executable_sha256",
+        "runtime_tree_sha256"
+      ],
+      "properties": {
+        "runtime_line": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "exact_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "asset_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "pythonSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation",
+        "exact_version",
+        "architecture",
+        "artifact_family",
+        "asset_name",
+        "source_identity",
+        "archive_sha256",
+        "executable_sha256",
+        "runtime_tree_sha256",
+        "dependency_lock_path",
+        "dependency_lock_sha256"
+      ],
+      "properties": {
+        "implementation": {
+          "const": "CPython"
+        },
+        "exact_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "artifact_family": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "asset_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "dependency_lock_path": {
+          "enum": [
+            "validation/v11/locks/validator-py312.lock",
+            "validation/v11/locks/validator-py313.lock",
+            "validation/v11/locks/validator-py314.lock"
+          ]
+        },
+        "dependency_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "moduleSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "powershell_module_lock_path",
+        "powershell_module_lock_sha256"
+      ],
+      "properties": {
+        "powershell_module_lock_path": {
+          "const": "validation/v11/locks/powershell-modules.lock.json"
+        },
+        "powershell_module_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "adkWptSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform_class",
+        "architecture",
+        "adk_base_version",
+        "base_installer_name",
+        "base_installer_source_identity",
+        "base_installer_sha256",
+        "servicing_kb",
+        "servicing_artifact_name",
+        "servicing_source_identity",
+        "servicing_artifact_sha256",
+        "applied_msp_manifest_sha256",
+        "kits_root_policy",
+        "wpr_expected_file_version",
+        "wpr_expected_product_version",
+        "wpr_expected_sha256",
+        "xperf_expected_file_version",
+        "xperf_expected_product_version",
+        "xperf_expected_sha256"
+      ],
+      "properties": {
+        "platform_class": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "architecture": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "adk_base_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "base_installer_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "base_installer_source_identity": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "base_installer_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "servicing_kb": {
+          "type": "string",
+          "pattern": "^KB[0-9]+$"
+        },
+        "servicing_artifact_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "servicing_source_identity": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "servicing_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "applied_msp_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "kits_root_policy": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "wpr_expected_file_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "wpr_expected_product_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "wpr_expected_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "xperf_expected_file_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "xperf_expected_product_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "xperf_expected_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "selectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "powershell": {
+          "$ref": "#/$defs/powerShellSelector"
+        },
+        "python": {
+          "$ref": "#/$defs/pythonSelector"
+        },
+        "modules": {
+          "$ref": "#/$defs/moduleSelector"
+        },
+        "adk_wpt": {
+          "$ref": "#/$defs/adkWptSelector"
+        }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "support_class",
+        "axis",
+        "baseline_cell_id",
+        "claim_scope",
+        "windows",
+        "powershell",
+        "python",
+        "modules",
+        "python_packages",
+        "adk",
+        "wpt",
+        "execution",
+        "evidence",
+        "production_boundary"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "win11-25h2-x64-ps76-py312-adk26100",
+            "win11-25h2-x64-ps76-py314-adk26100",
+            "win11-25h2-x64-ps76-py313-adk26100",
+            "win11-25h2-x64-ps75-py312-adk26100",
+            "win11-25h2-x64-ps74-py312-adk26100",
+            "win11-24h2-enterprise-education-x64-ps76-py312-adk26100",
+            "win10-22h2-x64-ps76-py312-adk26100-legacy-esu",
+            "win11-26h1-arm64-ps76-py312-adk28000"
+          ]
+        },
+        "status": {
+          "enum": [
+            "enabled",
+            "provisional-disabled",
+            "retired"
+          ]
+        },
+        "support_class": {
+          "enum": [
+            "primary",
+            "retained",
+            "previous-lts",
+            "legacy-esu",
+            "separate-hardware-class",
+            "replay-only"
+          ]
+        },
+        "axis": {
+          "enum": [
+            "baseline",
+            "python",
+            "powershell",
+            "windows",
+            "hardware"
+          ]
+        },
+        "baseline_cell_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "win11-25h2-x64-ps76-py312-adk26100",
+                "win11-25h2-x64-ps76-py314-adk26100",
+                "win11-25h2-x64-ps76-py313-adk26100",
+                "win11-25h2-x64-ps75-py312-adk26100",
+                "win11-25h2-x64-ps74-py312-adk26100",
+                "win11-24h2-enterprise-education-x64-ps76-py312-adk26100",
+                "win10-22h2-x64-ps76-py312-adk26100-legacy-esu",
+                "win11-26h1-arm64-ps76-py312-adk28000"
+              ]
+            }
+          ]
+        },
+        "claim_scope": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "windows": {
+          "$ref": "#/$defs/windows"
+        },
+        "powershell": {
+          "$ref": "#/$defs/powershell"
+        },
+        "python": {
+          "$ref": "#/$defs/python"
+        },
+        "modules": {
+          "$ref": "#/$defs/modules"
+        },
+        "python_packages": {
+          "$ref": "#/$defs/pythonPackages"
+        },
+        "adk": {
+          "$ref": "#/$defs/adk"
+        },
+        "wpt": {
+          "$ref": "#/$defs/wpt"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "production_boundary": {
+          "$ref": "#/$defs/productionBoundary"
+        },
+        "selectors": {
+          "$ref": "#/$defs/selectors"
+        },
+        "disabled_reason": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "unresolved_gates": {
+          "$ref": "#/$defs/nonemptyArray"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "enabled"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "selectors"
+            ],
+            "properties": {
+              "selectors": {
+                "allOf": [
+                  {
+                    "required": [
+                      "powershell",
+                      "python",
+                      "modules",
+                      "adk_wpt"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "provisional-disabled"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "disabled_reason",
+              "unresolved_gates"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
