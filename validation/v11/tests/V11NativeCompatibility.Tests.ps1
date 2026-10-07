@@ -494,3 +494,269 @@ print(json.dumps({"status":"PASS","count":len(checks)},separators=(",",":")))
         [int]$result.count | Should -Be 31
     }
 }
+
+
+Describe 'V11 native semantic preflight (claim-free)' {
+    BeforeAll {
+        $script:NativeSemanticPath = Join-Path $script:RepositoryRoot 'validation\v11\scripts\Invoke-NxbV11CompatibilityNativeValidation.ps1'
+        $script:NativeSemanticPwsh = [IO.Path]::GetFullPath((Get-Command pwsh -ErrorAction Stop).Source)
+        $script:NativePlanFixture = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-runtime\compatibility-plan-v1.synthetic.json'
+        $script:NativeFingerprintFixture = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-runtime\environment-fingerprint-v1.synthetic.json'
+
+        function Get-NativeSemanticSha256 {
+            param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+                $sha.Dispose()
+            }
+        }
+
+        function Set-NativeSemanticFingerprintIdentity {
+            param([Parameter(Mandatory = $true)]$Document)
+            $copy = ($Document | ConvertTo-Json -Compress -Depth 100) | ConvertFrom-Json
+            [void]$copy.PSObject.Properties.Remove('captured_utc')
+            [void]$copy.PSObject.Properties.Remove('fingerprint_sha256')
+            $canonical = ConvertTo-NxbCanonicalJson -InputObject $copy
+            $digest = Get-NativeSemanticSha256 -Bytes ([Text.UTF8Encoding]::new($false, $true).GetBytes($canonical))
+            $Document.fingerprint_sha256 = $digest
+            return $digest
+        }
+
+        function Write-NativeSemanticCanonicalJson {
+            param(
+                [Parameter(Mandatory = $true)][string]$Path,
+                [Parameter(Mandatory = $true)]$Document
+            )
+            $canonical = ConvertTo-NxbCanonicalJson -InputObject $Document
+            [IO.File]::WriteAllText($Path, $canonical, [Text.UTF8Encoding]::new($false, $true))
+            return Get-NativeSemanticSha256 -Bytes ([Text.UTF8Encoding]::new($false, $true).GetBytes($canonical))
+        }
+
+        function New-NativeSemanticFixture {
+            param(
+                [ValidateSet('stable', 'post-drift', 'stored-tamper', 'candidate-mismatch', 'wpt-unpaired', 'production-boundary')]
+                [string]$Mode = 'stable'
+            )
+
+            $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-semantic-' + [Guid]::NewGuid().ToString('N'))
+            [void][IO.Directory]::CreateDirectory($root)
+            $planPath = Join-Path $root 'plan.json'
+            $beforePath = Join-Path $root 'before.json'
+            $afterPath = Join-Path $root 'after.json'
+
+            $plan = Get-Content -LiteralPath $script:NativePlanFixture -Raw -Encoding UTF8 | ConvertFrom-Json
+            $before = Get-Content -LiteralPath $script:NativeFingerprintFixture -Raw -Encoding UTF8 | ConvertFrom-Json
+            $after = Get-Content -LiteralPath $script:NativeFingerprintFixture -Raw -Encoding UTF8 | ConvertFrom-Json
+
+            $before.policy_sha256 = [string]$plan.policy.sha256
+            $after.policy_sha256 = [string]$plan.policy.sha256
+            $before.captured_utc = '2026-10-06T00:00:00Z'
+            $after.captured_utc = '2026-10-06T01:00:00Z'
+
+            switch ($Mode) {
+                'post-drift' {
+                    $after.windows.ubr = [int]$after.windows.ubr + 1
+                }
+                'candidate-mismatch' {
+                    $before.head_sha = ('c' * 40)
+                }
+                'wpt-unpaired' {
+                    $after.wpt.same_directory = $false
+                }
+                'production-boundary' {
+                    $plan.production_boundary.private_key_used = $true
+                }
+            }
+
+            $beforeIdentity = Set-NativeSemanticFingerprintIdentity -Document $before
+            $afterIdentity = Set-NativeSemanticFingerprintIdentity -Document $after
+            if ($Mode -eq 'stored-tamper') {
+                $after.fingerprint_sha256 = ('0' * 64)
+            }
+
+            $planSha = Write-NativeSemanticCanonicalJson -Path $planPath -Document $plan
+            [void](Write-NativeSemanticCanonicalJson -Path $beforePath -Document $before)
+            [void](Write-NativeSemanticCanonicalJson -Path $afterPath -Document $after)
+
+            return [pscustomobject]@{
+                Root = $root
+                PlanPath = [IO.Path]::GetFullPath($planPath)
+                BeforePath = [IO.Path]::GetFullPath($beforePath)
+                AfterPath = [IO.Path]::GetFullPath($afterPath)
+                PlanSha256 = $planSha
+                BeforeIdentity = $beforeIdentity
+                AfterIdentity = $afterIdentity
+                CandidateSha = [string]$plan.candidate.sha
+                CandidateTree = [string]$plan.candidate.tree_sha
+                CellId = [string]$plan.cell.id
+                PolicySha256 = [string]$plan.policy.sha256
+            }
+        }
+
+        function Invoke-NativeSemanticChild {
+            param(
+                [Parameter(Mandatory = $true)]$Fixture,
+                [string]$ExpectedPlanSha256
+            )
+
+            if ([string]::IsNullOrWhiteSpace($ExpectedPlanSha256)) {
+                $ExpectedPlanSha256 = [string]$Fixture.PlanSha256
+            }
+
+            $runnerPath = Join-Path $Fixture.Root ('runner-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+            $runner = @'
+param(
+    [Parameter(Mandatory = $true)][string]$NativePath,
+    [Parameter(Mandatory = $true)][string]$PlanPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedPlanSha256,
+    [Parameter(Mandatory = $true)][string]$BeforePath,
+    [Parameter(Mandatory = $true)][string]$AfterPath,
+    [Parameter(Mandatory = $true)][string]$ModulePath
+)
+$ErrorActionPreference = 'Stop'
+try {
+    $result = & $NativePath -PlanJsonPath $PlanPath -ExpectedPlanSha256 $ExpectedPlanSha256 -FingerprintBeforeJsonPath $BeforePath -FingerprintAfterJsonPath $AfterPath -EvidenceStoreModulePath $ModulePath -PassThru
+    $result | ConvertTo-Json -Compress -Depth 30
+    exit 0
+}
+catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+'@
+            [IO.File]::WriteAllText($runnerPath, $runner, [Text.UTF8Encoding]::new($false, $true))
+
+            $previous = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = @(& $script:NativeSemanticPwsh -NoLogo -NoProfile -File $runnerPath -NativePath $script:NativeSemanticPath -PlanPath $Fixture.PlanPath -ExpectedPlanSha256 $ExpectedPlanSha256 -BeforePath $Fixture.BeforePath -AfterPath $Fixture.AfterPath -ModulePath $script:EvidenceStorePath 2>&1 | ForEach-Object { [string]$_ })
+                $exitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+
+            $text = $output -join [Environment]::NewLine
+            $result = $null
+            if ($exitCode -eq 0) {
+                $result = $text | ConvertFrom-Json
+            }
+            return [pscustomobject]@{
+                ExitCode = [int]$exitCode
+                Text = $text
+                Result = $result
+            }
+        }
+    }
+
+    It 'binds canonical plan authority to a stable pre/post fingerprint identity without claiming support' {
+        $fixture = New-NativeSemanticFixture -Mode stable
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $fixture
+            $run.ExitCode | Should -Be 0
+            [string]$run.Result.status | Should -BeExactly 'NATIVE_HARNESS_PREFLIGHT_ONLY'
+            [bool]$run.Result.admitted | Should -BeFalse
+            [bool]$run.Result.physical_compatibility_claimed | Should -BeFalse
+            [bool]$run.Result.native_wpt_dispatch_performed | Should -BeFalse
+            [bool]$run.Result.workload_executed | Should -BeFalse
+            [bool]$run.Result.repository_mutated | Should -BeFalse
+            [string]$run.Result.plan_sha256 | Should -BeExactly $fixture.PlanSha256
+            [string]$run.Result.fingerprint_before_sha256 | Should -BeExactly $fixture.BeforeIdentity
+            [string]$run.Result.fingerprint_after_sha256 | Should -BeExactly $fixture.BeforeIdentity
+            [bool]$run.Result.fingerprint_stable | Should -BeTrue
+            [string]$run.Result.candidate_sha | Should -BeExactly $fixture.CandidateSha
+            [string]$run.Result.candidate_tree_sha | Should -BeExactly $fixture.CandidateTree
+            [string]$run.Result.cell_id | Should -BeExactly $fixture.CellId
+            [string]$run.Result.policy_sha256 | Should -BeExactly $fixture.PolicySha256
+            [string]$run.Result.endurance_tier | Should -BeExactly '1h'
+            [int]$run.Result.endurance_cycle_count | Should -Be 1
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects external plan digest drift and independently valid pre/post identity drift' {
+        $fixture = New-NativeSemanticFixture -Mode stable
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $fixture -ExpectedPlanSha256 ('0' * 64)
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'compatibility plan SHA-256 mismatch'
+        }
+        finally {
+            Remove-Item -LiteralPath $fixture.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $drift = New-NativeSemanticFixture -Mode post-drift
+        try {
+            $drift.BeforeIdentity | Should -Not -BeExactly $drift.AfterIdentity
+            $run = Invoke-NativeSemanticChild -Fixture $drift
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'pre/post fingerprint identity drift'
+        }
+        finally {
+            Remove-Item -LiteralPath $drift.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects stored fingerprint tamper and plan/fingerprint candidate mismatch' {
+        $tamper = New-NativeSemanticFixture -Mode stored-tamper
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $tamper
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'stored fingerprint SHA-256 mismatch'
+        }
+        finally {
+            Remove-Item -LiteralPath $tamper.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $mismatch = New-NativeSemanticFixture -Mode candidate-mismatch
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $mismatch
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'candidate SHA does not match the plan'
+        }
+        finally {
+            Remove-Item -LiteralPath $mismatch.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects WPT pairing failure and any production-boundary mutation' {
+        $wpt = New-NativeSemanticFixture -Mode wpt-unpaired
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $wpt
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'paired WPT tools from the same directory'
+        }
+        finally {
+            Remove-Item -LiteralPath $wpt.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        $production = New-NativeSemanticFixture -Mode production-boundary
+        try {
+            $run = Invoke-NativeSemanticChild -Fixture $production
+            $run.ExitCode | Should -Be 1
+            $run.Text | Should -Match 'production boundary is not claim-free'
+        }
+        finally {
+            Remove-Item -LiteralPath $production.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'remains an offline semantic preflight and cannot execute WPT or workload code' {
+        $source = Get-Content -LiteralPath $script:NativeSemanticPath -Raw
+        $source | Should -Not -Match '(?i)\bInvoke-(WebRequest|RestMethod)\b'
+        $source | Should -Not -Match '(?im)\bgh\s+(api|workflow|run)\b'
+        $source | Should -Not -Match '(?i)\bStart-Process\b'
+        $source | Should -Not -Match '(?im)\bgit\s+(push|commit|merge|tag|reset|checkout)\b'
+        $source | Should -Not -Match '(?i)&\s*[^\r\n]*(?:wpr|xperf)(?:\.exe)?\b'
+        $source | Should -Not -Match '(?i)\b(upload-artifact|download-artifact)\b'
+        $source | Should -Not -Match '(?i)\b(Set-Content|Add-Content|Out-File|WriteAllText|WriteAllBytes|CreateNew)\b'
+        $source | Should -Match "status\s*=\s*'NATIVE_HARNESS_PREFLIGHT_ONLY'"
+        $source | Should -Match 'physical_compatibility_claimed\s*=\s*\$false'
+        $source | Should -Match 'workload_executed\s*=\s*\$false'
+    }
+}
