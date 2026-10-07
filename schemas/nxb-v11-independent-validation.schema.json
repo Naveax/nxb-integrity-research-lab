@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-independent-validation:v1",
+  "title": "NXB V11 physical compatibility producer-side independent validation v1",
+  "description": "Strict producer-side validation receipt for the four primary review documents. It is intentionally acyclic: the later certification-receipt hash and final outer ZIP hash are unavailable here, and schema conformance never constitutes external admission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "status",
+    "repository",
+    "workflow_id",
+    "workflow_blob_sha",
+    "harness_manifest_sha256",
+    "dispatcher_sha",
+    "dispatcher_tree_sha",
+    "candidate_sha",
+    "candidate_tree_sha",
+    "base_sha",
+    "base_tree_sha",
+    "predecessor_main_sha",
+    "predecessor_tree_sha",
+    "cell_id",
+    "support_class",
+    "axis",
+    "intent_sha256",
+    "policy_sha256",
+    "fingerprint_sha256",
+    "environment_fingerprint_sha256",
+    "compatibility_plan_sha256",
+    "endurance_summary_sha256",
+    "known_error_scan_sha256",
+    "predecessor_replay_artifact_id",
+    "predecessor_replay_sha256",
+    "predecessor_replay_receipt_sha256",
+    "run_id",
+    "run_attempt",
+    "event",
+    "job_id",
+    "job_name",
+    "selector_provenance",
+    "requirements_total",
+    "requirements_passed",
+    "requirements_all_passed",
+    "negative_controls_total",
+    "negative_controls_passed",
+    "negative_controls_all_passed",
+    "production_boundary",
+    "receipt_hash_not_yet_available",
+    "outer_zip_hash_not_yet_available",
+    "admitted",
+    "physical_compatibility_claimed"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-v11-compatibility-independent-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "const": "passed"
+    },
+    "repository": {
+      "const": "Naveax/nxb-integrity-research-lab"
+    },
+    "workflow_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "workflow_blob_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "harness_manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "dispatcher_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "dispatcher_tree_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "candidate_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "candidate_tree_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "base_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "base_tree_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "predecessor_main_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "predecessor_tree_sha": {
+      "$ref": "#/$defs/git40"
+    },
+    "cell_id": {
+      "$ref": "#/$defs/cellId"
+    },
+    "support_class": {
+      "$ref": "#/$defs/supportClass"
+    },
+    "axis": {
+      "$ref": "#/$defs/axis"
+    },
+    "intent_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "policy_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "fingerprint_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "environment_fingerprint_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "compatibility_plan_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "endurance_summary_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "known_error_scan_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "predecessor_replay_artifact_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "predecessor_replay_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "predecessor_replay_receipt_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event": {
+      "const": "workflow_dispatch"
+    },
+    "job_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "job_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "selector_provenance": {
+      "$ref": "#/$defs/selectorProvenance"
+    },
+    "requirements_total": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "requirements_passed": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "requirements_all_passed": {
+      "const": true
+    },
+    "negative_controls_total": {
+      "const": 47
+    },
+    "negative_controls_passed": {
+      "const": 47
+    },
+    "negative_controls_all_passed": {
+      "const": true
+    },
+    "production_boundary": {
+      "$ref": "#/$defs/productionBoundary"
+    },
+    "receipt_hash_not_yet_available": {
+      "const": true
+    },
+    "outer_zip_hash_not_yet_available": {
+      "const": true
+    },
+    "admitted": {
+      "const": false
+    },
+    "physical_compatibility_claimed": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "cellId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "supportClass": {
+      "enum": [
+        "primary",
+        "retained",
+        "previous-lts",
+        "legacy-esu",
+        "separate-hardware-class",
+        "replay-only"
+      ]
+    },
+    "axis": {
+      "enum": [
+        "baseline",
+        "python",
+        "powershell",
+        "windows",
+        "hardware"
+      ]
+    },
+    "selectorProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compatibility_policy_sha256",
+        "validation_toolchain_lock_sha256",
+        "powershell_runtime_admission_receipt_sha256",
+        "trusted_preparation_receipt_sha256",
+        "powershell_module_lock_sha256",
+        "selected_host_python_dependency_lock_path",
+        "selected_host_python_dependency_lock_sha256",
+        "adk_wpt_preparation_receipt_sha256"
+      ],
+      "properties": {
+        "compatibility_policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "validation_toolchain_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_runtime_admission_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "trusted_preparation_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_module_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "selected_host_python_dependency_lock_path": {
+          "type": "string",
+          "pattern": "^validation/v11/locks/validator-py[0-9]{3}\\.lock$",
+          "maxLength": 256
+        },
+        "selected_host_python_dependency_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "adk_wpt_preparation_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "productionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "private_key_used",
+        "tag_mutation",
+        "release_mutation",
+        "merge_mutation",
+        "repository_protection_mutated"
+      ],
+      "properties": {
+        "private_key_used": {
+          "const": false
+        },
+        "tag_mutation": {
+          "const": false
+        },
+        "release_mutation": {
+          "const": false
+        },
+        "merge_mutation": {
+          "const": false
+        },
+        "repository_protection_mutated": {
+          "const": false
+        }
+      }
+    }
+  }
+}

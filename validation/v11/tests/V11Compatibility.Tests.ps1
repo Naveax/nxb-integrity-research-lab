@@ -1328,3 +1328,140 @@ with zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_DEFLATED) as archiv
         finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+
+Describe 'V11 terminal compatibility schema DAG contract (claim-free)' {
+    It 'validates the frozen terminal identities and rejects self/outer-hash cycles' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-terminal-schema-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probe = Join-Path $root 'validate-terminal-schemas.py'
+        $source = @'
+import copy
+import json
+import pathlib
+import sys
+from importlib.metadata import version
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+
+repo = pathlib.Path(sys.argv[1])
+schema_root = repo / "schemas"
+fixture_root = repo / "validation" / "v11" / "fixtures" / "compatibility-artifact"
+
+assert version("jsonschema") == "4.26.0"
+
+independent_schema = json.loads(
+    (schema_root / "nxb-v11-independent-validation.schema.json").read_text(encoding="utf-8")
+)
+receipt_schema = json.loads(
+    (schema_root / "nxb-v11-compatibility-receipt.schema.json").read_text(encoding="utf-8")
+)
+independent = json.loads(
+    (fixture_root / "independent-validation-v1.synthetic.json").read_text(encoding="utf-8")
+)
+receipt = json.loads(
+    (fixture_root / "compatibility-receipt-v1.synthetic.json").read_text(encoding="utf-8")
+)
+
+assert independent_schema["$id"] == "urn:nxb:schema:nxb-v11-independent-validation:v1"
+assert receipt_schema["$id"] == "urn:nxb:schema:nxb-v11-compatibility-receipt:v1"
+assert independent_schema["additionalProperties"] is False
+assert receipt_schema["additionalProperties"] is False
+
+Draft202012Validator.check_schema(independent_schema)
+Draft202012Validator.check_schema(receipt_schema)
+independent_validator = Draft202012Validator(independent_schema)
+receipt_validator = Draft202012Validator(receipt_schema)
+independent_validator.validate(independent)
+receipt_validator.validate(receipt)
+
+primary_hashes = {
+    "environment_fingerprint_sha256",
+    "compatibility_plan_sha256",
+    "endurance_summary_sha256",
+    "known_error_scan_sha256",
+}
+assert primary_hashes <= set(independent_schema["required"])
+assert "independent_validation_sha256" not in independent_schema["properties"]
+assert "independent_validation_sha256" in receipt_schema["required"]
+assert primary_hashes <= set(receipt_schema["required"])
+
+selector_fields = {
+    "compatibility_policy_sha256",
+    "validation_toolchain_lock_sha256",
+    "powershell_runtime_admission_receipt_sha256",
+    "trusted_preparation_receipt_sha256",
+    "powershell_module_lock_sha256",
+    "selected_host_python_dependency_lock_path",
+    "selected_host_python_dependency_lock_sha256",
+    "adk_wpt_preparation_receipt_sha256",
+}
+assert set(independent_schema["$defs"]["selectorProvenance"]["required"]) == selector_fields
+assert set(receipt_schema["$defs"]["selectorProvenance"]["required"]) == selector_fields
+
+for forbidden in (
+    "receipt_sha256",
+    "compatibility_certification_receipt_sha256",
+    "outer_zip_sha256",
+    "artifact_sha256",
+):
+    assert forbidden not in independent_schema["properties"]
+    assert forbidden not in receipt_schema["properties"]
+
+def rejected(validator, document):
+    try:
+        validator.validate(document)
+    except ValidationError:
+        return
+    raise AssertionError("negative control unexpectedly passed")
+
+bad = copy.deepcopy(independent)
+bad["compatibility_certification_receipt_sha256"] = "0" * 64
+rejected(independent_validator, bad)
+
+bad = copy.deepcopy(independent)
+bad["outer_zip_sha256"] = "0" * 64
+rejected(independent_validator, bad)
+
+bad = copy.deepcopy(independent)
+bad["receipt_hash_not_yet_available"] = False
+rejected(independent_validator, bad)
+
+bad = copy.deepcopy(independent)
+bad["negative_controls_passed"] = 46
+rejected(independent_validator, bad)
+
+bad = copy.deepcopy(receipt)
+bad["receipt_sha256"] = "0" * 64
+rejected(receipt_validator, bad)
+
+bad = copy.deepcopy(receipt)
+bad["outer_zip_sha256"] = "0" * 64
+rejected(receipt_validator, bad)
+
+bad = copy.deepcopy(receipt)
+del bad["independent_validation_sha256"]
+rejected(receipt_validator, bad)
+
+bad = copy.deepcopy(receipt)
+bad["review_entry_count"] = 7
+rejected(receipt_validator, bad)
+
+bad = copy.deepcopy(receipt)
+bad["production_boundary"]["release_mutation"] = True
+rejected(receipt_validator, bad)
+
+print("TERMINAL_SCHEMA_DAG_PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probe, $source, [Text.UTF8Encoding]::new($false, $true))
+            $run = Invoke-V11Python -Arguments @($probe, $script:RepositoryRoot)
+            $run.ExitCode | Should -Be 0
+            $run.Text | Should -Match 'TERMINAL_SCHEMA_DAG_PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
