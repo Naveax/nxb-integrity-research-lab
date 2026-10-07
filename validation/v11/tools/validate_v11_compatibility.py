@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""NXB V11 six-entry review ZIP envelope inspector (stdlib-only).
+"""NXB V11 six-entry review ZIP envelope and claim-free schema/DAG preflight.
 
-IMPORTANT: The only supported mode is *structural preflight*. A successful
-result DOES NOT admit a compatibility cell, certify a native machine, or
-validate GitHub-side runner/candidate/policy/provenance authority. The future
-independent admission mode must implement those gates separately.
+Every successful mode remains non-admitting. GitHub-side run/artifact
+provenance, candidate/base CAS, predecessor replay admission, and production
+authority are reconstructed by later independent admission layers.
 """
 
 from __future__ import annotations
@@ -451,6 +450,236 @@ def _validate_review_schema_documents(
     return primary_version
 
 
+A0_HOSTED_SCHEMA_BINDING = {
+    "filename": "nxb-v11-a0-hosted-substrate.schema.json",
+    "schema_id": "urn:nxb:schema:nxb-v11-a0-hosted-substrate:v1",
+    "sha256": frozenset({
+        "8390beb59c45810cb2a009c7dd384b60ed0f48b3f26464abf4f9a58c850db85a",
+    }),
+}
+
+A0_PRIMARY_HASH_FIELDS = {
+    "compatibility-policy-summary.json": "compatibility_policy_summary_sha256",
+    "canonicalization-conformance.json": "canonicalization_conformance_sha256",
+    "native-impact-classifier-fixtures.json": "native_impact_classifier_fixtures_sha256",
+    "known-error-scan.json": "known_error_scan_sha256",
+}
+
+A0_DAG_COMMON_FIELDS = (
+    "repository",
+    "repository_id",
+    "workflow_id",
+    "workflow_path",
+    "workflow_blob_sha",
+    "run_id",
+    "run_attempt",
+    "event",
+    "pr_number",
+    "base_ref",
+    "head_ref",
+    "candidate_sha",
+    "candidate_tree_sha",
+    "base_sha",
+    "base_tree_sha",
+    "predecessor_main_sha",
+    "predecessor_tree_sha",
+    "allowlist_version",
+    "allowlist_authority_comment",
+    "allowlist_sha256",
+    "changed_path_set_sha256",
+    "validation_toolchain_lock_sha256",
+    "trusted_preparation_receipt_sha256",
+    "predecessor_replay_artifact_id",
+    "predecessor_replay_sha256",
+    "predecessor_replay_receipt_sha256",
+    "inherited_v1_pr_run_id",
+    "inherited_v1_pr_artifact_id",
+    "inherited_v1_pr_artifact_sha256",
+)
+
+
+def _load_a0_hosted_schema(schema_root: Path) -> dict[str, Any]:
+    binding = A0_HOSTED_SCHEMA_BINDING
+    schema_path = schema_root / binding["filename"]
+    try:
+        metadata = schema_path.lstat()
+        content = schema_path.read_bytes()
+    except OSError:
+        fail("A0 hosted schema source absent or unreadable")
+    if not stat.S_ISREG(metadata.st_mode):
+        fail("A0 hosted schema source is not a regular file")
+    if getattr(metadata, "st_file_attributes", 0) & getattr(
+        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+    ):
+        fail("A0 hosted schema source reparse-point forbidden")
+    digest = hashlib.sha256(content).hexdigest()
+    if digest not in binding["sha256"]:
+        fail("A0 hosted schema source SHA-256 drift")
+    if content.startswith(b"\xef\xbb\xbf"):
+        fail("A0 hosted schema UTF-8 BOM forbidden")
+    try:
+        schema = json.loads(
+            content.decode("utf-8", "strict"),
+            object_pairs_hook=_pairs_unique,
+            parse_int=_parse_integer,
+            parse_float=_parse_float,
+            parse_constant=_parse_constant,
+        )
+    except (UnicodeDecodeError, ValueError, TypeError, RecursionError):
+        fail("A0 hosted schema source is invalid JSON")
+    if not isinstance(schema, dict):
+        fail("A0 hosted schema root must be an object")
+    _check_strings(schema)
+    if schema.get("$id") != binding["schema_id"]:
+        fail("A0 hosted schema ID drift")
+    if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+        fail("A0 hosted schema dialect drift")
+    return schema
+
+
+def _validate_a0_hosted_schema_documents(
+    documents: dict[str, dict[str, Any]],
+    schema_root: Path,
+    filename_set_sha256: str,
+) -> str:
+    _ordinary_schema_root(schema_root)
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema.exceptions import SchemaError, ValidationError
+
+        jsonschema_version = version("jsonschema")
+    except (ImportError, PackageNotFoundError):
+        fail("jsonschema package unavailable for A0 hosted schema preflight")
+    if jsonschema_version != EXPECTED_JSONSCHEMA_VERSION:
+        fail("jsonschema package version differs from A0 hosted schema preflight pin")
+    schema = _load_a0_hosted_schema(schema_root)
+    envelope = {
+        "authority": "nxb-v11-a0-hosted-substrate-v1",
+        "schema_version": 1,
+        "filename_set_sha256": filename_set_sha256,
+        "documents": documents,
+    }
+    try:
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(
+            schema, format_checker=FormatChecker()
+        ).validate(envelope)
+    except SchemaError:
+        fail("A0 hosted schema contract invalid")
+    except ValidationError:
+        fail("A0 hosted schema semantic validation failed")
+    return jsonschema_version
+
+
+def _validate_a0_hosted_internal_dag(
+    documents: dict[str, dict[str, Any]], entry_hashes: dict[str, str]
+) -> None:
+    independent = documents["independent-validation.json"]
+    receipt = documents["a0-substrate-receipt.json"]
+    policy = documents["compatibility-policy-summary.json"]
+    known_error = documents["known-error-scan.json"]
+
+    for document_name, field_name in A0_PRIMARY_HASH_FIELDS.items():
+        expected = entry_hashes[document_name]
+        if independent.get(field_name) != expected:
+            fail(f"A0 independent-validation DAG hash mismatch for {document_name}")
+        if receipt.get(field_name) != expected:
+            fail(f"A0 substrate receipt DAG hash mismatch for {document_name}")
+
+    if receipt.get("independent_validation_sha256") != entry_hashes[
+        "independent-validation.json"
+    ]:
+        fail("A0 substrate receipt independent-validation SHA-256 mismatch")
+
+    for field_name in A0_DAG_COMMON_FIELDS:
+        if independent.get(field_name) != receipt.get(field_name):
+            fail(f"A0 terminal DAG identity mismatch: {field_name}")
+
+    for field_name in (
+        "repository",
+        "candidate_sha",
+        "candidate_tree_sha",
+        "base_sha",
+        "base_tree_sha",
+        "predecessor_main_sha",
+        "predecessor_tree_sha",
+    ):
+        if policy.get(field_name) != independent.get(field_name):
+            fail(f"A0 policy-summary identity mismatch: {field_name}")
+
+    if policy.get("compatibility_policy_sha256") != receipt.get(
+        "compatibility_policy_sha256"
+    ):
+        fail("A0 compatibility-policy digest mismatch")
+    if policy.get("compatibility_policy_schema_sha256") != receipt.get(
+        "compatibility_policy_schema_sha256"
+    ):
+        fail("A0 compatibility-policy schema digest mismatch")
+    if policy.get("validation_toolchain_lock_sha256") != independent.get(
+        "validation_toolchain_lock_sha256"
+    ):
+        fail("A0 validation-toolchain lock mismatch in independent validation")
+    if policy.get("validation_toolchain_lock_sha256") != receipt.get(
+        "validation_toolchain_lock_sha256"
+    ):
+        fail("A0 validation-toolchain lock mismatch in substrate receipt")
+    if policy.get("powershell_module_lock_sha256") != receipt.get(
+        "powershell_module_lock_sha256"
+    ):
+        fail("A0 PowerShell module-lock digest mismatch")
+    if policy.get("selected_host_python_dependency_lock_sha256") != receipt.get(
+        "python_dependency_lock_sha256"
+    ):
+        fail("A0 Python dependency-lock digest mismatch")
+
+    if known_error.get("status") != "passed":
+        fail("A0 known-error scan did not pass")
+    if known_error.get("finding_count") != 0:
+        fail("A0 known-error scan contains findings")
+    if known_error.get("failure_override_permitted") is not False:
+        fail("A0 known-error failure override forbidden")
+
+    if independent.get("requirements_total") != independent.get("requirements_passed"):
+        fail("A0 independent requirements were not all passed")
+    if independent.get("requirements_all_passed") is not True:
+        fail("A0 independent requirements-all-passed flag is false")
+    if independent.get("negative_controls_total") != independent.get(
+        "negative_controls_passed"
+    ):
+        fail("A0 negative controls were not all passed")
+    if independent.get("negative_controls_all_passed") is not True:
+        fail("A0 negative-controls-all-passed flag is false")
+
+    boundary = independent.get("production_boundary")
+    if not isinstance(boundary, dict):
+        fail("A0 production boundary must be an object")
+    production_mapping = {
+        "private_key_used": "production_private_key_used",
+        "signer_used": "production_signer_used",
+        "tag_mutation": "production_tag_created",
+        "release_mutation": "production_release_updated",
+        "merge_mutation": "production_merge_mutated",
+        "repository_protection_mutated": "repository_protection_mutated",
+    }
+    for boundary_field, receipt_field in production_mapping.items():
+        if boundary.get(boundary_field) != receipt.get(receipt_field):
+            fail(f"A0 production-boundary mismatch: {receipt_field}")
+
+    if receipt.get("review_entries") != 6:
+        fail("A0 substrate receipt review cardinality mismatch")
+    if independent.get("admitted") is not False or receipt.get("admitted") is not False:
+        fail("A0 claim-free DAG cannot self-admit")
+    if independent.get("physical_compatibility_claims") != 0:
+        fail("A0 independent validation cannot claim physical compatibility")
+    if receipt.get("physical_compatibility_claims") != 0:
+        fail("A0 substrate receipt cannot claim physical compatibility")
+    if independent.get("native_wpt_dispatch_performed") is not False:
+        fail("A0 independent validation cannot claim native WPT dispatch")
+    if receipt.get("native_wpt_dispatch_performed") is not False:
+        fail("A0 substrate receipt cannot claim native WPT dispatch")
+
+
 PRIMARY_HASH_FIELDS = {
     "environment-fingerprint.json": "environment_fingerprint_sha256",
     "compatibility-plan.json": "compatibility_plan_sha256",
@@ -693,47 +922,72 @@ def inspect_zip(
         fail("malformed or unsupported ZIP envelope")
 
     entry_hashes = {row["name"]: row["sha256"] for row in rows}
+    primary_schema_documents_validated = 0
     terminal_schema_documents_validated = 0
+    a0_hosted_schema_validated = False
     internal_evidence_dag_validated = False
     if schema_root is not None:
-        if authority_mode != "physical-compatibility":
-            fail("schema preflight requires physical-compatibility authority mode")
-        if schema_scope == "review":
-            schema_validator_version = _validate_review_schema_documents(
-                documents, schema_root
+        if schema_scope == "a0-hosted":
+            if authority_mode != "a0-hosted":
+                fail("A0 hosted schema preflight requires a0-hosted authority mode")
+            schema_validator_version = _validate_a0_hosted_schema_documents(
+                documents, schema_root, expected_filename_set_sha
             )
-            _validate_internal_review_dag(documents, entry_hashes)
-            status = "REVIEW_SCHEMAS_DAG_VALIDATED"
+            _validate_a0_hosted_internal_dag(documents, entry_hashes)
+            status = "A0_HOSTED_SCHEMA_DAG_VALIDATED"
             schema_semantics_validated = True
-            terminal_schema_documents_validated = len(TERMINAL_SCHEMA_BINDINGS)
+            a0_hosted_schema_validated = True
             internal_evidence_dag_validated = True
             unverified_gates = [
                 "validation_toolchain_provenance",
-                "policy_and_lock_bindings",
-                "predecessor_replay",
+                "policy_and_lock_source_bindings",
+                "predecessor_replay_artifact_admission",
                 "github_run_artifact_and_job_provenance",
-                "trusted_native_identity",
-                "pre_post_environment_stability",
-                "negative_control_admission",
-            ]
-        elif schema_scope == "primary":
-            schema_validator_version = _validate_primary_schema_documents(
-                documents, schema_root
-            )
-            status = "PRIMARY_SCHEMAS_VALIDATED"
-            schema_semantics_validated = True
-            unverified_gates = [
-                "validation_toolchain_provenance",
-                "internal_evidence_dag",
-                "policy_and_lock_bindings",
-                "predecessor_replay",
-                "github_run_artifact_and_job_provenance",
-                "trusted_native_identity",
-                "pre_post_environment_stability",
+                "candidate_base_and_predecessor_cas",
+                "inherited_v1_artifact_admission",
                 "negative_control_admission",
             ]
         else:
-            fail("unknown schema preflight scope")
+            if authority_mode != "physical-compatibility":
+                fail("schema preflight requires physical-compatibility authority mode")
+            if schema_scope == "review":
+                schema_validator_version = _validate_review_schema_documents(
+                    documents, schema_root
+                )
+                _validate_internal_review_dag(documents, entry_hashes)
+                status = "REVIEW_SCHEMAS_DAG_VALIDATED"
+                schema_semantics_validated = True
+                primary_schema_documents_validated = len(PRIMARY_SCHEMA_BINDINGS)
+                terminal_schema_documents_validated = len(TERMINAL_SCHEMA_BINDINGS)
+                internal_evidence_dag_validated = True
+                unverified_gates = [
+                    "validation_toolchain_provenance",
+                    "policy_and_lock_bindings",
+                    "predecessor_replay",
+                    "github_run_artifact_and_job_provenance",
+                    "trusted_native_identity",
+                    "pre_post_environment_stability",
+                    "negative_control_admission",
+                ]
+            elif schema_scope == "primary":
+                schema_validator_version = _validate_primary_schema_documents(
+                    documents, schema_root
+                )
+                status = "PRIMARY_SCHEMAS_VALIDATED"
+                schema_semantics_validated = True
+                primary_schema_documents_validated = len(PRIMARY_SCHEMA_BINDINGS)
+                unverified_gates = [
+                    "validation_toolchain_provenance",
+                    "internal_evidence_dag",
+                    "policy_and_lock_bindings",
+                    "predecessor_replay",
+                    "github_run_artifact_and_job_provenance",
+                    "trusted_native_identity",
+                    "pre_post_environment_stability",
+                    "negative_control_admission",
+                ]
+            else:
+                fail("unknown schema preflight scope")
     else:
         status = "STRUCTURE_ONLY"
         schema_semantics_validated = False
@@ -764,10 +1018,9 @@ def inspect_zip(
         "entry_count": len(rows),
         "entries": rows,
         "schema_semantics_validated": schema_semantics_validated,
-        "primary_schema_documents_validated": (
-            len(PRIMARY_SCHEMA_BINDINGS) if schema_semantics_validated else 0
-        ),
+        "primary_schema_documents_validated": primary_schema_documents_validated,
         "terminal_schema_documents_validated": terminal_schema_documents_validated,
+        "a0_hosted_schema_validated": a0_hosted_schema_validated,
         "internal_evidence_dag_validated": internal_evidence_dag_validated,
         "schema_validator_version": schema_validator_version,
         "schema_validator_package_provenance_admitted": False,
@@ -783,6 +1036,7 @@ def main() -> int:
             "structural-preflight",
             "primary-schema-preflight",
             "review-schema-dag-preflight",
+            "a0-hosted-schema-dag-preflight",
         ],
         required=True,
     )
@@ -796,7 +1050,7 @@ def main() -> int:
     parser.add_argument("--expected-zip-sha256", help="independently supplied lowercase ZIP SHA-256")
     parser.add_argument(
         "--schema-root",
-        help="absolute directory containing the exact frozen physical review schemas",
+        help="absolute directory containing the exact frozen review schemas",
     )
     args = parser.parse_args()
     schema_root: Path | None = None
@@ -809,6 +1063,13 @@ def main() -> int:
         schema_root = Path(args.schema_root)
         if args.mode == "review-schema-dag-preflight":
             schema_scope = "review"
+    elif args.mode == "a0-hosted-schema-dag-preflight":
+        if args.authority_mode != "a0-hosted":
+            fail("A0 hosted schema preflight requires a0-hosted authority mode")
+        if args.schema_root is None:
+            fail("A0 hosted schema preflight requires --schema-root")
+        schema_root = Path(args.schema_root)
+        schema_scope = "a0-hosted"
     elif args.schema_root is not None:
         fail("--schema-root is only valid with schema preflight modes")
     report = inspect_zip(
