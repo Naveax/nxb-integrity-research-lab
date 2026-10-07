@@ -1,0 +1,858 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nxb:schema:nxb-v11-a0-hosted-substrate:v1",
+  "title": "NXB V11 A0 hosted substrate document map v1",
+  "description": "Strict claim-free mapping for the exact six-entry A0 hosted substrate. This schema is a logical validation envelope for the six JSON documents and is not itself a seventh review entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority",
+    "schema_version",
+    "filename_set_sha256",
+    "documents"
+  ],
+  "properties": {
+    "authority": {
+      "const": "nxb-v11-a0-hosted-substrate-v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "filename_set_sha256": {
+      "const": "79ca4d7140bfccd859cd2952e70f7dc636a1612ad1b475f7509e57bd4cd7c977"
+    },
+    "documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compatibility-policy-summary.json",
+        "canonicalization-conformance.json",
+        "native-impact-classifier-fixtures.json",
+        "known-error-scan.json",
+        "independent-validation.json",
+        "a0-substrate-receipt.json"
+      ],
+      "properties": {
+        "compatibility-policy-summary.json": {
+          "$ref": "#/$defs/compatibilityPolicySummary"
+        },
+        "canonicalization-conformance.json": {
+          "$ref": "#/$defs/canonicalizationConformance"
+        },
+        "native-impact-classifier-fixtures.json": {
+          "$ref": "#/$defs/nativeImpactClassifierFixtures"
+        },
+        "known-error-scan.json": {
+          "$ref": "#/$defs/knownErrorScan"
+        },
+        "independent-validation.json": {
+          "$ref": "#/$defs/independentValidation"
+        },
+        "a0-substrate-receipt.json": {
+          "$ref": "#/$defs/a0SubstrateReceipt"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "nonempty": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "productionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "private_key_used",
+        "signer_used",
+        "tag_mutation",
+        "release_mutation",
+        "merge_mutation",
+        "repository_protection_mutated"
+      ],
+      "properties": {
+        "private_key_used": {
+          "const": false
+        },
+        "signer_used": {
+          "const": false
+        },
+        "tag_mutation": {
+          "const": false
+        },
+        "release_mutation": {
+          "const": false
+        },
+        "merge_mutation": {
+          "const": false
+        },
+        "repository_protection_mutated": {
+          "const": false
+        }
+      }
+    },
+    "compatibilityPolicySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "repository",
+        "candidate_sha",
+        "candidate_tree_sha",
+        "base_sha",
+        "base_tree_sha",
+        "predecessor_main_sha",
+        "predecessor_tree_sha",
+        "compatibility_policy_sha256",
+        "compatibility_policy_schema_sha256",
+        "validation_toolchain_lock_sha256",
+        "powershell_module_lock_sha256",
+        "selected_host_python_dependency_lock_sha256",
+        "declared_cell_ids",
+        "admitted_physical_cells",
+        "strict_schema_closure_passed",
+        "dependency_lock_schemas_present",
+        "adk_wpt_schema_presence_passed",
+        "physical_compatibility_claims",
+        "native_wpt_dispatch_performed"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-a0-compatibility-policy-summary-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "repository": {
+          "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "candidate_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "candidate_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_main_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "compatibility_policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibility_policy_schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "validation_toolchain_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_module_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "selected_host_python_dependency_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "declared_cell_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 256
+          }
+        },
+        "admitted_physical_cells": {
+          "const": 0
+        },
+        "strict_schema_closure_passed": {
+          "const": true
+        },
+        "dependency_lock_schemas_present": {
+          "const": true
+        },
+        "adk_wpt_schema_presence_passed": {
+          "const": true
+        },
+        "physical_compatibility_claims": {
+          "const": 0
+        },
+        "native_wpt_dispatch_performed": {
+          "const": false
+        }
+      }
+    },
+    "canonicalizationConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "repository",
+        "canonicalizer_module_sha256",
+        "canonicalizer_wrapper_sha256",
+        "fixture_set_sha256",
+        "fixtures",
+        "all_cases_passed",
+        "historical_evidence_store_mutated"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-a0-canonicalization-conformance-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "repository": {
+          "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "canonicalizer_module_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonicalizer_wrapper_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fixture_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fixtures": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "input_sha256",
+              "expected_outcome",
+              "observed_powershell_outcome",
+              "observed_python_outcome"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "input_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "expected_outcome": {
+                "enum": [
+                  "accept",
+                  "reject"
+                ]
+              },
+              "observed_powershell_outcome": {
+                "enum": [
+                  "accept",
+                  "reject"
+                ]
+              },
+              "observed_python_outcome": {
+                "enum": [
+                  "accept",
+                  "reject"
+                ]
+              },
+              "expected_canonical_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "powershell_observed_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "python_observed_sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "expected_outcome": {
+                      "const": "accept"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "expected_canonical_sha256",
+                    "powershell_observed_sha256",
+                    "python_observed_sha256"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "all_cases_passed": {
+          "const": true
+        },
+        "historical_evidence_store_mutated": {
+          "const": false
+        }
+      }
+    },
+    "nativeImpactClassifierFixtures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "repository",
+        "policy_sha256",
+        "schema_sha256",
+        "implementation_sha256",
+        "fixture_set_sha256",
+        "fixtures",
+        "unmatched_fixture_count",
+        "ambiguous_fixture_count",
+        "false_native_not_required_count",
+        "production_allowlist_path_count",
+        "all_expected_decisions_matched"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-a0-native-impact-classifier-fixtures-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "repository": {
+          "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "implementation_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fixture_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fixtures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "expected_decision",
+              "observed_decision"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "expected_decision": {
+                "enum": [
+                  "native_required",
+                  "native_not_required",
+                  "fail_closed"
+                ]
+              },
+              "observed_decision": {
+                "enum": [
+                  "native_required",
+                  "native_not_required",
+                  "fail_closed"
+                ]
+              }
+            }
+          }
+        },
+        "unmatched_fixture_count": {
+          "const": 0
+        },
+        "ambiguous_fixture_count": {
+          "const": 0
+        },
+        "false_native_not_required_count": {
+          "const": 0
+        },
+        "production_allowlist_path_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "all_expected_decisions_matched": {
+          "const": true
+        }
+      }
+    },
+    "knownErrorScan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "signature_policy_sha256",
+        "entry_count",
+        "rule_count",
+        "finding_count",
+        "status",
+        "failure_override_permitted",
+        "findings"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-known-error-scan-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "signature_policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rule_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finding_count": {
+          "const": 0
+        },
+        "status": {
+          "const": "passed"
+        },
+        "failure_override_permitted": {
+          "const": false
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "independentValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "status",
+        "repository",
+        "candidate_sha",
+        "candidate_tree_sha",
+        "base_sha",
+        "base_tree_sha",
+        "predecessor_main_sha",
+        "predecessor_tree_sha",
+        "allowlist_version",
+        "allowlist_authority_comment",
+        "allowlist_sha256",
+        "changed_path_set_sha256",
+        "validation_toolchain_lock_sha256",
+        "trusted_preparation_receipt_sha256",
+        "compatibility_policy_summary_sha256",
+        "canonicalization_conformance_sha256",
+        "native_impact_classifier_fixtures_sha256",
+        "known_error_scan_sha256",
+        "predecessor_replay_artifact_id",
+        "predecessor_replay_sha256",
+        "predecessor_replay_receipt_sha256",
+        "inherited_v1_pr_run_id",
+        "inherited_v1_pr_artifact_id",
+        "inherited_v1_pr_artifact_sha256",
+        "requirements_total",
+        "requirements_passed",
+        "requirements_all_passed",
+        "negative_controls_total",
+        "negative_controls_passed",
+        "negative_controls_all_passed",
+        "production_boundary",
+        "receipt_hash_not_yet_available",
+        "outer_zip_hash_not_yet_available",
+        "admitted",
+        "physical_compatibility_claims",
+        "native_wpt_dispatch_performed"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-a0-independent-validation-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "status": {
+          "const": "passed"
+        },
+        "repository": {
+          "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "candidate_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "candidate_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_main_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "allowlist_version": {
+          "const": 6
+        },
+        "allowlist_authority_comment": {
+          "const": 5426682541
+        },
+        "allowlist_sha256": {
+          "const": "5764ed8ff14b6816c28935d1e317197512ae39e888bf4ecf61fee9ebd9ceb57e"
+        },
+        "changed_path_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "validation_toolchain_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "trusted_preparation_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibility_policy_summary_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonicalization_conformance_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_impact_classifier_fixtures_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "known_error_scan_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "predecessor_replay_artifact_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "predecessor_replay_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "predecessor_replay_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "inherited_v1_pr_run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inherited_v1_pr_artifact_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inherited_v1_pr_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "requirements_total": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "requirements_passed": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "requirements_all_passed": {
+          "const": true
+        },
+        "negative_controls_total": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "negative_controls_passed": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "negative_controls_all_passed": {
+          "const": true
+        },
+        "production_boundary": {
+          "$ref": "#/$defs/productionBoundary"
+        },
+        "receipt_hash_not_yet_available": {
+          "const": true
+        },
+        "outer_zip_hash_not_yet_available": {
+          "const": true
+        },
+        "admitted": {
+          "const": false
+        },
+        "physical_compatibility_claims": {
+          "const": 0
+        },
+        "native_wpt_dispatch_performed": {
+          "const": false
+        }
+      }
+    },
+    "a0SubstrateReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "schema_version",
+        "status",
+        "repository",
+        "candidate_sha",
+        "candidate_tree_sha",
+        "base_sha",
+        "base_tree_sha",
+        "predecessor_main_sha",
+        "predecessor_tree_sha",
+        "allowlist_version",
+        "allowlist_authority_comment",
+        "allowlist_sha256",
+        "changed_path_set_sha256",
+        "workflow_sha256",
+        "compatibility_policy_sha256",
+        "compatibility_policy_schema_sha256",
+        "validation_toolchain_lock_sha256",
+        "trusted_preparation_receipt_sha256",
+        "powershell_asset_sha256",
+        "powershell_runtime_tree_sha256",
+        "python_executable_sha256",
+        "python_dependency_lock_sha256",
+        "powershell_module_lock_sha256",
+        "pester_package_sha256",
+        "pester_tree_sha256",
+        "psscriptanalyzer_package_sha256",
+        "psscriptanalyzer_tree_sha256",
+        "action_pin_set_sha256",
+        "wheelhouse_manifest_sha256",
+        "installed_distribution_manifest_sha256",
+        "module_root_manifest_sha256",
+        "module_runtime_network_used",
+        "python_runtime_install_network_used",
+        "compatibility_policy_summary_sha256",
+        "canonicalization_conformance_sha256",
+        "native_impact_classifier_fixtures_sha256",
+        "known_error_scan_sha256",
+        "independent_validation_sha256",
+        "predecessor_replay_artifact_id",
+        "predecessor_replay_sha256",
+        "predecessor_replay_receipt_sha256",
+        "inherited_v1_pr_run_id",
+        "inherited_v1_pr_conclusion",
+        "inherited_v1_pr_artifact_id",
+        "inherited_v1_pr_artifact_sha256",
+        "review_entries",
+        "physical_compatibility_claims",
+        "native_wpt_dispatch_performed",
+        "production_private_key_used",
+        "production_tag_created",
+        "production_release_updated",
+        "repository_protection_mutated",
+        "admitted"
+      ],
+      "properties": {
+        "authority": {
+          "const": "nxb-v11-a0-substrate-receipt-v1"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "status": {
+          "const": "passed"
+        },
+        "repository": {
+          "const": "Naveax/nxb-integrity-research-lab"
+        },
+        "candidate_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "candidate_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "base_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_main_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "predecessor_tree_sha": {
+          "$ref": "#/$defs/git40"
+        },
+        "allowlist_version": {
+          "const": 6
+        },
+        "allowlist_authority_comment": {
+          "const": 5426682541
+        },
+        "allowlist_sha256": {
+          "const": "5764ed8ff14b6816c28935d1e317197512ae39e888bf4ecf61fee9ebd9ceb57e"
+        },
+        "changed_path_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "workflow_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibility_policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibility_policy_schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "validation_toolchain_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "trusted_preparation_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_asset_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_runtime_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "python_executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "python_dependency_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "powershell_module_lock_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pester_package_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pester_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "psscriptanalyzer_package_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "psscriptanalyzer_tree_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "action_pin_set_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "wheelhouse_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "installed_distribution_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "module_root_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "module_runtime_network_used": {
+          "const": false
+        },
+        "python_runtime_install_network_used": {
+          "const": false
+        },
+        "compatibility_policy_summary_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonicalization_conformance_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_impact_classifier_fixtures_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "known_error_scan_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "independent_validation_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "predecessor_replay_artifact_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "predecessor_replay_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "predecessor_replay_receipt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "inherited_v1_pr_run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inherited_v1_pr_conclusion": {
+          "const": "success"
+        },
+        "inherited_v1_pr_artifact_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inherited_v1_pr_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "review_entries": {
+          "const": 6
+        },
+        "physical_compatibility_claims": {
+          "const": 0
+        },
+        "native_wpt_dispatch_performed": {
+          "const": false
+        },
+        "production_private_key_used": {
+          "const": false
+        },
+        "production_tag_created": {
+          "const": false
+        },
+        "production_release_updated": {
+          "const": false
+        },
+        "repository_protection_mutated": {
+          "const": false
+        },
+        "admitted": {
+          "const": false
+        }
+      }
+    }
+  }
+}
