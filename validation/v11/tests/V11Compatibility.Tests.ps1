@@ -742,6 +742,92 @@ Describe 'V11 native-impact classifier' {
 }
 
 
+Describe 'V11 native-impact canonical input source identity (claim-free)' {
+    It 'rejects junction ancestors and symlink files before accepting canonical policy/input JSON' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-input-path-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_impact", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-impact-json-input-path-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    (real / "child").mkdir(parents=True)
+    target = real / "child" / "fixture.json"
+    target.write_bytes(b'{"ok":true}')
+    junction = base / "alias"
+    if os.name == "nt":
+        made = subprocess.run(["cmd", "/d", "/c", "mklink", "/J", str(junction), str(real)], capture_output=True, text=True, check=False)
+        if made.returncode:
+            raise AssertionError("failed to create test junction: " + made.stderr)
+    else:
+        junction.symlink_to(real, target_is_directory=True)
+    link = real / "child" / "linked.json"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        link = None
+    try:
+        for label in ("policy", "input"):
+            assert module.load_canonical_json(str(target), label)[0] == {"ok": True}
+            for bad in [junction / "child" / "fixture.json", *([link] if link else [])]:
+                try:
+                    module.load_canonical_json(str(bad), label)
+                except module.ImpactError:
+                    pass
+                else:
+                    raise AssertionError(f"{label} accepted aliased source: {bad}")
+        # Deterministically replace the source between lstat and open.
+        # The opened descriptor must still match the preflight file identity.
+        replacement = real / "child" / "replacement.json"
+        replacement.write_bytes(b'{"ok":false}')
+        ordinary_open = open
+        def substituted_open(path, mode="r", *args, **kwargs):
+            if os.path.abspath(str(path)) == os.path.abspath(str(target)) and mode == "rb":
+                os.replace(replacement, target)
+            return ordinary_open(path, mode, *args, **kwargs)
+        module.open = substituted_open
+        try:
+            try:
+                module.load_canonical_json(str(target), "input")
+            except module.ImpactError:
+                pass
+            else:
+                raise AssertionError("accepted changed policy/input file identity after preflight")
+        finally:
+            del module.open
+    finally:
+        if link:
+            link.unlink()
+        if os.name == "nt":
+            junction.rmdir()
+        else:
+            junction.unlink()
+print("native-impact JSON input source identity: both policy/input reject alias, direct controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact JSON source path probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact JSON input source identity: both policy/input reject alias'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier bounded JSON inputs (claim-free)' {
     It 'bounds policy and graph input bytes before JSON parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-bounds-' + [Guid]::NewGuid().ToString('N'))
