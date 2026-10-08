@@ -4244,6 +4244,55 @@ print("Python lock file source identity: reparse ancestry and replacement reject
 }
 
 
+Describe 'V11 pinned pip METADATA unique identity headers (claim-free)' {
+    It 'rejects duplicate Name and Version headers even when first values match' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-unique-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_pip",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-pip-duplicate-header-") as scratch:
+    root=Path(scratch)/"pip-26.2.1.dist-info"
+    root.mkdir()
+    metadata=root/"METADATA"
+    def identity(data):
+        metadata.write_bytes(data.encode("ascii"))
+        return module.read_dist_info_version(str(root))
+    assert identity("Metadata-Version: 2.1\nName: pip\nVersion: 26.2.1\n\n")==("pip","26.2.1")
+    for label,payload in (
+        ("duplicate Name", "Name: pip\nnAmE: rogue\nVersion: 26.2.1\n\n"),
+        ("duplicate Version", "Name: pip\nVersion: 26.2.1\nvErSiOn: 0.0\n\n"),
+    ):
+        try:
+            identity("Metadata-Version: 2.1\n"+payload)
+        except module.PinnedPipError as exc:
+            if "unique Name and Version" not in str(exc):
+                raise AssertionError(f"{label}: wrong fail-closed reason: {exc}") from exc
+        else:
+            raise AssertionError(f"{label} was accepted with legitimate first header")
+print("pinned pip METADATA unique Name and Version: ordinary and two duplicate controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\run_pinned_pip.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Pinned pip unique METADATA probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'pinned pip METADATA unique Name and Version'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 pinned pip METADATA source identity (claim-free)' {
     It 'rejects junction ancestry and changed wheel distribution METADATA after preflight' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-metadata-' + [Guid]::NewGuid().ToString('N'))
