@@ -162,6 +162,31 @@ def _assert_same_input_identity(
         fail(f"{label} source changed during canonical read")
 
 
+def _ordinary_output_path(path: str) -> str:
+    # Do not write a trusted decision through an untrusted junction/symlink parent.
+    full = os.path.abspath(path)
+    current = os.path.dirname(full)
+    while True:
+        try:
+            metadata = os.lstat(current)
+        except OSError:
+            fail(f"output parent is unavailable: {current}")
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            fail(f"output parent is not an ordinary directory: {current}")
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    if os.path.lexists(full):
+        fail("output already exists")
+    return full
+
+
 def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
     full, expected = _input_identity(path, label)
     try:
@@ -500,8 +525,7 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    if os.path.exists(args.output):
-        fail("output already exists")
+    output_path = _ordinary_output_path(args.output)
 
     policy_obj, policy_raw = load_canonical_json(args.policy, "policy")
     parsed_policy = validate_policy(policy_obj)
@@ -619,8 +643,9 @@ def main() -> int:
     }
     payload = canonical_bytes(output)
 
+    _ordinary_output_path(output_path)
     descriptor = os.open(
-        args.output,
+        output_path,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL,
         0o600,
     )
