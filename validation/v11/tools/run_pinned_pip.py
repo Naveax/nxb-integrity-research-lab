@@ -120,10 +120,30 @@ def assert_sanitized_environment() -> None:
         fail("PYTHONPATH/PYTHONHOME must not be inherited")
 
 
+def _assert_metadata_source_identity(expected: os.stat_result, observed: os.stat_result) -> None:
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, field) != getattr(observed, field) for field in fields)
+    ):
+        fail("pip METADATA source file changed during checked read")
+
+
 def read_dist_info_version(dist_info: str) -> tuple[str, str]:
     metadata = assert_ordinary_file(os.path.join(dist_info, "METADATA"), "pip METADATA")
-    with open(metadata, "rb") as stream:
-        raw = stream.read(MAX_PIP_METADATA_BYTES + 1)
+    try:
+        expected = os.lstat(metadata)
+        _assert_metadata_source_identity(expected, expected)
+        with open(metadata, "rb") as stream:
+            _assert_metadata_source_identity(expected, os.fstat(stream.fileno()))
+            raw = stream.read(MAX_PIP_METADATA_BYTES + 1)
+            _assert_metadata_source_identity(expected, os.fstat(stream.fileno()))
+        _assert_metadata_source_identity(expected, os.lstat(metadata))
+    except OSError:
+        fail("pip METADATA source became unavailable during checked read")
     if not raw or len(raw) > MAX_PIP_METADATA_BYTES:
         fail("pip METADATA byte ceiling exceeded")
     try:
