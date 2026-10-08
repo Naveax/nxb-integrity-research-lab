@@ -3808,6 +3808,78 @@ print("bounded schema source checks: ordinary bytes and 4 oversized sources PASS
     }
 }
 
+Describe 'V11 predecessor replay ZIP checked read identity (claim-free)' {
+    It 'rejects a same-byte ZIP file identity swap between ordinary preflight and opened read' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-predzip-identity-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import hashlib
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import zipfile
+
+spec=importlib.util.spec_from_file_location("nxb_validator",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-predecessor-zip-source-") as scratch:
+    base=Path(scratch)
+    source=base/"predecessor.zip"
+    replacement=base/"replacement.zip"
+    with zipfile.ZipFile(source,"w",compression=zipfile.ZIP_STORED):
+        pass
+    shutil.copyfile(source,replacement)
+    raw=source.read_bytes()
+    p,t,s="1"*40,"2"*40,"3"*40
+    kwargs=dict(
+        path=source,schema_root=base,expected_zip_sha256=hashlib.sha256(raw).hexdigest(),
+        expected_predecessor_main_sha=p,expected_predecessor_tree_sha=t,
+        expected_observer_successor_head_sha=s,expected_run_id=1,expected_run_attempt=1,
+        expected_artifact_name=f"nxb-v11-predecessor-replay-v1-{p}-{s}-1-1",
+        expected_predecessor_policy_sha256="a"*64,
+    )
+    try:
+        module.inspect_predecessor_replay(**kwargs)
+    except module.PreflightError as exc:
+        assert "entry count" in str(exc), f"ordinary control did not reach ZIP parser: {exc}"
+    else:
+        raise AssertionError("malformed ordinary control ZIP passed")
+    old_open=Path.open
+    def replace_before_open(self,mode="r",*args,**kws):
+        if self == source and mode=="rb":
+            os.replace(replacement,source)
+        return old_open(self,mode,*args,**kws)
+    Path.open=replace_before_open
+    try:
+        try:
+            module.inspect_predecessor_replay(**kwargs)
+        except module.PreflightError as exc:
+            if "predecessor replay ZIP changed during read" not in str(exc):
+                raise AssertionError(f"same-byte replacement was not identity rejected: {exc}") from exc
+        else:
+            raise AssertionError("replaced predecessor replay ZIP passed")
+    finally:
+        Path.open=old_open
+print("predecessor replay ZIP exact-byte path identity: ordinary control and replacement passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Predecessor ZIP identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'predecessor replay ZIP exact-byte path identity: ordinary control and replacement passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 predecessor replay bounded ZIP snapshot (claim-free)' {
     It 'requires an explicitly bounded binary read rather than path.read_bytes' {
         $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-predecessor-zip-bound-' + [Guid]::NewGuid().ToString('N'))
@@ -3830,6 +3902,9 @@ class BoundedStream:
         return self
     def __exit__(self, *args):
         return self.stream.__exit__(*args)
+    def fileno(self):
+        # Keep real descriptor validation active in the bounded-stream test.
+        return self.stream.fileno()
     def read(self, size=-1):
         if size != module.PREDECESSOR_MAX_ZIP_BYTES + 1:
             raise AssertionError(f"predecessor ZIP read not bounded: {size}")
