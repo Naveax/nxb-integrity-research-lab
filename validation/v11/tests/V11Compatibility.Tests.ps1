@@ -3854,3 +3854,73 @@ print("artifact tree file identity drift: replacement rejected, ordinary control
         }
     }
 }
+
+Describe 'V11 review ZIP path identity after preflight (claim-free)' {
+    It 'rejects a ZIP replacement after path preflight, while accepting an unchanged bounded ZIP' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-review-zip-race-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'review-race-probe.py'
+        $probe = @'
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import zipfile
+
+spec = importlib.util.spec_from_file_location("nxb_review", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+with tempfile.TemporaryDirectory(prefix="nxb-review-zip-id-") as scratch:
+    base = Path(scratch)
+    target = base / "primary.zip"
+    substitute = base / "substitute.zip"
+    def write_zip(path, marker):
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+            for name in sorted(module.AUTHORITY_MODE_NAMES["a0-hosted"]):
+                document = {"marker": marker}
+                authority = module.KNOWN_AUTHORITY_BY_MODE["a0-hosted"].get(name)
+                if authority:
+                    document["authority"] = authority
+                encoded = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                archive.writestr(name, encoded)
+    write_zip(target, "aaaa")
+    write_zip(substitute, "bbbb")
+    accepted = module.inspect_zip(target, "a0-hosted")
+    if accepted["status"] != "STRUCTURE_ONLY" or accepted["admitted"] is not False:
+        raise AssertionError("ordinary claim-free ZIP control drift")
+    original_check = module._ordinary_zip
+    replaced = False
+    def replace_after_check(path):
+        global replaced
+        result = original_check(path)
+        if not replaced:
+            replaced = True
+            os.replace(substitute, target)
+        return result
+    module._ordinary_zip = replace_after_check
+    try:
+        module.inspect_zip(target, "a0-hosted")
+    except module.PreflightError as exc:
+        if "ZIP changed during read" not in str(exc):
+            raise AssertionError("unexpected ZIP replacement rejection: " + str(exc)) from exc
+    else:
+        raise AssertionError("replacement after ZIP preflight was accepted")
+    if not replaced:
+        raise AssertionError("ZIP swap hook was not exercised")
+print("review ZIP identity check: replaced ZIP rejected, unchanged control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Review ZIP identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'review ZIP identity check: replaced ZIP rejected, unchanged control passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
