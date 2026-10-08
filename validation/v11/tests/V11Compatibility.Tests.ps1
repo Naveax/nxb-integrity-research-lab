@@ -3672,6 +3672,83 @@ catch {
     }
 }
 
+Describe 'V11 bounded schema source identity (claim-free)' {
+    It 'rejects schema source junction and same-byte source replacement between lstat and open' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-schema-identity-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_schema",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-schema-source-identity-") as scratch:
+    base=Path(scratch)
+    real=base/"real"
+    real.mkdir()
+    source=real/"source.json"
+    data=b'{"type":"object"}'
+    source.write_bytes(data)
+    assert module._read_bounded_schema(source,"schema fixture")==data
+    alias=base/"alias"
+    if os.name=="nt":
+        r=subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)],capture_output=True,text=True)
+        assert r.returncode==0,r.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        try:
+            module._read_bounded_schema(alias/"source.json","schema fixture")
+        except module.PreflightError:
+            pass
+        else:
+            raise AssertionError("schema source reader accepted junction ancestry")
+    finally:
+        if os.name=="nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+    replacement=real/"replacement.json"
+    shutil.copyfile(source,replacement)
+    old_open=Path.open
+    def replace_before_open(self,mode="r",*args,**kws):
+        if self==source and mode=="rb":
+            os.replace(replacement,source)
+        return old_open(self,mode,*args,**kws)
+    Path.open=replace_before_open
+    try:
+        try:
+            module._read_bounded_schema(source,"schema fixture")
+        except module.PreflightError as exc:
+            if "schema source changed during read" not in str(exc):
+                raise AssertionError(f"same-byte replacement was not identity-rejected: {exc}") from exc
+        else:
+            raise AssertionError("schema source reader accepted same-byte replacement")
+    finally:
+        Path.open=old_open
+print("schema bounded source identity: ordinary, junction, same-byte replacement passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Schema source identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'schema bounded source identity: ordinary, junction, same-byte replacement passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 bounded schema source loading (claim-free)' {
     It 'rejects four oversized schema sources before their SHA-256 read and accepts frozen ordinary bytes' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-schema-size-' + [Guid]::NewGuid().ToString('N'))

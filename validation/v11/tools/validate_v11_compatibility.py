@@ -330,7 +330,24 @@ def _ordinary_schema_root(path: Path) -> None:
     _ordinary_parent_directories(path, "schema root")
 
 
+def _verify_bounded_schema_source_identity(
+    expected: os.stat_result, observed: os.stat_result
+) -> None:
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, key) != getattr(observed, key) for key in fields)
+    ):
+        fail("schema source changed during read")
+
+
 def _read_bounded_schema(path: Path, label: str) -> bytes:
+    if not path.is_absolute():
+        fail(f"{label} path must be absolute")
+    _ordinary_parent_directories(path, label)
     try:
         metadata = path.lstat()
     except OSError:
@@ -345,7 +362,10 @@ def _read_bounded_schema(path: Path, label: str) -> bytes:
         fail(f"{label} exceeds schema source byte ceiling")
     try:
         with path.open("rb") as stream:
+            _verify_bounded_schema_source_identity(metadata, os.fstat(stream.fileno()))
             content = stream.read(MAX_SCHEMA_BYTES + 1)
+            _verify_bounded_schema_source_identity(metadata, os.fstat(stream.fileno()))
+        _verify_bounded_schema_source_identity(metadata, path.lstat())
     except OSError:
         fail(f"{label} absent or unreadable")
     if not content or len(content) > MAX_SCHEMA_BYTES:
