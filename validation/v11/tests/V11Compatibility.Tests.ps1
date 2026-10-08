@@ -2356,6 +2356,14 @@ Describe 'V11 compatibility authority documentation source contract' {
             'COMPATIBILITY_POLICY_AUTHORITY=nxb-v11-compatibility-policy-v1',
             'PHYSICAL_COMPATIBILITY_CLAIMS=0',
             'NATIVE_WPT_DISPATCH_PERFORMED=false',
+            'LIVE6_AUTHORITY_HOST=DESKTOP-ONDD84S\umut',
+            'LIVE6_DIAGNOSTIC_PROMOTION_COMMENT=6000434321',
+            'LIVE6_DIAGNOSTIC_PROMOTION_STATE=ISSUED_UNCONSUMED',
+            'LIVE6_DIAGNOSTIC_SHA256=4bf7a001ab7f161151f5b9a4feaf092c46f45acd847a7ff445476c1ccd8a099e',
+            'LIVE6_DIAGNOSTIC_RESULT_STATE=ABSENT',
+            'LIVE6_RUNTIME_PROMOTION_STATE=ABSENT',
+            'A0_REMAINING_MANDATORY_EXACT_PATHS=7',
+            'LIVE6_BLOCKER_CHECKPOINT_COMMENT=6053582069',
             '9203ab9f89ff4383832119683eb4e19df5490213',
             '241d3086e9bcb5a847445258cab25bff4fd34da8',
             '3d3c42e5aac5ba805825da76410c181273ba90b1',
@@ -2384,6 +2392,9 @@ Describe 'V11 compatibility authority documentation source contract' {
         $text | Should -Not -Match 'NATIVE_WPT_DISPATCH_PERFORMED=true'
         $text | Should -Match 'pull_request_target.*forbidden'
         $text | Should -Match 'runtime / trusted-preparation execution chain remains a separate HOLD'
+        $text | Should -Match 'single-use promotion `6000434321` remains `ISSUED / UNCONSUMED`'
+        $text | Should -Match 'Exactly seven mandatory A0 exact paths remain unresolved'
+        $text | Should -Match 'No SYSTEM, scheduled-task, token-substitution, private-desktop, alternate-host, or CI workaround'
         $text | Should -Match 'Editing this file cannot make a disabled cell enabled'
     }
 }
