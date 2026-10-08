@@ -16,6 +16,9 @@ from typing import Any, NoReturn
 POLICY_AUTHORITY = "nxb-v11-known-error-signatures-v1"
 INPUT_AUTHORITY = "nxb-v11-known-error-scan-input-v1"
 OUTPUT_AUTHORITY = "nxb-v11-known-error-scan-v1"
+# Reject oversized external JSON and source bytes before decoding or regex scanning.
+MAX_CANONICAL_INPUT_BYTES = 8 * 1024 * 1024
+MAX_SOURCE_BYTES = 8 * 1024 * 1024
 VALIDATION_CLASSES = {
     "workflow_orchestration",
     "executable_powershell",
@@ -97,7 +100,9 @@ def canonical_bytes(value: Any) -> bytes:
 
 def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
     with open(path, "rb") as stream:
-        raw = stream.read()
+        raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+    if len(raw) > MAX_CANONICAL_INPUT_BYTES:
+        fail(f"{label} exceeds canonical input byte ceiling")
     if raw.startswith(b"\xef\xbb\xbf"):
         fail(f"{label} must not contain a UTF-8 BOM")
     try:
@@ -181,7 +186,9 @@ def resolve_repository_file(root: str, relative: str) -> str:
 
 def read_source(path: str, relative: str) -> str:
     with open(path, "rb") as stream:
-        raw = stream.read()
+        raw = stream.read(MAX_SOURCE_BYTES + 1)
+    if len(raw) > MAX_SOURCE_BYTES:
+        fail(f"scan source byte ceiling exceeded: {relative}")
     if raw.startswith(b"\xef\xbb\xbf"):
         fail(f"scan path contains UTF-8 BOM: {relative}")
     try:
