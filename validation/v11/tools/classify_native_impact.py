@@ -27,6 +27,12 @@ SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 CHANGE_TYPES = {"added", "modified", "deleted", "renamed", "type_changed"}
 FILE_TYPES = {"regular", "symlink", "submodule", "missing"}
+WINDOWS_RESERVED_STEMS = {
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+    "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
+}
 CLASSES = ("native_required", "hosted_authority_only", "non_authority_metadata")
 
 
@@ -72,6 +78,13 @@ def validate_path(value: Any, label: str, *, prefix: bool = False) -> str:
     parts = path.rstrip("/").split("/")
     if any(part in {"", ".", ".."} for part in parts):
         fail(f"{label} contains dot/empty traversal segment")
+    # Windows collapses trailing dots/spaces and reserves DOS device stems.
+    # Reject aliases in both policy roots and changed-path graph inputs.
+    for part in parts:
+        if ":" in part or part.endswith((" ", ".")):
+            fail(f"{label} contains ADS or trailing-dot/space segment")
+        if part.split(".", 1)[0].upper() in WINDOWS_RESERVED_STEMS:
+            fail(f"{label} contains reserved Windows device segment")
     if not prefix and path.endswith("/"):
         fail(f"{label} exact path must not end with '/'")
     return path
