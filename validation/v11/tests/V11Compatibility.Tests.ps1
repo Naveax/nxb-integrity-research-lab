@@ -1083,6 +1083,80 @@ print("known-error canonical input: junction and identity replacement rejected")
 }
 
 
+Describe 'V11 scanner source-file read identity (claim-free)' {
+    It 'rejects replaced source bytes and reparse-backed scan read ancestry' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-source-read-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_scan",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-scan-source-read-") as scratch:
+    base=Path(scratch)
+    real=base/"real"
+    real.mkdir()
+    source=real/"source.py"
+    source.write_bytes(b"safe")
+    assert module.read_source(str(source),"source.py")=="safe"
+    alias=base/"alias"
+    if os.name=="nt":
+        r=subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)],capture_output=True,text=True)
+        assert r.returncode==0,r.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        try:
+            module.read_source(str(alias/"source.py"),"source.py")
+        except module.ScanError:
+            pass
+        else:
+            raise AssertionError("scanner accepted reparse-backed read path")
+    finally:
+        if os.name=="nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+    replacement=real/"changed.py"
+    replacement.write_bytes(b"unsafe")
+    ordinary_open=open
+    def swap_open(path,mode="r",*args,**kwargs):
+        if os.path.abspath(str(path))==os.path.abspath(str(source)) and mode=="rb":
+            os.replace(replacement,source)
+        return ordinary_open(path,mode,*args,**kwargs)
+    module.open=swap_open
+    try:
+        try:
+            module.read_source(str(source),"source.py")
+        except module.ScanError:
+            pass
+        else:
+            raise AssertionError("scanner accepted replaced source bytes")
+    finally:
+        del module.open
+print("known-error scanner source-file identity: junction and changed inode rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Known-error source read probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error scanner source-file identity: junction and changed inode rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 successor known-error scanner' {
     BeforeAll {
         $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
