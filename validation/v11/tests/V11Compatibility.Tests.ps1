@@ -2134,6 +2134,73 @@ print(artifact_name)
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    It 'rejects reparse-point ancestor aliases for every external compatibility input' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-ancestor-preflight-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'test-ancestor.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_v11_preflight", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+with tempfile.TemporaryDirectory(prefix="nxb-v11-external-paths-") as scratch:
+    root = Path(scratch)
+    real = root / "real"
+    real.mkdir()
+    (real / "schema").mkdir()
+    (real / "sample.zip").write_bytes(b"placeholder")
+    alias = root / "alias"
+    if os.name == "nt":
+        made = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(alias), str(real)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+        )
+        if made.returncode != 0:
+            raise AssertionError(f"junction setup failed: {made.stderr}")
+    else:
+        alias.symlink_to(real, target_is_directory=True)
+    try:
+        checks = {
+            "review ZIP": lambda: module._ordinary_zip(alias / "sample.zip"),
+            "schema root": lambda: module._ordinary_schema_root(alias / "schema"),
+            "predecessor ZIP": lambda: module._predecessor_ordinary_path(alias / "sample.zip", directory=False),
+            "predecessor schema": lambda: module._predecessor_ordinary_path(alias / "schema", directory=True),
+        }
+        for label, check in checks.items():
+            try:
+                check()
+            except module.PreflightError:
+                pass
+            else:
+                raise AssertionError(f"{label} accepted reparse-backed ancestor")
+        print("external ancestor path checks: 4 rejected")
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Ancestor probe failed: ' + $run.Text) }
+            $run.ExitCode | Should -Be 0
+            $run.Text | Should -Match 'external ancestor path checks: 4 rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
 }
 
 

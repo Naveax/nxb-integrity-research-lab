@@ -260,6 +260,26 @@ def _regular_zip_entry(info: zipfile.ZipInfo, expected_names: frozenset[str]) ->
         fail("non-NFC review entry path")
 
 
+def _ordinary_parent_directories(path: Path, label: str) -> None:
+    # A regular leaf below a symlink or junction is not an ordinary source path.
+    # Inspect every ancestor, not only the immediate parent or leaf metadata.
+    current = path.parent
+    while True:
+        try:
+            metadata = current.lstat()
+        except OSError:
+            fail(f"{label} parent path is unreadable")
+        if not stat.S_ISDIR(metadata.st_mode):
+            fail(f"{label} parent is not an ordinary directory")
+        if getattr(metadata, "st_file_attributes", 0) & getattr(
+            stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+        ):
+            fail(f"{label} parent reparse-point forbidden")
+        if current.parent == current:
+            break
+        current = current.parent
+
+
 def _ordinary_zip(path: Path) -> None:
     if not path.is_absolute():
         fail("ZIP path must be absolute")
@@ -273,20 +293,7 @@ def _ordinary_zip(path: Path) -> None:
         fail("review ZIP reparse-point forbidden")
     if metadata.st_size <= 0 or metadata.st_size > MAX_ZIP_BYTES:
         fail("review ZIP exceeds bounded preflight size")
-    # A regular leaf under a symlink/junction parent is not an ordinary path.
-    current = path.parent
-    while True:
-        try:
-            parent_metadata = current.lstat()
-        except OSError:
-            fail("review ZIP parent path is unreadable")
-        if not stat.S_ISDIR(parent_metadata.st_mode):
-            fail("review ZIP parent is not an ordinary directory")
-        if getattr(parent_metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-            fail("review ZIP parent reparse-point forbidden")
-        if current.parent == current:
-            break
-        current = current.parent
+    _ordinary_parent_directories(path, "review ZIP")
 
 
 def _ordinary_schema_root(path: Path) -> None:
@@ -302,6 +309,7 @@ def _ordinary_schema_root(path: Path) -> None:
         stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
     ):
         fail("schema root reparse-point forbidden")
+    _ordinary_parent_directories(path, "schema root")
 
 
 def _load_primary_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
@@ -1121,6 +1129,7 @@ def _predecessor_ordinary_path(path: Path, *, directory: bool) -> None:
         stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
     ):
         fail("input path reparse-point forbidden")
+    _ordinary_parent_directories(path, "input path")
 
 
 def _predecessor_regular_zip_entry(info: zipfile.ZipInfo) -> None:
