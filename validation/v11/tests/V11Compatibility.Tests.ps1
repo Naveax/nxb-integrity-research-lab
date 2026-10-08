@@ -3090,6 +3090,65 @@ catch {
     }
 }
 
+Describe 'V11 bounded schema source loading (claim-free)' {
+    It 'rejects four oversized schema sources before their SHA-256 read and accepts frozen ordinary bytes' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-schema-size-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'schema-size-probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_v11_preflight", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+repository = Path(sys.argv[2])
+source = repository / "schemas" / module.A0_HOSTED_SCHEMA_BINDING["filename"]
+loaded = module._read_bounded_schema(source, "A0 hosted schema source")
+if loaded != source.read_bytes():
+    raise AssertionError("bounded reader changed the frozen schema bytes")
+
+with tempfile.TemporaryDirectory(prefix="nxb-v11-schema-size-cases-") as workspace:
+    root = Path(workspace)
+    cases = (
+        (module.PRIMARY_SCHEMA_BINDINGS["environment-fingerprint.json"]["filename"],
+         lambda: module._load_primary_schema(root, "environment-fingerprint.json")),
+        (module.TERMINAL_SCHEMA_BINDINGS["independent-validation.json"]["filename"],
+         lambda: module._load_terminal_schema(root, "independent-validation.json")),
+        (module.A0_HOSTED_SCHEMA_BINDING["filename"],
+         lambda: module._load_a0_hosted_schema(root)),
+        (module.PREDECESSOR_WRAPPER_SCHEMA_FILE,
+         lambda: module._predecessor_load_wrapper_schema(root)),
+    )
+    for name, check in cases:
+        candidate = root / name
+        with candidate.open("wb") as stream:
+            stream.truncate(module.MAX_SCHEMA_BYTES + 1)
+        try:
+            check()
+        except module.PreflightError as error:
+            if "schema source byte ceiling" not in str(error):
+                raise AssertionError(f"{name}: wrong preflight failure: {error}") from error
+        else:
+            raise AssertionError(f"{name}: oversized schema accepted")
+        candidate.unlink()
+print("bounded schema source checks: ordinary bytes and 4 oversized sources PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Schema size probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'bounded schema source checks: ordinary bytes and 4 oversized sources PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'V11 predecessor replay bounded ZIP snapshot (claim-free)' {
     It 'requires an explicitly bounded binary read rather than path.read_bytes' {
         $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-predecessor-zip-bound-' + [Guid]::NewGuid().ToString('N'))

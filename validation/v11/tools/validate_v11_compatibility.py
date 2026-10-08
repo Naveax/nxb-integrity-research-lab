@@ -70,6 +70,8 @@ KNOWN_AUTHORITY_BY_MODE = {
 MAX_ENTRY_BYTES = 1024 * 1024
 MAX_TOTAL_UNCOMPRESSED = 6 * MAX_ENTRY_BYTES
 MAX_ZIP_BYTES = 12 * 1024 * 1024
+# Checked before allocating memory for any external schema source.
+MAX_SCHEMA_BYTES = 1024 * 1024
 I64_MAX = (1 << 63) - 1
 I64_MIN = -(1 << 63)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -312,20 +314,35 @@ def _ordinary_schema_root(path: Path) -> None:
     _ordinary_parent_directories(path, "schema root")
 
 
-def _load_primary_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
-    binding = PRIMARY_SCHEMA_BINDINGS[document_name]
-    schema_path = schema_root / binding["filename"]
+def _read_bounded_schema(path: Path, label: str) -> bytes:
     try:
-        metadata = schema_path.lstat()
-        content = schema_path.read_bytes()
+        metadata = path.lstat()
     except OSError:
-        fail(f"{document_name}: primary schema source absent or unreadable")
+        fail(f"{label} absent or unreadable")
     if not stat.S_ISREG(metadata.st_mode):
-        fail(f"{document_name}: primary schema source is not a regular file")
+        fail(f"{label} is not a regular file")
     if getattr(metadata, "st_file_attributes", 0) & getattr(
         stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
     ):
-        fail(f"{document_name}: primary schema source reparse-point forbidden")
+        fail(f"{label} reparse-point forbidden")
+    if metadata.st_size <= 0 or metadata.st_size > MAX_SCHEMA_BYTES:
+        fail(f"{label} exceeds schema source byte ceiling")
+    try:
+        with path.open("rb") as stream:
+            content = stream.read(MAX_SCHEMA_BYTES + 1)
+    except OSError:
+        fail(f"{label} absent or unreadable")
+    if not content or len(content) > MAX_SCHEMA_BYTES:
+        fail(f"{label} exceeds schema source byte ceiling")
+    return content
+
+
+def _load_primary_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
+    binding = PRIMARY_SCHEMA_BINDINGS[document_name]
+    schema_path = schema_root / binding["filename"]
+    content = _read_bounded_schema(
+        schema_path, f"{document_name}: primary schema source"
+    )
     digest = hashlib.sha256(content).hexdigest()
     if digest not in binding["sha256"]:
         fail(f"{document_name}: primary schema source SHA-256 drift")
@@ -384,17 +401,9 @@ def _validate_primary_schema_documents(
 def _load_terminal_schema(schema_root: Path, document_name: str) -> dict[str, Any]:
     binding = TERMINAL_SCHEMA_BINDINGS[document_name]
     schema_path = schema_root / binding["filename"]
-    try:
-        metadata = schema_path.lstat()
-        content = schema_path.read_bytes()
-    except OSError:
-        fail(f"{document_name}: terminal schema source absent or unreadable")
-    if not stat.S_ISREG(metadata.st_mode):
-        fail(f"{document_name}: terminal schema source is not a regular file")
-    if getattr(metadata, "st_file_attributes", 0) & getattr(
-        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
-    ):
-        fail(f"{document_name}: terminal schema source reparse-point forbidden")
+    content = _read_bounded_schema(
+        schema_path, f"{document_name}: terminal schema source"
+    )
     digest = hashlib.sha256(content).hexdigest()
     if digest not in binding["sha256"]:
         fail(f"{document_name}: terminal schema source SHA-256 drift")
@@ -510,17 +519,7 @@ A0_DAG_COMMON_FIELDS = (
 def _load_a0_hosted_schema(schema_root: Path) -> dict[str, Any]:
     binding = A0_HOSTED_SCHEMA_BINDING
     schema_path = schema_root / binding["filename"]
-    try:
-        metadata = schema_path.lstat()
-        content = schema_path.read_bytes()
-    except OSError:
-        fail("A0 hosted schema source absent or unreadable")
-    if not stat.S_ISREG(metadata.st_mode):
-        fail("A0 hosted schema source is not a regular file")
-    if getattr(metadata, "st_file_attributes", 0) & getattr(
-        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
-    ):
-        fail("A0 hosted schema source reparse-point forbidden")
+    content = _read_bounded_schema(schema_path, "A0 hosted schema source")
     digest = hashlib.sha256(content).hexdigest()
     if digest not in binding["sha256"]:
         fail("A0 hosted schema source SHA-256 drift")
@@ -1160,17 +1159,7 @@ def _predecessor_regular_zip_entry(info: zipfile.ZipInfo) -> None:
 def _predecessor_load_wrapper_schema(schema_root: Path) -> dict[str, Any]:
     _predecessor_ordinary_path(schema_root, directory=True)
     path = schema_root / PREDECESSOR_WRAPPER_SCHEMA_FILE
-    try:
-        metadata = path.lstat()
-        content = path.read_bytes()
-    except OSError:
-        fail("predecessor replay wrapper schema absent or unreadable")
-    if not stat.S_ISREG(metadata.st_mode):
-        fail("predecessor replay wrapper schema is not a regular file")
-    if getattr(metadata, "st_file_attributes", 0) & getattr(
-        stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
-    ):
-        fail("predecessor replay wrapper schema reparse-point forbidden")
+    content = _read_bounded_schema(path, "predecessor replay wrapper schema")
     if hashlib.sha256(content).hexdigest() != PREDECESSOR_WRAPPER_SCHEMA_SHA256:
         fail("predecessor replay wrapper schema SHA-256 drift")
     schema = _predecessor_strict_json(content, PREDECESSOR_WRAPPER_SCHEMA_FILE)
