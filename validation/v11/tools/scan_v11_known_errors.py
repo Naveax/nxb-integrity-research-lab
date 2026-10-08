@@ -98,9 +98,31 @@ def canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _assert_stable_source_identity(expected: os.stat_result, observed: os.stat_result, label: str) -> None:
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, field) != getattr(observed, field) for field in fields)
+    ):
+        fail(f"{label} source file changed during read")
+
+
 def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
-    with open(path, "rb") as stream:
-        raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+    full = os.path.abspath(path)
+    assert_ordinary_directory_chain(os.path.dirname(full), label)
+    try:
+        expected = os.lstat(full)
+        _assert_stable_source_identity(expected, expected, label)
+        with open(full, "rb") as stream:
+            _assert_stable_source_identity(expected, os.fstat(stream.fileno()), label)
+            raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+            _assert_stable_source_identity(expected, os.fstat(stream.fileno()), label)
+        _assert_stable_source_identity(expected, os.lstat(full), label)
+    except OSError:
+        fail(f"{label} source file became unavailable during canonical read")
     if len(raw) > MAX_CANONICAL_INPUT_BYTES:
         fail(f"{label} exceeds canonical input byte ceiling")
     if raw.startswith(b"\xef\xbb\xbf"):
@@ -210,8 +232,18 @@ def resolve_repository_file(root: str, relative: str) -> str:
 
 
 def read_source(path: str, relative: str) -> str:
-    with open(path, "rb") as stream:
-        raw = stream.read(MAX_SOURCE_BYTES + 1)
+    full = os.path.abspath(path)
+    assert_ordinary_directory_chain(os.path.dirname(full), f"scan source {relative}")
+    try:
+        expected = os.lstat(full)
+        _assert_stable_source_identity(expected, expected, f"scan source {relative}")
+        with open(full, "rb") as stream:
+            _assert_stable_source_identity(expected, os.fstat(stream.fileno()), f"scan source {relative}")
+            raw = stream.read(MAX_SOURCE_BYTES + 1)
+            _assert_stable_source_identity(expected, os.fstat(stream.fileno()), f"scan source {relative}")
+        _assert_stable_source_identity(expected, os.lstat(full), f"scan source {relative}")
+    except OSError:
+        fail(f"scan source became unavailable: {relative}")
     if len(raw) > MAX_SOURCE_BYTES:
         fail(f"scan source byte ceiling exceeded: {relative}")
     if raw.startswith(b"\xef\xbb\xbf"):
