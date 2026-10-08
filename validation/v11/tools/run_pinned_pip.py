@@ -254,8 +254,12 @@ def main() -> int:
     if spec is None or spec.origin is None:
         fail("pip module is not importable from bootstrap root")
     origin = os.path.abspath(spec.origin)
-    if not is_within(origin, bootstrap_root):
-        fail(f"pip module resolved outside bootstrap root: {origin}")
+    expected_initializer = os.path.abspath(os.path.join(pip_root, "__init__.py"))
+    if os.path.normcase(origin) != os.path.normcase(expected_initializer):
+        fail(f"pip module origin must be exact package initializer: {origin}")
+    # An owned-looking package directory alone is insufficient: a shadow
+    # pip.py or linked initializer can otherwise execute before version checks.
+    assert_ordinary_file(origin, "pip package initializer")
 
     pip_module = importlib.import_module("pip")
     module_file = os.path.abspath(getattr(pip_module, "__file__", ""))
