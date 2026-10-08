@@ -331,6 +331,46 @@ Describe 'V11 A0 Python dependency authority' {
         }
     }
 
+    It 'rejects a shadow pip.py module when the owned pip directory is not an importable package' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-shadow-pip-{0}' -f [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        $bootstrap = Join-Path $work 'pip-bootstrap'
+        $pipRoot = Join-Path $bootstrap 'pip'
+        $distRoot = Join-Path $bootstrap 'pip-26.2.1.dist-info'
+        [void][IO.Directory]::CreateDirectory($pipRoot)
+        [void][IO.Directory]::CreateDirectory($distRoot)
+        Write-Utf8NoBom -Path (Join-Path $bootstrap 'pip.py') -Text (
+            '__version__ = "26.2.1"' + $script:Lf +
+            'print("SHADOW_PIP_MODULE_EXECUTED")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $distRoot 'METADATA') -Text (
+            'Metadata-Version: 2.1' + $script:Lf +
+            'Name: pip' + $script:Lf +
+            'Version: 26.2.1' + $script:Lf + $script:Lf
+        )
+        $saved = Save-EnvironmentSubset
+        try {
+            Set-HermeticPipEnvironment
+            $result = Invoke-V11Python -Arguments @(
+                '-I', '-S', $script:LauncherPath,
+                '--work-root', $work,
+                '--bootstrap-root', $bootstrap,
+                '--runtime-root', (Split-Path -Parent $script:PythonPath),
+                '--repository-root', $script:RepositoryRoot,
+                '--expected-python-executable', $script:PythonPath,
+                '--expected-version', '26.2.1',
+                '--', '--version'
+            )
+            $result.ExitCode | Should -Be 2
+            $result.Text | Should -Match 'pip module origin must be exact package initializer'
+            $result.Text | Should -Not -Match 'SHADOW_PIP_MODULE_EXECUTED'
+        }
+        finally {
+            Restore-EnvironmentSubset -Saved $saved
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'rejects ambient pip source selectors before bootstrap execution' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pinned-pip-env-{0}' -f [Guid]::NewGuid().ToString('N'))
         $work = Join-Path $root 'work'
