@@ -899,6 +899,64 @@ print("native-impact JSON input source identity: both policy/input reject alias,
 }
 
 
+Describe 'V11 native-impact changed-file presence and type shape (claim-free)' {
+    It 'rejects missing live endpoints and contradictory type changes' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-type-shape-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def row(kind,old,new,oldt,newt):
+    return {"change_type":kind,"old_path":old,"new_path":new,"old_type":oldt,"new_type":newt}
+valid=[
+    row("added",None,"safe/new.txt","missing","regular"),
+    row("deleted","safe/old.txt",None,"regular","missing"),
+    row("modified","safe/existing.txt","safe/existing.txt","regular","regular"),
+    row("renamed","safe/old.txt","safe/new.txt","regular","regular"),
+    row("type_changed","safe/other.txt","safe/other.txt","regular","symlink"),
+]
+for variant in valid:
+    assert module.validate_change(variant,"valid")==variant,variant
+invalid=[
+    row("added",None,"safe/new.txt","missing","missing"),
+    row("deleted","safe/old.txt",None,"missing","missing"),
+    row("modified","safe/existing.txt","safe/existing.txt","missing","regular"),
+    row("modified","safe/existing.txt","safe/existing.txt","regular","missing"),
+    row("modified","safe/existing.txt","safe/existing.txt","regular","symlink"),
+    row("type_changed","safe/other.txt","safe/other.txt","regular","regular"),
+    row("type_changed","safe/other.txt","safe/other.txt","missing","regular"),
+    row("type_changed","safe/other.txt","safe/other.txt","regular","missing"),
+    row("renamed","safe/old.txt","safe/new.txt","missing","regular"),
+    row("renamed","safe/old.txt","safe/new.txt","regular","missing"),
+]
+for index,variant in enumerate(invalid):
+    try:
+        module.validate_change(variant,f"invalid-{index}")
+    except module.ImpactError:
+        pass
+    else:
+        raise AssertionError(f"contradictory changed-file shape was accepted: {index}: {variant}")
+print("native impact change shapes: 5 valid controls and 10 contradictory shapes rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Changed-file shape probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native impact change shapes: 5 valid controls and 10 contradictory shapes rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier bounded JSON inputs (claim-free)' {
     It 'bounds policy and graph input bytes before JSON parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-bounds-' + [Guid]::NewGuid().ToString('N'))

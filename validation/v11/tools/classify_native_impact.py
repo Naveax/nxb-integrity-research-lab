@@ -368,16 +368,32 @@ def validate_change(row: Any, label: str) -> dict[str, Any]:
     )
 
     if change_type == "added":
-        if old_path is not None or new_path is None or old_type != "missing":
+        if (
+            old_path is not None or new_path is None
+            or old_type != "missing" or new_type == "missing"
+        ):
             fail(f"{label} added shape invalid")
     elif change_type == "deleted":
-        if old_path is None or new_path is not None or new_type != "missing":
+        if (
+            old_path is None or new_path is not None
+            or old_type == "missing" or new_type != "missing"
+        ):
             fail(f"{label} deleted shape invalid")
     elif change_type in {"modified", "type_changed"}:
-        if old_path is None or new_path is None or old_path != new_path:
+        if (
+            old_path is None or new_path is None or old_path != new_path
+            or "missing" in {old_type, new_type}
+        ):
             fail(f"{label} modified/type_changed shape invalid")
+        if change_type == "modified" and old_type != new_type:
+            fail(f"{label} modified file type changed")
+        if change_type == "type_changed" and old_type == new_type:
+            fail(f"{label} type_changed lacks file type change")
     elif change_type == "renamed":
-        if old_path is None or new_path is None or old_path == new_path:
+        if (
+            old_path is None or new_path is None or old_path == new_path
+            or "missing" in {old_type, new_type}
+        ):
             fail(f"{label} rename shape invalid")
 
     return {
