@@ -47,10 +47,25 @@ def assert_ordinary_directory(path: str, label: str) -> str:
     full = os.path.abspath(path)
     if path != full:
         fail(f"{label} must be absolute: {path}")
-    if not os.path.isdir(full):
-        fail(f"{label} is not a directory: {full}")
-    if is_reparse_or_link(full):
-        fail(f"{label} is reparse/symlink-backed: {full}")
+    # A regular leaf beneath a junction/symlink is not an ordinary root.
+    # Validate the entire path before enumerating or writing through it.
+    current = full
+    while True:
+        try:
+            metadata = os.lstat(current)
+        except OSError:
+            fail(f"{label} directory ancestor is unreadable: {current}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            fail(f"{label} directory ancestor is not ordinary: {current}")
+        if stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            fail(f"{label} directory ancestor is reparse/symlink-backed: {current}")
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
     return full
 
 
