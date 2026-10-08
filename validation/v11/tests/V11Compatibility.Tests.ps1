@@ -506,6 +506,106 @@ Describe 'V11 A0 supply-chain schema contracts' {
     }
 }
 
+Describe 'V11 native-impact Windows-equivalent path guards (claim-free)' {
+    It 'rejects Windows device, ADS and trailing-segment aliases without changing ordinary rules' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-paths-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("nxb_impact", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.validate_path("validation/v11/tools/classify_native_impact.py", "normal") == "validation/v11/tools/classify_native_impact.py"
+assert module.validate_path("validation/v11/", "prefix", prefix=True) == "validation/v11/"
+for bad in (
+    "CON", "dir/aux.json", "dir/COM1.txt", "dir/LPT9.log",
+    "dir/COM\u00b9.log", "dir/LPT\u00b2.log", "dir/COM\u00b3.log", "dir/CONOUT$", "dir/foo:stream", "dir/ending./file",
+    "dir/trailing /file", "filename.", "filename ",
+):
+    try:
+        module.validate_path(bad, "negative")
+    except module.ImpactError:
+        pass
+    else:
+        raise AssertionError(f"accepted Windows-equivalent unsafe path: {bad!r}")
+print("native-impact Windows path alias negatives: 13 rejected, ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact Windows paths probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact Windows path alias negatives: 13 rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
+Describe 'V11 known-error scanner bounded source reads (claim-free)' {
+    It 'caps policy, input and scanned source reads before parsing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-known-error-bounds-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_scan", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-known-error-bounds-") as scratch:
+    root = Path(scratch)
+    policy = root / "source.json"
+    policy.write_bytes(b'{"ok":true}')
+    for label in ("policy", "input"):
+        obj, original = module.load_canonical_json(str(policy), label)
+        assert obj == {"ok": True} and original == b'{"ok":true}'
+        with policy.open("wb") as stream:
+            stream.truncate(8 * 1024 * 1024 + 1)
+        try:
+            module.load_canonical_json(str(policy), label)
+        except module.ScanError as exc:
+            if "byte ceiling" not in str(exc):
+                raise AssertionError(f"{label} bypassed byte limit: {exc}") from exc
+        else:
+            raise AssertionError(f"{label} accepted oversized canonical input")
+        policy.write_bytes(b'{"ok":true}')
+    source = root / "code.py"
+    source.write_bytes(b"safe source")
+    assert module.read_source(str(source), "code.py") == "safe source"
+    with source.open("wb") as stream:
+        stream.truncate(8 * 1024 * 1024 + 1)
+    try:
+        module.read_source(str(source), "code.py")
+    except module.ScanError as exc:
+        if "byte ceiling" not in str(exc):
+            raise AssertionError(f"source bypassed byte limit: {exc}") from exc
+    else:
+        raise AssertionError("oversized source accepted")
+print("known-error scan canonical/source read bounds: 3 oversized rejected, controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Scanner byte bounds probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error scan canonical/source read bounds: 3 oversized rejected, controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier' {
     BeforeAll {
         $script:ImpactPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
@@ -3398,6 +3498,79 @@ print("predecessor XML DTD: utf-8 valid and 4 encoded DTD cases rejected")
         }
     }
 }
+
+Describe 'V11 Python preparation external path ancestry (claim-free)' {
+    It 'rejects reparse/junction parents for Python preparation lock, runtime and bootstrap sources' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-python-prep-ancestor-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+materializer = load("nxb_mat", sys.argv[1])
+launcher = load("nxb_pip", sys.argv[2])
+with tempfile.TemporaryDirectory(prefix="nxb-v11-prep-ancestors-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    inner = real / "inner"
+    inner.mkdir(parents=True)
+    (inner / "source.lock").write_bytes(b"test")
+    alias = base / "alias"
+    if os.name == "nt":
+        made = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(alias), str(real)],
+            capture_output=True, text=True, check=False,
+        )
+        if made.returncode:
+            raise AssertionError(f"junction setup failed: {made.stderr}")
+    else:
+        alias.symlink_to(real, target_is_directory=True)
+    try:
+        for module in (materializer, launcher):
+            assert module.assert_ordinary_directory(str(inner), "ordinary") == str(inner)
+            assert module.assert_ordinary_file(str(inner / "source.lock"), "ordinary") == str(inner / "source.lock")
+            for check in (
+                lambda: module.assert_ordinary_directory(str(alias / "inner"), "test directory"),
+                lambda: module.assert_ordinary_file(str(alias / "inner" / "source.lock"), "test file"),
+            ):
+                try:
+                    check()
+                except (materializer.ProjectionError, launcher.PinnedPipError):
+                    pass
+                else:
+                    raise AssertionError("Python preparation accepted reparse-backed ancestor")
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+print("Python preparation ancestry: 4 junction cases rejected, ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $materializer = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $launcher = Join-Path $script:RepositoryRoot 'validation\v11\tools\run_pinned_pip.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $materializer, $launcher)
+            if ($run.ExitCode -ne 0) { throw ('Python preparation ancestry probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'Python preparation ancestry: 4 junction cases rejected, ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 
 Describe 'V11 bounded Python preparation inputs (claim-free)' {
     It 'bounds dependency lock and pip METADATA reads before parsing' {
