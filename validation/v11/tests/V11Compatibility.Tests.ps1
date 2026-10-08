@@ -331,6 +331,53 @@ Describe 'V11 A0 Python dependency authority' {
         }
     }
 
+    It 'rejects an unowned bootstrap sibling Python module before pip entrypoint execution' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-sibling-{0}' -f [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        $bootstrap = Join-Path $work 'pip-bootstrap'
+        $pipRoot = Join-Path $bootstrap 'pip'
+        $distRoot = Join-Path $bootstrap 'pip-26.2.1.dist-info'
+        [void][IO.Directory]::CreateDirectory($pipRoot)
+        [void][IO.Directory]::CreateDirectory($distRoot)
+
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__init__.py') -Text ('__version__ = "26.2.1"' + $script:Lf)
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__main__.py') -Text (
+            'import nxb_unowned_probe' + $script:Lf +
+            'print("FAKE_PIP_MAIN")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $bootstrap 'nxb_unowned_probe.py') -Text (
+            'print("UNOWNED_BOOTSTRAP_SIBLING_EXECUTED")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $distRoot 'METADATA') -Text (
+            'Metadata-Version: 2.1' + $script:Lf +
+            'Name: pip' + $script:Lf +
+            'Version: 26.2.1' + $script:Lf + $script:Lf
+        )
+
+        $saved = Save-EnvironmentSubset
+        try {
+            Set-HermeticPipEnvironment
+            $run = Invoke-V11Python -Arguments @(
+                '-I', '-S', $script:LauncherPath,
+                '--work-root', $work,
+                '--bootstrap-root', $bootstrap,
+                '--runtime-root', (Split-Path -Parent $script:PythonPath),
+                '--repository-root', $script:RepositoryRoot,
+                '--expected-python-executable', $script:PythonPath,
+                '--expected-version', '26.2.1',
+                '--', '--version'
+            )
+            $run.ExitCode | Should -Be 2
+            $run.Text | Should -Match 'bootstrap root contains unowned entries'
+            $run.Text | Should -Not -Match 'UNOWNED_BOOTSTRAP_SIBLING_EXECUTED'
+            $run.Text | Should -Not -Match 'FAKE_PIP_MAIN'
+        }
+        finally {
+            Restore-EnvironmentSubset -Saved $saved
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'rejects a shadow pip.py module when the owned pip directory is not an importable package' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-shadow-pip-{0}' -f [Guid]::NewGuid().ToString('N'))
         $work = Join-Path $root 'work'

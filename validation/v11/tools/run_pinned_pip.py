@@ -261,6 +261,18 @@ def main() -> int:
     # pip.py or linked initializer can otherwise execute before version checks.
     assert_ordinary_file(origin, "pip package initializer")
 
+    # Importing the verified pip package with the bootstrap root first on
+    # sys.path also exposes every unrelated sibling module in that root.
+    # A stray .py file can execute as soon as pip imports its entrypoint.
+    # Only the owned package and its exact dist-info directory belong here.
+    expected_children = {"pip", expected_dist}
+    actual_children = set(os.listdir(bootstrap_root))
+    if actual_children != expected_children:
+        fail(
+            "bootstrap root contains unowned entries or missing owned entries: "
+            f"{sorted(actual_children ^ expected_children)}"
+        )
+
     pip_module = importlib.import_module("pip")
     module_file = os.path.abspath(getattr(pip_module, "__file__", ""))
     if not module_file or not is_within(module_file, bootstrap_root):
