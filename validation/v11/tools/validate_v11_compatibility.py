@@ -1211,6 +1211,15 @@ def _predecessor_expect_sha(value: str, label: str, *, git: bool = False) -> str
 
 
 def _predecessor_xml_results(content: bytes, name: str) -> dict[str, int]:
+    # The byte-level DTD scanner is only complete for UTF-8 XML. An XML
+    # parser also accepts UTF-16, where every ASCII DTD byte is interleaved
+    # with NUL and the scanner would otherwise miss forbidden declarations.
+    if b"\x00" in content:
+        fail(f"{name}: XML must be UTF-8 without NUL bytes")
+    try:
+        content.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        fail(f"{name}: XML must be UTF-8")
     if b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
         fail(f"{name}: XML DTD/entity declarations forbidden")
     try:
