@@ -4234,6 +4234,79 @@ print("Python preparation bounded input checks: ordinary and 2 oversized sources
     }
 }
 
+Describe 'V11 artifact manifest output parent recheck (claim-free)' {
+    It 'rejects a junction-backed manifest destination introduced after source tree hashing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-output-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-manifest-output-parent-") as scratch:
+    base=Path(scratch)
+    source=base/"source"
+    source.mkdir()
+    (source/"payload.txt").write_bytes(b"known-source")
+    work=base/"work"
+    work.mkdir()
+    parent=work/"output"
+    parent.mkdir()
+    target=base/"outside"
+    target.mkdir()
+    output=parent/"manifest.json"
+    sys.argv=["manifest","--root",str(source),"--root-role","archive","--output",str(output)]
+    assert module.main()==0, "ordinary manifest output failed"
+    assert output.is_file()
+    output.unlink()
+    old_build=module.build_manifest
+    def swap_output_parent(*args):
+        result=old_build(*args)
+        parent.rename(work/"saved-output-parent")
+        if os.name=="nt":
+            r=subprocess.run(["cmd","/d","/c","mklink","/J",str(parent),str(target)],capture_output=True,text=True)
+            assert r.returncode==0,r.stderr
+        else:
+            parent.symlink_to(target,target_is_directory=True)
+        return result
+    module.build_manifest=swap_output_parent
+    try:
+        try:
+            module.main()
+        except module.ManifestError:
+            pass
+        else:
+            raise AssertionError("manifest writer accepted junction introduced during hashing")
+        assert not (target/"manifest.json").exists(), "manifest escaped into outside directory"
+    finally:
+        if parent.is_symlink() or parent.exists():
+            if os.name=="nt":
+                parent.rmdir()
+            else:
+                parent.unlink()
+print("artifact manifest output parent: late junction rejected, ordinary control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Artifact manifest output probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'artifact manifest output parent: late junction rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

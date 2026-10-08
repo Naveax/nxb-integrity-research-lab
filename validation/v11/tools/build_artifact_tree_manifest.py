@@ -252,6 +252,9 @@ def main() -> int:
         sort_keys=False,
     ).encode("utf-8")
 
+    # Tree hashing may outlive the first destination preflight. Reject a
+    # newly substituted junction/symlink ancestor before exclusive creation.
+    assert_output_path(output)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     descriptor = os.open(output, flags, 0o600)
     try:
