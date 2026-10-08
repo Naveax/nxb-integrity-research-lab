@@ -282,7 +282,7 @@ def _ordinary_parent_directories(path: Path, label: str) -> None:
         current = current.parent
 
 
-def _ordinary_zip(path: Path) -> None:
+def _ordinary_zip(path: Path) -> os.stat_result:
     if not path.is_absolute():
         fail("ZIP path must be absolute")
     try:
@@ -296,6 +296,22 @@ def _ordinary_zip(path: Path) -> None:
     if metadata.st_size <= 0 or metadata.st_size > MAX_ZIP_BYTES:
         fail("review ZIP exceeds bounded preflight size")
     _ordinary_parent_directories(path, "review ZIP")
+    return metadata
+
+
+def _verify_review_zip_identity(
+    expected: os.stat_result, observed: os.stat_result
+) -> None:
+    # Bind the bounded ZIP snapshot to the exact regular file checked above.
+    # This detects replacement/metadata drift, not an adversarial atomic FS snapshot.
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, field) != getattr(observed, field) for field in fields)
+    ):
+        fail("review ZIP changed during read")
 
 
 def _ordinary_schema_root(path: Path) -> None:
@@ -870,16 +886,23 @@ def inspect_zip(
     )
     if expected_filename_set_sha != FROZEN_FILENAME_SET_SHA256[authority_mode]:
         fail("internal filename-set authority contract drift")
-    _ordinary_zip(path)
+    expected_zip_metadata = _ordinary_zip(path)
     # Parse and hash one bounded byte snapshot. Reopening the path for parsing
     # would allow a replacement between hash verification and entry inspection.
+    # Also verify the opened descriptor and pathname still identify the file
+    # that passed the initial ordinary-path inspection.
     try:
         with path.open("rb") as stream:
+            _verify_review_zip_identity(expected_zip_metadata, os.fstat(stream.fileno()))
             archive_bytes = stream.read(MAX_ZIP_BYTES + 1)
+            _verify_review_zip_identity(expected_zip_metadata, os.fstat(stream.fileno()))
+        _verify_review_zip_identity(expected_zip_metadata, path.lstat())
     except OSError:
         fail("review ZIP is absent or unreadable")
     if not archive_bytes or len(archive_bytes) > MAX_ZIP_BYTES:
         fail("review ZIP exceeds bounded preflight size")
+    if len(archive_bytes) != expected_zip_metadata.st_size:
+        fail("review ZIP changed during read")
     outer_sha = hashlib.sha256(archive_bytes).hexdigest()
     if expected_digest is not None:
         if SHA256_RE.fullmatch(expected_digest) is None:
