@@ -151,8 +151,14 @@ def read_dist_info_version(dist_info: str) -> tuple[str, str]:
     except UnicodeDecodeError as exc:
         fail(f"pip METADATA is not strict UTF-8: {exc}")
     message = Parser().parsestr(text)
-    name = message.get("Name")
-    version = message.get("Version")
+    names = message.get_all("Name", [])
+    versions = message.get_all("Version", [])
+    # The email parser returns only the first matching header via get().
+    # Ambiguous metadata must not select a legitimate first identity while
+    # another consumer sees a conflicting case-insensitive duplicate.
+    if len(names) != 1 or len(versions) != 1:
+        fail("pip METADATA requires unique Name and Version headers")
+    name, version = names[0], versions[0]
     if not name or not version:
         fail("pip METADATA missing Name or Version")
     return name, version
