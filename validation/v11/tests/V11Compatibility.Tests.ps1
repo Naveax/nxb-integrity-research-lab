@@ -642,6 +642,53 @@ Describe 'V11 native-impact classifier' {
 }
 
 
+Describe 'V11 native-impact classifier bounded JSON inputs (claim-free)' {
+    It 'bounds policy and graph input bytes before JSON parsing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-bounds-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_impact", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-impact-json-bounds-") as scratch:
+    root = Path(scratch)
+    input_file = root / "input.json"
+    input_file.write_bytes(b'{"ok":true}')
+    for label in ("policy", "input"):
+        obj, original = module.load_canonical_json(str(input_file), label)
+        assert obj == {"ok": True} and original == b'{"ok":true}'
+        with input_file.open("wb") as stream:
+            stream.truncate(32 * 1024 * 1024 + 1)
+        try:
+            module.load_canonical_json(str(input_file), label)
+        except module.ImpactError as exc:
+            if "byte ceiling" not in str(exc):
+                raise AssertionError(f"{label} was not rejected by byte limit: {exc}") from exc
+        else:
+            raise AssertionError(f"{label} accepted oversized input")
+        input_file.write_bytes(b'{"ok":true}')
+print("native-impact policy/input byte bounds: ordinary controls and 2 oversized sources passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Classifier bound probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact policy/input byte bounds: ordinary controls and 2 oversized sources passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 successor known-error scanner' {
     BeforeAll {
         $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'

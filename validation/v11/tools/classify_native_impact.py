@@ -21,6 +21,8 @@ from typing import Any, NoReturn
 POLICY_AUTHORITY = "nxb-native-impact-policy-v1"
 INPUT_AUTHORITY = "nxb-native-impact-classification-input-v1"
 OUTPUT_AUTHORITY = "nxb-native-impact-classification-v1"
+# Bound hostile canonical policy/graph inputs before allocating parser memory.
+MAX_CANONICAL_INPUT_BYTES = 32 * 1024 * 1024
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 CHANGE_TYPES = {"added", "modified", "deleted", "renamed", "type_changed"}
@@ -107,7 +109,9 @@ def canonical_bytes(value: Any) -> bytes:
 
 def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
     with open(path, "rb") as stream:
-        raw = stream.read()
+        raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+    if len(raw) > MAX_CANONICAL_INPUT_BYTES:
+        fail(f"{label} exceeds canonical input byte ceiling")
     if raw.startswith(b"\xef\xbb\xbf"):
         fail(f"{label} must not contain a UTF-8 BOM")
     try:
