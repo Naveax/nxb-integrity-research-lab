@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import unicodedata
 from collections import defaultdict, deque
@@ -120,9 +121,57 @@ def canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _input_identity(path: str, label: str) -> tuple[str, os.stat_result]:
+    # Reject an ordinary-looking policy/input reached through a reparse parent.
+    full = os.path.abspath(path)
+    current = full
+    source: os.stat_result | None = None
+    while True:
+        try:
+            metadata = os.lstat(current)
+        except OSError:
+            fail(f"{label} source ancestry is unavailable: {current}")
+        is_source = current == full
+        if not (stat.S_ISREG(metadata.st_mode) if is_source else stat.S_ISDIR(metadata.st_mode)):
+            fail(f"{label} source ancestry has unexpected file type: {current}")
+        if stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            fail(f"{label} source ancestry is reparse/symlink-backed: {current}")
+        if is_source:
+            source = metadata
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    assert source is not None
+    return full, source
+
+
+def _assert_same_input_identity(
+    expected: os.stat_result, observed: os.stat_result, label: str
+) -> None:
+    identity_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, field) != getattr(observed, field) for field in identity_fields)
+    ):
+        fail(f"{label} source changed during canonical read")
+
+
 def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
-    with open(path, "rb") as stream:
-        raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+    full, expected = _input_identity(path, label)
+    try:
+        with open(full, "rb") as stream:
+            _assert_same_input_identity(expected, os.fstat(stream.fileno()), label)
+            raw = stream.read(MAX_CANONICAL_INPUT_BYTES + 1)
+            _assert_same_input_identity(expected, os.fstat(stream.fileno()), label)
+        _assert_same_input_identity(expected, os.lstat(full), label)
+    except OSError:
+        fail(f"{label} source became unavailable during canonical read")
     if len(raw) > MAX_CANONICAL_INPUT_BYTES:
         fail(f"{label} exceeds canonical input byte ceiling")
     if raw.startswith(b"\xef\xbb\xbf"):
