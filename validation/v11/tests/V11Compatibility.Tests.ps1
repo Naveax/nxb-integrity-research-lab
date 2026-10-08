@@ -522,7 +522,7 @@ assert module.validate_path("validation/v11/tools/classify_native_impact.py", "n
 assert module.validate_path("validation/v11/", "prefix", prefix=True) == "validation/v11/"
 for bad in (
     "CON", "dir/aux.json", "dir/COM1.txt", "dir/LPT9.log",
-    "dir/CONOUT$", "dir/foo:stream", "dir/ending./file",
+    "dir/COM\u00b9.log", "dir/LPT\u00b2.log", "dir/COM\u00b3.log", "dir/CONOUT$", "dir/foo:stream", "dir/ending./file",
     "dir/trailing /file", "filename.", "filename ",
 ):
     try:
@@ -531,14 +531,14 @@ for bad in (
         pass
     else:
         raise AssertionError(f"accepted Windows-equivalent unsafe path: {bad!r}")
-print("native-impact Windows path alias negatives: 10 rejected, ordinary controls passed")
+print("native-impact Windows path alias negatives: 13 rejected, ordinary controls passed")
 '@
         try {
             [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
             $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
             $run = Invoke-V11Python -Arguments @($probePath, $tool)
             if ($run.ExitCode -ne 0) { throw ('Native-impact Windows paths probe failed: ' + $run.Text) }
-            $run.Text | Should -Match 'native-impact Windows path alias negatives: 10 rejected'
+            $run.Text | Should -Match 'native-impact Windows path alias negatives: 13 rejected'
         }
         finally {
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

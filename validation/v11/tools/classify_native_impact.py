@@ -31,6 +31,7 @@ WINDOWS_RESERVED_STEMS = {
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
+    "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
 }
 CLASSES = ("native_required", "hosted_authority_only", "non_authority_metadata")
 
