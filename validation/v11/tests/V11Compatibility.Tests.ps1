@@ -946,6 +946,81 @@ print("native-impact policy/input byte bounds: ordinary controls and 2 oversized
 }
 
 
+Describe 'V11 scanner canonical JSON source identity (claim-free)' {
+    It 'rejects junction ancestry and changed file identity for policy/input documents' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scan-input-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_scan", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-scan-input-identity-") as scratch:
+    base=Path(scratch)
+    real=base/"real"
+    real.mkdir()
+    source=real/"doc.json"
+    source.write_bytes(b'{"ok":true}')
+    alias=base/"alias"
+    if os.name=="nt":
+        r=subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)],capture_output=True,text=True)
+        assert r.returncode==0,r.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        for label in ("policy","input"):
+            assert module.load_canonical_json(str(source),label)[0]=={"ok":True}
+            try:
+                module.load_canonical_json(str(alias/"doc.json"),label)
+            except module.ScanError:
+                pass
+            else:
+                raise AssertionError(f"{label} accepted junction-backed canonical source")
+    finally:
+        if os.name=="nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+    replacement=real/"other.json"
+    replacement.write_bytes(b'{"ok":false}')
+    orig_open=open
+    def swapped_open(path, mode="r",*args,**kwargs):
+        if os.path.abspath(str(path))==os.path.abspath(str(source)) and mode=="rb":
+            os.replace(replacement,source)
+        return orig_open(path,mode,*args,**kwargs)
+    module.open=swapped_open
+    try:
+        try:
+            module.load_canonical_json(str(source),"policy")
+        except module.ScanError:
+            pass
+        else:
+            raise AssertionError("policy accepted replacement after preflight")
+    finally:
+        del module.open
+print("known-error canonical input: junction and identity replacement rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Known-error JSON identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error canonical input: junction and identity replacement rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 successor known-error scanner' {
     BeforeAll {
         $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
