@@ -4014,6 +4014,81 @@ print("Python lock file source identity: reparse ancestry and replacement reject
 }
 
 
+Describe 'V11 pinned pip METADATA source identity (claim-free)' {
+    It 'rejects junction ancestry and changed wheel distribution METADATA after preflight' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-metadata-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_pip",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-pip-meta-identity-") as scratch:
+    base=Path(scratch)
+    real=base/"real"
+    info=real/"package.dist-info"
+    info.mkdir(parents=True)
+    source=info/"METADATA"
+    source.write_bytes(b"Name: sample\nVersion: 1.0\n\n")
+    assert module.read_dist_info_version(str(info))==("sample","1.0")
+    alias=base/"alias"
+    if os.name=="nt":
+        r=subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)],capture_output=True,text=True)
+        assert r.returncode==0,r.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        try:
+            module.read_dist_info_version(str(alias/"package.dist-info"))
+        except module.PinnedPipError:
+            pass
+        else:
+            raise AssertionError("pip METADATA reader accepted junction-backed ancestor")
+    finally:
+        if os.name=="nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+    replacement=info/"other"
+    replacement.write_bytes(b"Name: malicious\nVersion: 9.9\n\n")
+    ordinary_open=open
+    def swapped_open(path,mode="r",*args,**kwargs):
+        if os.path.abspath(str(path))==os.path.abspath(str(source)) and mode=="rb":
+            os.replace(replacement,source)
+        return ordinary_open(path,mode,*args,**kwargs)
+    module.open=swapped_open
+    try:
+        try:
+            module.read_dist_info_version(str(info))
+        except module.PinnedPipError:
+            pass
+        else:
+            raise AssertionError("pip METADATA accepted replaced content after initial file check")
+    finally:
+        del module.open
+print("pinned pip METADATA identity: ordinary control, junction and replacement rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\run_pinned_pip.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Pinned pip METADATA source identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'pinned pip METADATA identity: ordinary control, junction and replacement rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 bounded Python preparation inputs (claim-free)' {
     It 'bounds dependency lock and pip METADATA reads before parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-preparation-bounds-' + [Guid]::NewGuid().ToString('N'))
