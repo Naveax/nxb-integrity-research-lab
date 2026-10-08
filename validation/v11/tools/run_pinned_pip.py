@@ -16,6 +16,7 @@ from typing import NoReturn
 
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+!-]{0,127}$")
 ALLOWED_PIP_ENV = {"PIP_CONFIG_FILE", "PIP_DISABLE_PIP_VERSION_CHECK"}
+MAX_PIP_METADATA_BYTES = 1024 * 1024  # Fail closed before parsing untrusted METADATA.
 
 
 class PinnedPipError(RuntimeError):
@@ -101,7 +102,9 @@ def assert_sanitized_environment() -> None:
 def read_dist_info_version(dist_info: str) -> tuple[str, str]:
     metadata = assert_ordinary_file(os.path.join(dist_info, "METADATA"), "pip METADATA")
     with open(metadata, "rb") as stream:
-        raw = stream.read()
+        raw = stream.read(MAX_PIP_METADATA_BYTES + 1)
+    if not raw or len(raw) > MAX_PIP_METADATA_BYTES:
+        fail("pip METADATA byte ceiling exceeded")
     try:
         text = raw.decode("utf-8", "strict")
     except UnicodeDecodeError as exc:

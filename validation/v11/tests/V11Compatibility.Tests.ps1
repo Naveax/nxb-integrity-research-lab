@@ -3284,3 +3284,73 @@ print("predecessor XML DTD: utf-8 valid and 4 encoded DTD cases rejected")
         }
     }
 }
+
+Describe 'V11 bounded Python preparation inputs (claim-free)' {
+    It 'bounds dependency lock and pip METADATA reads before parsing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-preparation-bounds-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'preparation-bounds.py'
+        $probe = @'
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import tempfile
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+materializer = load("nxb_materializer", sys.argv[1])
+launcher = load("nxb_pip_launcher", sys.argv[2])
+
+with tempfile.TemporaryDirectory(prefix="nxb-v11-python-input-bounds-") as scratch:
+    root = Path(scratch)
+    lock = root / "lock.json"
+    lock.write_bytes(b'{"a":1}')
+    if materializer.load_canonical_json(str(lock)) != {"a": 1}:
+        raise AssertionError("ordinary canonical input drift")
+    metadata_root = root / "pip-26.2.1.dist-info"
+    metadata_root.mkdir()
+    metadata = metadata_root / "METADATA"
+    metadata.write_bytes(b"Name: pip\nVersion: 26.2.1\n\n")
+    if launcher.read_dist_info_version(str(metadata_root)) != ("pip", "26.2.1"):
+        raise AssertionError("ordinary pip metadata drift")
+
+    with lock.open("wb") as file:
+        file.truncate(materializer.MAX_LOCK_BYTES + 1)
+    try:
+        materializer.load_canonical_json(str(lock))
+    except materializer.ProjectionError as error:
+        if "lock byte ceiling" not in str(error):
+            raise AssertionError(f"wrong lock rejection: {error}") from error
+    else:
+        raise AssertionError("oversized lock was accepted")
+
+    with metadata.open("wb") as file:
+        file.truncate(launcher.MAX_PIP_METADATA_BYTES + 1)
+    try:
+        launcher.read_dist_info_version(str(metadata_root))
+    except launcher.PinnedPipError as error:
+        if "pip METADATA byte ceiling" not in str(error):
+            raise AssertionError(f"wrong metadata rejection: {error}") from error
+    else:
+        raise AssertionError("oversized METADATA was accepted")
+
+print("Python preparation bounded input checks: ordinary and 2 oversized sources PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $materializer = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $launcher = Join-Path $script:RepositoryRoot 'validation\v11\tools\run_pinned_pip.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $materializer, $launcher)
+            if ($run.ExitCode -ne 0) { throw ('Python preparation bounded probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'Python preparation bounded input checks: ordinary and 2 oversized sources PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
