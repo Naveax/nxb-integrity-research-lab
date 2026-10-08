@@ -3232,6 +3232,59 @@ print("predecessor replay ZIP snapshot: bounded stream read and fail-closed SHA 
     }
 }
 
+Describe 'V11 predecessor replay XML DTD encoding safety (claim-free)' {
+    It 'rejects UTF-16 encoded DTD payloads while keeping ordinary UTF-8 NUnit XML valid' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-xml-dtd-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'xml-dtd-encoding.py'
+        $probe = @'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("nxb_v11_xml_check", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+attrs = 'name="Pester" total="916" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0"'
+ordinary = f'<?xml version="1.0" encoding="utf-8"?><test-results {attrs}/>'
+valid = module._predecessor_xml_results(ordinary.encode("utf-8"), "pester-ps7.xml")
+assert valid["total"] == 916 and valid["failures"] == 0
+
+for encoding in ("utf-8", "utf-16", "utf-16-le", "utf-16-be"):
+    declaration = "utf-8" if encoding == "utf-8" else "utf-16"
+    payload = (
+        f'<?xml version="1.0" encoding="{declaration}"?>'
+        '<!DOCTYPE test-results [<!ENTITY marker "untrusted">]>'
+        f'<test-results {attrs}/>'
+    )
+    if encoding in ("utf-16-le", "utf-16-be"):
+        # Without a BOM, the XML remains invalid for the UTF-16 declaration;
+        # the byte-level preflight must reject it before the XML parser.
+        data = payload.encode(encoding)
+    else:
+        data = payload.encode(encoding)
+    try:
+        module._predecessor_xml_results(data, "pester-ps7.xml")
+    except module.PreflightError as error:
+        if "forbidden" not in str(error) and "UTF-8" not in str(error):
+            raise AssertionError(f"Wrong rejection for {encoding}: {error}") from error
+    else:
+        raise AssertionError(f"DTD accepted with encoding {encoding}")
+
+print("predecessor XML DTD: utf-8 valid and 4 encoded DTD cases rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Encoded XML DTD probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'predecessor XML DTD: utf-8 valid and 4 encoded DTD cases rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'V11 bounded Python preparation inputs (claim-free)' {
     It 'bounds dependency lock and pip METADATA reads before parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-preparation-bounds-' + [Guid]::NewGuid().ToString('N'))
