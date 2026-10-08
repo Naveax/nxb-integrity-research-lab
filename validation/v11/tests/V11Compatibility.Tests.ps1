@@ -606,6 +606,77 @@ print("known-error scan canonical/source read bounds: 3 oversized rejected, cont
 }
 
 
+Describe 'V11 native-impact output ancestor safety (claim-free)' {
+    It 'rejects a junction-backed output parent and accepts an ordinary parent' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-output-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+tool, policy, fixture = sys.argv[1:]
+source = json.loads(Path(fixture).read_text(encoding="utf-8"))
+case = source["cases"][0]
+record = {
+    "authority": "nxb-native-impact-classification-input-v1",
+    "schema_version": 1,
+    "repository": source["repository"],
+    "base_sha": source["base_sha"],
+    "head_sha": source["head_sha"],
+    "merge_base_sha": source["merge_base_sha"],
+    "changed_paths": case["changes"],
+    "base_dependency_edges": case["base_dependency_edges"],
+    "candidate_dependency_edges": case["candidate_dependency_edges"],
+}
+with tempfile.TemporaryDirectory(prefix="nxb-v11-impact-out-test-") as tmp:
+    root = Path(tmp)
+    real = root / "real"
+    real.mkdir()
+    inp = root / "input.json"
+    inp.write_bytes(json.dumps(record,sort_keys=True,ensure_ascii=False,separators=(",", ":")).encode("utf-8"))
+    alias = root / "alias"
+    if os.name == "nt":
+        made = subprocess.run(["cmd", "/d", "/c", "mklink", "/J", str(alias), str(real)], capture_output=True, text=True)
+        if made.returncode:
+            raise AssertionError("unable to create test junction: " + made.stderr)
+    else:
+        alias.symlink_to(real, target_is_directory=True)
+    try:
+        args = [sys.executable, tool, "--policy", policy, "--input", str(inp), "--output"]
+        accepted = subprocess.run(args+[str(real/"ordinary.json")],capture_output=True,text=True)
+        assert accepted.returncode == 0, accepted.stderr
+        assert (real/"ordinary.json").is_file()
+        rejected = subprocess.run(args+[str(alias/"escaped.json")],capture_output=True,text=True)
+        assert rejected.returncode != 0, "classifier wrote through junction-backed output parent"
+        assert not (real/"escaped.json").exists(), "classifier created output through junction"
+        print("classifier output-parent junction: rejected, direct output control passed")
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $policy = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
+            $fixture = Join-Path $script:RepositoryRoot 'validation\v11\fixtures\native-impact-classifier\cases-v1.json'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $policy, $fixture)
+            if ($run.ExitCode -ne 0) { throw ('Classifier output-parent probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'classifier output-parent junction: rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier' {
     BeforeAll {
         $script:ImpactPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
