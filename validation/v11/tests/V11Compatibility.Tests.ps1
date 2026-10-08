@@ -506,6 +506,47 @@ Describe 'V11 A0 supply-chain schema contracts' {
     }
 }
 
+Describe 'V11 native-impact Windows-equivalent path guards (claim-free)' {
+    It 'rejects Windows device, ADS and trailing-segment aliases without changing ordinary rules' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-paths-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("nxb_impact", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.validate_path("validation/v11/tools/classify_native_impact.py", "normal") == "validation/v11/tools/classify_native_impact.py"
+assert module.validate_path("validation/v11/", "prefix", prefix=True) == "validation/v11/"
+for bad in (
+    "CON", "dir/aux.json", "dir/COM1.txt", "dir/LPT9.log",
+    "dir/CONOUT$", "dir/foo:stream", "dir/ending./file",
+    "dir/trailing /file", "filename.", "filename ",
+):
+    try:
+        module.validate_path(bad, "negative")
+    except module.ImpactError:
+        pass
+    else:
+        raise AssertionError(f"accepted Windows-equivalent unsafe path: {bad!r}")
+print("native-impact Windows path alias negatives: 10 rejected, ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact Windows paths probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact Windows path alias negatives: 10 rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier' {
     BeforeAll {
         $script:ImpactPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
