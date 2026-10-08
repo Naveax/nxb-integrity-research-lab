@@ -1283,6 +1283,20 @@ def _predecessor_all_empty_known_error_findings(value: Any) -> bool:
     return False
 
 
+def _verify_predecessor_zip_identity(
+    expected: os.stat_result, observed: os.stat_result
+) -> None:
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, key) != getattr(observed, key) for key in fields)
+    ):
+        fail("predecessor replay ZIP changed during read")
+
+
 def inspect_predecessor_replay(
     path: Path,
     schema_root: Path,
@@ -1322,9 +1336,13 @@ def inspect_predecessor_replay(
         metadata = path.lstat()
         if metadata.st_size <= 0 or metadata.st_size > PREDECESSOR_MAX_ZIP_BYTES:
             fail("predecessor replay ZIP exceeds bounded size")
-        # Bound the bytes actually read, even if the file changes after lstat.
+        # Bind the original filesystem identity to the opened descriptor and
+        # subsequent pathname without parsing a second, possibly replaced ZIP.
         with path.open("rb") as stream:
+            _verify_predecessor_zip_identity(metadata, os.fstat(stream.fileno()))
             archive_bytes = stream.read(PREDECESSOR_MAX_ZIP_BYTES + 1)
+            _verify_predecessor_zip_identity(metadata, os.fstat(stream.fileno()))
+        _verify_predecessor_zip_identity(metadata, path.lstat())
     except OSError:
         fail("predecessor replay ZIP unreadable")
     if not archive_bytes or len(archive_bytes) > PREDECESSOR_MAX_ZIP_BYTES:
