@@ -416,6 +416,12 @@ def main() -> int:
         for p in packages
     ]
     payload = ("\n".join(lines) + "\n").encode("utf-8")
+    # Projection/lock verification may take time after the initial path check.
+    # Recheck destination ancestry immediately before exclusive creation.
+    assert_ordinary_directory(parent, "output parent")
+    assert_existing_ancestry_ordinary(parent, work_root, "output parent")
+    if os.path.lexists(output):
+        fail(f"output already exists: {output}")
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "wb", closefd=True) as stream:

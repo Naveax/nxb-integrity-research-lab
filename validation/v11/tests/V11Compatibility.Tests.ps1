@@ -4015,6 +4015,84 @@ print("Python preparation ancestry: 4 junction cases rejected, ordinary controls
 }
 
 
+Describe 'V11 Python requirements output ancestor recheck (claim-free)' {
+    It 'rejects an output-parent junction introduced after preflight and retains an ordinary output control' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-python-output-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import contextlib
+import importlib.util
+import io
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_projection",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-python-output-junction-") as scratch:
+    base=Path(scratch)
+    work=base/"work"
+    work.mkdir()
+    parent=work/"output"
+    parent.mkdir()
+    target=base/"external"
+    target.mkdir()
+    lock=base/"lock.json"
+    lock.write_bytes(b"{}")
+    dest=parent/"requirements.txt"
+    package=[{"normalized_name":"sample","version":"1.0","wheel_sha256":"a"*64}]
+    module.validate_lock=lambda _: package
+    module.load_canonical_json=lambda _: {}
+    sys.argv=["project","--lock",str(lock),"--work-root",str(work),"--output",str(dest)]
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert module.main()==0
+    assert dest.is_file() and b"sample==1.0" in dest.read_bytes()
+    dest.unlink()
+    saved=work/"saved-parent"
+    def swap_parent(_):
+        parent.rename(saved)
+        if os.name=="nt":
+            r=subprocess.run(["cmd","/d","/c","mklink","/J",str(parent),str(target)],capture_output=True,text=True)
+            assert r.returncode==0,r.stderr
+        else:
+            parent.symlink_to(target,target_is_directory=True)
+        return {}
+    module.load_canonical_json=swap_parent
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                module.main()
+            except module.ProjectionError:
+                pass
+            else:
+                raise AssertionError("requirements output was written via newly introduced junction parent")
+        assert not (target/"requirements.txt").exists(), "requirements escaped work-root through junction"
+    finally:
+        if parent.is_symlink() or parent.exists():
+            if os.name=="nt":
+                parent.rmdir()
+            else:
+                parent.unlink()
+print("Python requirements output ancestry: post-preflight junction rejected, ordinary output passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Python output ancestry probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'Python requirements output ancestry: post-preflight junction rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 Python preparation lock source identity (claim-free)' {
     It 'rejects junction-backed lock ancestry and replacement between path check and read' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-lock-identity-' + [Guid]::NewGuid().ToString('N'))
