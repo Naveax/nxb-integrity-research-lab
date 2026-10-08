@@ -3421,3 +3421,70 @@ print("Python preparation bounded input checks: ordinary and 2 oversized sources
         }
     }
 }
+
+Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
+    It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_tree", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-artifact-tree-ancestor-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    (real / "child").mkdir(parents=True)
+    alias = base / "alias"
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(alias), str(real)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise AssertionError("junction setup failed: " + result.stderr)
+    else:
+        alias.symlink_to(real, target_is_directory=True)
+    try:
+        if module.assert_ordinary_directory(str(real / "child"), "root") != str(real / "child"):
+            raise AssertionError("ordinary root rejected")
+        if module.assert_output_path(str(real / "child" / "out.json")) != str(real / "child" / "out.json"):
+            raise AssertionError("ordinary output parent rejected")
+        rejected = 0
+        for operation in (
+            lambda: module.assert_ordinary_directory(str(alias / "child"), "root"),
+            lambda: module.assert_output_path(str(alias / "child" / "out.json")),
+        ):
+            try:
+                operation()
+            except module.ManifestError:
+                rejected += 1
+            else:
+                raise AssertionError("reparse-backed ancestor was accepted")
+        assert rejected == 2
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+print("artifact tree ancestor root/output checks: 2 rejected, controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Artifact tree ancestor probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'artifact tree ancestor root/output checks: 2 rejected, controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
