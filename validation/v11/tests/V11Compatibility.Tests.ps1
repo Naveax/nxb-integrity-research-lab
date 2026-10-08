@@ -547,6 +547,65 @@ print("native-impact Windows path alias negatives: 10 rejected, ordinary control
 }
 
 
+Describe 'V11 known-error scanner bounded source reads (claim-free)' {
+    It 'caps policy, input and scanned source reads before parsing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-known-error-bounds-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_scan", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-known-error-bounds-") as scratch:
+    root = Path(scratch)
+    policy = root / "source.json"
+    policy.write_bytes(b'{"ok":true}')
+    for label in ("policy", "input"):
+        obj, original = module.load_canonical_json(str(policy), label)
+        assert obj == {"ok": True} and original == b'{"ok":true}'
+        with policy.open("wb") as stream:
+            stream.truncate(8 * 1024 * 1024 + 1)
+        try:
+            module.load_canonical_json(str(policy), label)
+        except module.ScanError as exc:
+            if "byte ceiling" not in str(exc):
+                raise AssertionError(f"{label} bypassed byte limit: {exc}") from exc
+        else:
+            raise AssertionError(f"{label} accepted oversized canonical input")
+        policy.write_bytes(b'{"ok":true}')
+    source = root / "code.py"
+    source.write_bytes(b"safe source")
+    assert module.read_source(str(source), "code.py") == "safe source"
+    with source.open("wb") as stream:
+        stream.truncate(8 * 1024 * 1024 + 1)
+    try:
+        module.read_source(str(source), "code.py")
+    except module.ScanError as exc:
+        if "byte ceiling" not in str(exc):
+            raise AssertionError(f"source bypassed byte limit: {exc}") from exc
+    else:
+        raise AssertionError("oversized source accepted")
+print("known-error scan canonical/source read bounds: 3 oversized rejected, controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Scanner byte bounds probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error scan canonical/source read bounds: 3 oversized rejected, controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier' {
     BeforeAll {
         $script:ImpactPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
