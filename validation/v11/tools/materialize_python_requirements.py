@@ -17,6 +17,7 @@ AUTHORITY = "nxb-v11-python-dependency-lock-v1"
 TREE_PROFILE = "nxb-artifact-tree-manifest-v1"
 PIP_BOOTSTRAP_AUTHORITY = "nxb-v11-pip-bootstrap-v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+MAX_LOCK_BYTES = 1024 * 1024  # Bounded before canonical JSON parsing.
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+!-]{0,127}$")
 WHEEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,507}\.whl$")
@@ -81,7 +82,9 @@ def _walk_strings(value: Any, label: str = "$") -> None:
 
 def load_canonical_json(path: str) -> dict[str, Any]:
     with open(path, "rb") as stream:
-        raw = stream.read()
+        raw = stream.read(MAX_LOCK_BYTES + 1)
+    if not raw or len(raw) > MAX_LOCK_BYTES:
+        fail("lock byte ceiling exceeded")
     if raw.startswith(b"\xef\xbb\xbf"):
         fail("lock must not contain a UTF-8 BOM")
     try:
