@@ -899,6 +899,50 @@ print("native-impact JSON input source identity: both policy/input reject alias,
 }
 
 
+Describe 'V11 native-impact initial seed budget (claim-free)' {
+    It 'bounds all exact and prefix seeds before traversing graph' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-seed-bound-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def bounded(rules, edges, limit, label):
+    try:
+        module.closure_from_native(rules, edges, limit)
+    except module.ImpactError as exc:
+        if "max_graph_nodes" not in str(exc):
+            raise AssertionError(f"{label}: wrong fail-closed reason: {exc}") from exc
+    else:
+        raise AssertionError(f"{label}: initial seed budget bypassed")
+exact=[{"match_type":"exact","path":f"native/{n}"} for n in ("a","b")]
+closure,_=module.closure_from_native(exact,[],2)
+assert closure=={"native/a","native/b"}
+bounded(exact,[],1,"two exact seeds")
+prefix=[{"match_type":"prefix","path":"native/"}]
+edges=[("native/a","readme/a","reason"),("native/b","readme/b","reason")]
+closure,_=module.closure_from_native(prefix,edges,4)
+assert len(closure)==4
+bounded(prefix,edges,1,"two prefix seeds")
+print("native impact initial seed budget: exact and prefix controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native seed budget probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native impact initial seed budget: exact and prefix'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact classifier bounded JSON inputs (claim-free)' {
     It 'bounds policy and graph input bytes before JSON parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-bounds-' + [Guid]::NewGuid().ToString('N'))

@@ -474,6 +474,11 @@ def closure_from_native(
         if any(rule_match(source, rule) for rule in native_rules):
             seeds.add(source)
 
+    # Exact and prefix-derived starting nodes count against the graph budget,
+    # even when the work queue never discovers any additional descendants.
+    if len(seeds) > max_nodes:
+        fail("dependency graph exceeds max_graph_nodes")
+
     queue = deque(sorted(seeds))
     visited = set(seeds)
     while queue:
