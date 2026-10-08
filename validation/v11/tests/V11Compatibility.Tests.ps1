@@ -701,6 +701,53 @@ Describe 'V11 native-impact classifier' {
 }
 
 
+Describe 'V11 native-impact classifier bounded JSON inputs (claim-free)' {
+    It 'bounds policy and graph input bytes before JSON parsing' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-bounds-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_impact", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-impact-json-bounds-") as scratch:
+    root = Path(scratch)
+    input_file = root / "input.json"
+    input_file.write_bytes(b'{"ok":true}')
+    for label in ("policy", "input"):
+        obj, original = module.load_canonical_json(str(input_file), label)
+        assert obj == {"ok": True} and original == b'{"ok":true}'
+        with input_file.open("wb") as stream:
+            stream.truncate(32 * 1024 * 1024 + 1)
+        try:
+            module.load_canonical_json(str(input_file), label)
+        except module.ImpactError as exc:
+            if "byte ceiling" not in str(exc):
+                raise AssertionError(f"{label} was not rejected by byte limit: {exc}") from exc
+        else:
+            raise AssertionError(f"{label} accepted oversized input")
+        input_file.write_bytes(b'{"ok":true}')
+print("native-impact policy/input byte bounds: ordinary controls and 2 oversized sources passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Classifier bound probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact policy/input byte bounds: ordinary controls and 2 oversized sources passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 successor known-error scanner' {
     BeforeAll {
         $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
@@ -939,6 +986,73 @@ Describe 'V11 successor known-error scanner' {
         $source | Should -Not -Match '(?m)^\s*import\s+(subprocess|socket|urllib|http|requests)\b'
         $source | Should -Not -Match '\b(subprocess|os\.system|Popen)\b'
         $source | Should -Match 'failure_override_permitted'
+    }
+}
+
+
+Describe 'V11 known-error scan source ancestry (claim-free)' {
+    It 'rejects junction ancestors of the repository root and nested scanned file' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scanner-ancestor-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_scan", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-known-error-ancestor-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    (real / "sub").mkdir(parents=True)
+    (real / "sub" / "source.txt").write_text("safe", encoding="utf-8")
+    aliases = [(base / "root-alias", real), (real / "src-alias", real / "sub")]
+    for alias, target in aliases:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["cmd", "/d", "/c", "mklink", "/J", str(alias), str(target)],
+                capture_output=True, text=True, check=False,
+            )
+            if result.returncode:
+                raise AssertionError("junction setup failed: " + result.stderr)
+        else:
+            alias.symlink_to(target, target_is_directory=True)
+    try:
+        assert module.assert_repository_root(str(real)) == str(real)
+        assert module.resolve_repository_file(str(real), "sub/source.txt") == str(real / "sub" / "source.txt")
+        for check in (
+            lambda: module.assert_repository_root(str(aliases[0][0] / "sub")),
+            lambda: module.resolve_repository_file(str(real), "src-alias/source.txt"),
+        ):
+            try:
+                check()
+            except module.ScanError:
+                pass
+            else:
+                raise AssertionError("scanner accepted reparse-backed ancestry")
+    finally:
+        for alias, _ in reversed(aliases):
+            if os.name == "nt":
+                alias.rmdir()
+            else:
+                alias.unlink()
+print("known-error scanner ancestry: 2 rejected, 2 ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Scanner ancestry probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error scanner ancestry: 2 rejected, 2 ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

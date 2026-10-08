@@ -158,12 +158,34 @@ def is_reparse_or_link(path: str) -> bool:
     return bool(attrs & reparse_flag)
 
 
+def assert_ordinary_directory_chain(path: str, label: str, *, stop: str | None = None) -> None:
+    # Reject a junction/symlink in any parent, not just the final directory.
+    current = path
+    while True:
+        try:
+            metadata = os.lstat(current)
+        except OSError:
+            fail(f"{label} directory ancestor is unreadable: {current}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            fail(f"{label} directory ancestor is not ordinary: {current}")
+        if stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            fail(f"{label} directory ancestor is reparse/symlink-backed: {current}")
+        if current == stop:
+            return
+        parent = os.path.dirname(current)
+        if parent == current:
+            return
+        current = parent
+
+
 def assert_repository_root(path: str) -> str:
     full = os.path.abspath(path)
-    if not os.path.isabs(path) or not os.path.isdir(full):
+    if not os.path.isabs(path):
         fail("repository root must be an existing absolute directory")
-    if is_reparse_or_link(full):
-        fail("repository root must not be reparse/symlink-backed")
+    assert_ordinary_directory_chain(full, "repository root")
     return full
 
 
@@ -177,6 +199,9 @@ def resolve_repository_file(root: str, relative: str) -> str:
         inside = False
     if not inside:
         fail(f"scan path escapes repository root: {relative}")
+    assert_ordinary_directory_chain(
+        os.path.dirname(candidate), f"scan path {relative}", stop=root
+    )
     if not os.path.isfile(candidate):
         fail(f"scan path missing/non-file: {relative}")
     if is_reparse_or_link(candidate):
