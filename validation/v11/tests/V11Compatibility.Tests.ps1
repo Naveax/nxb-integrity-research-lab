@@ -3535,3 +3535,63 @@ print("artifact tree ancestor root/output checks: 2 rejected, controls passed")
         }
     }
 }
+
+Describe 'V11 artifact-tree manifest file identity reconciliation (claim-free)' {
+    It 'rejects replacement of an ordinary file after enumeration without creating a manifest' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-artifact-file-drift-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'file-identity-probe.py'
+        $probe = @'
+import hashlib
+import importlib.util
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_tree", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-v11-tree-drift-") as scratch:
+    base = Path(scratch)
+    root = base / "inputs"
+    root.mkdir()
+    target = root / "evidence.bin"
+    target.write_bytes(b"A" * 256)
+    normal = module.build_manifest(str(root), "test-root")
+    if normal["files"][0]["sha256"] != hashlib.sha256(b"A" * 256).hexdigest():
+        raise AssertionError("ordinary immutable input digest changed")
+    replacement = base / "replacement.bin"
+    replacement.write_bytes(b"B" * 256)
+    original_hash = module.sha256_file
+    replaced = False
+    def swap_before_read(path, *args, **kwargs):
+        global replaced
+        if not replaced:
+            replaced = True
+            os.replace(replacement, target)
+        return original_hash(path, *args, **kwargs)
+    module.sha256_file = swap_before_read
+    try:
+        module.build_manifest(str(root), "test-root")
+    except module.ManifestError as exc:
+        if "changed during hashing" not in str(exc):
+            raise AssertionError("unexpected replacement rejection: " + str(exc)) from exc
+    else:
+        raise AssertionError("manifest accepted replacement after enumeration")
+    if not replaced:
+        raise AssertionError("replacement race hook was not exercised")
+print("artifact tree file identity drift: replacement rejected, ordinary control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Artifact tree file identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'artifact tree file identity drift: replacement rejected, ordinary control passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
