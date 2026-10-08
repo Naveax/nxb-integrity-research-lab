@@ -3729,6 +3729,80 @@ print("Python preparation ancestry: 4 junction cases rejected, ordinary controls
 }
 
 
+Describe 'V11 Python preparation lock source identity (claim-free)' {
+    It 'rejects junction-backed lock ancestry and replacement between path check and read' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-lock-identity-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_projection", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-lock-identity-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    real.mkdir()
+    lock = real / "lock.json"
+    lock.write_bytes(b'{"ok":true}')
+    assert module.load_canonical_json(str(lock)) == {"ok": True}
+    alias = base / "alias"
+    if os.name == "nt":
+        result = subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)],capture_output=True,text=True)
+        assert result.returncode == 0, result.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        try:
+            module.load_canonical_json(str(alias / "lock.json"))
+        except module.ProjectionError:
+            pass
+        else:
+            raise AssertionError("projection accepted lock through junction ancestry")
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+    other = real / "other.json"
+    other.write_bytes(b'{"ok":false}')
+    original_open = open
+    def swap_open(path, mode="r", *args, **kwargs):
+        if os.path.abspath(str(path)) == os.path.abspath(str(lock)) and mode == "rb":
+            os.replace(other, lock)
+        return original_open(path, mode, *args, **kwargs)
+    module.open = swap_open
+    try:
+        try:
+            module.load_canonical_json(str(lock))
+        except module.ProjectionError:
+            pass
+        else:
+            raise AssertionError("projection accepted replaced lock after preflight")
+    finally:
+        del module.open
+print("Python lock file source identity: reparse ancestry and replacement rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Lock source identity probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'Python lock file source identity: reparse ancestry and replacement rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 bounded Python preparation inputs (claim-free)' {
     It 'bounds dependency lock and pip METADATA reads before parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-preparation-bounds-' + [Guid]::NewGuid().ToString('N'))
