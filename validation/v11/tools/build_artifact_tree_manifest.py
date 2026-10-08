@@ -22,6 +22,8 @@ WINDOWS_RESERVED = {
     "CON", "PRN", "AUX", "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
+    # Win32 also reserves ISO-8859-1 superscript 1/2/3 with COM and LPT.
+    *(f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in ("\u00b9", "\u00b2", "\u00b3")),
 }
 MAX_I64 = (1 << 63) - 1
 
