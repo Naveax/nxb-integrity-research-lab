@@ -44,7 +44,27 @@ def assert_ordinary_directory(path: str, label: str) -> str:
         fail(f"{label} is not an existing directory: {full}")
     if is_reparse_or_link(full):
         fail(f"{label} is reparse/symlink-backed: {full}")
+    assert_ordinary_ancestors(full, label)
     return full
+
+
+def assert_ordinary_ancestors(full: str, label: str) -> None:
+    # Reject regular-looking inputs reached through a junction/symlink parent.
+    current = os.path.dirname(full)
+    while True:
+        try:
+            metadata = os.lstat(current)
+        except OSError:
+            fail(f"{label} ancestor unreadable: {current}")
+        if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            fail(f"{label} ancestor not an ordinary directory: {current}")
+        parent = os.path.dirname(current)
+        if parent == current:
+            return
+        current = parent
 
 
 def assert_ordinary_file(path: str, label: str) -> str:
@@ -55,6 +75,7 @@ def assert_ordinary_file(path: str, label: str) -> str:
         fail(f"{label} is not an existing file: {full}")
     if is_reparse_or_link(full):
         fail(f"{label} is reparse/symlink-backed: {full}")
+    assert_ordinary_ancestors(full, label)
     return full
 
 
