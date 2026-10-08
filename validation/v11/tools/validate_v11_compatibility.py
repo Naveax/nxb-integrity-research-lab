@@ -1290,7 +1290,9 @@ def inspect_predecessor_replay(
         metadata = path.lstat()
         if metadata.st_size <= 0 or metadata.st_size > PREDECESSOR_MAX_ZIP_BYTES:
             fail("predecessor replay ZIP exceeds bounded size")
-        archive_bytes = path.read_bytes()
+        # Bound the bytes actually read, even if the file changes after lstat.
+        with path.open("rb") as stream:
+            archive_bytes = stream.read(PREDECESSOR_MAX_ZIP_BYTES + 1)
     except OSError:
         fail("predecessor replay ZIP unreadable")
     if not archive_bytes or len(archive_bytes) > PREDECESSOR_MAX_ZIP_BYTES:

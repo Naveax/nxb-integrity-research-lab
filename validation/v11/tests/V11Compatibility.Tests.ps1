@@ -3148,3 +3148,86 @@ print("bounded schema source checks: ordinary bytes and 4 oversized sources PASS
         }
     }
 }
+
+Describe 'V11 predecessor replay bounded ZIP snapshot (claim-free)' {
+    It 'requires an explicitly bounded binary read rather than path.read_bytes' {
+        $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-predecessor-zip-bound-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($outer)
+        $probePath = Join-Path $outer 'bounded-zip-probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+
+spec = importlib.util.spec_from_file_location("nxb_v11_preflight", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+class BoundedStream:
+    def __init__(self, stream):
+        self.stream = stream
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return self.stream.__exit__(*args)
+    def read(self, size=-1):
+        if size != module.PREDECESSOR_MAX_ZIP_BYTES + 1:
+            raise AssertionError(f"predecessor ZIP read not bounded: {size}")
+        return self.stream.read(size)
+
+class StreamOnlyPath:
+    def __init__(self, actual):
+        self.actual = actual
+        self.parent = actual.parent
+    def is_absolute(self):
+        return self.actual.is_absolute()
+    def lstat(self):
+        return self.actual.lstat()
+    def open(self, mode):
+        if mode != "rb":
+            raise AssertionError(f"unexpected open mode: {mode}")
+        return BoundedStream(self.actual.open(mode))
+    def read_bytes(self):
+        raise AssertionError("unbounded Path.read_bytes() invoked")
+
+with tempfile.TemporaryDirectory(prefix="nxb-v11-predecessor-bounded-") as name:
+    real = Path(name) / "sample.zip"
+    real.write_bytes(b"not-an-admitted-review-archive")
+    predecessor = "1" * 40
+    successor = "3" * 40
+    kwargs = {
+        "path": StreamOnlyPath(real),
+        "schema_root": Path(name),
+        "expected_zip_sha256": "0" * 64,
+        "expected_predecessor_main_sha": predecessor,
+        "expected_predecessor_tree_sha": "2" * 40,
+        "expected_observer_successor_head_sha": successor,
+        "expected_run_id": 123456789,
+        "expected_run_attempt": 1,
+        "expected_artifact_name": (
+            f"nxb-v11-predecessor-replay-v1-{predecessor}-{successor}-123456789-1"
+        ),
+        "expected_predecessor_policy_sha256": "a" * 64,
+    }
+    try:
+        module.inspect_predecessor_replay(**kwargs)
+    except module.PreflightError as error:
+        if "independently supplied predecessor replay ZIP digest mismatch" not in str(error):
+            raise AssertionError(f"unexpected fail-closed reason: {error}") from error
+    else:
+        raise AssertionError("mismatched predecessor ZIP digest accepted")
+print("predecessor replay ZIP snapshot: bounded stream read and fail-closed SHA PASS")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $validator = Join-Path $script:RepositoryRoot 'validation\v11\tools\validate_v11_compatibility.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $validator)
+            if ($run.ExitCode -ne 0) { throw ('Predecessor ZIP bounded probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'predecessor replay ZIP snapshot: bounded stream read and fail-closed SHA PASS'
+        }
+        finally {
+            Remove-Item -LiteralPath $outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
