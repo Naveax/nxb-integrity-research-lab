@@ -103,18 +103,44 @@ def validate_relative_path(relative_path: str) -> str:
     return relative_path
 
 
-def sha256_file(path: str) -> tuple[int, str]:
+def _assert_stable_file(path: str, expected: os.stat_result, observed: os.stat_result) -> None:
+    # Bind the opened descriptor and the final pathname to the enumerated file.
+    # This catches ordinary replacements and detectable in-place mutations; it
+    # is not a substitute for an immutable filesystem snapshot.
+    attributes = getattr(observed, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    # On Windows, st_ctime_ns can advance after a newly written file is closed
+    # without any change to its bytes or file ID, so do not use it as an
+    # identity signal. Device/inode, size and modification time remain bound.
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or attributes & reparse_flag
+        or any(getattr(expected, field) != getattr(observed, field) for field in fields)
+    ):
+        fail(f"artifact source file changed during hashing: {path}")
+
+
+def sha256_file(path: str, expected: os.stat_result) -> tuple[int, str]:
     digest = hashlib.sha256()
     size = 0
-    with open(path, "rb", buffering=1024 * 1024) as stream:
-        while True:
-            block = stream.read(1024 * 1024)
-            if not block:
-                break
-            size += len(block)
-            if size > MAX_I64:
-                fail(f"file exceeds Int64 byte range: {path}")
-            digest.update(block)
+    try:
+        with open(path, "rb", buffering=1024 * 1024) as stream:
+            _assert_stable_file(path, expected, os.fstat(stream.fileno()))
+            while True:
+                block = stream.read(1024 * 1024)
+                if not block:
+                    break
+                size += len(block)
+                if size > MAX_I64:
+                    fail(f"file exceeds Int64 byte range: {path}")
+                digest.update(block)
+            _assert_stable_file(path, expected, os.fstat(stream.fileno()))
+        _assert_stable_file(path, expected, os.lstat(path))
+    except OSError:
+        fail(f"artifact source file changed during hashing or became unreadable: {path}")
+    if size != expected.st_size:
+        fail(f"artifact source file changed during hashing: {path}")
     return size, digest.hexdigest()
 
 
@@ -187,7 +213,7 @@ def build_manifest(root: str, root_role: str) -> dict:
             seen_exact.add(exact_key)
             seen_folded.add(folded_key)
 
-            size, digest = sha256_file(path)
+            size, digest = sha256_file(path, st)
             if not SHA256_RE.fullmatch(digest):
                 fail("internal SHA-256 formatting failure")
             rows.append({
