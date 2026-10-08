@@ -3458,6 +3458,79 @@ print("predecessor XML DTD: utf-8 valid and 4 encoded DTD cases rejected")
     }
 }
 
+Describe 'V11 Python preparation external path ancestry (claim-free)' {
+    It 'rejects reparse/junction parents for Python preparation lock, runtime and bootstrap sources' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-python-prep-ancestor-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+materializer = load("nxb_mat", sys.argv[1])
+launcher = load("nxb_pip", sys.argv[2])
+with tempfile.TemporaryDirectory(prefix="nxb-v11-prep-ancestors-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    inner = real / "inner"
+    inner.mkdir(parents=True)
+    (inner / "source.lock").write_bytes(b"test")
+    alias = base / "alias"
+    if os.name == "nt":
+        made = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(alias), str(real)],
+            capture_output=True, text=True, check=False,
+        )
+        if made.returncode:
+            raise AssertionError(f"junction setup failed: {made.stderr}")
+    else:
+        alias.symlink_to(real, target_is_directory=True)
+    try:
+        for module in (materializer, launcher):
+            assert module.assert_ordinary_directory(str(inner), "ordinary") == str(inner)
+            assert module.assert_ordinary_file(str(inner / "source.lock"), "ordinary") == str(inner / "source.lock")
+            for check in (
+                lambda: module.assert_ordinary_directory(str(alias / "inner"), "test directory"),
+                lambda: module.assert_ordinary_file(str(alias / "inner" / "source.lock"), "test file"),
+            ):
+                try:
+                    check()
+                except (materializer.ProjectionError, launcher.PinnedPipError):
+                    pass
+                else:
+                    raise AssertionError("Python preparation accepted reparse-backed ancestor")
+    finally:
+        if os.name == "nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+print("Python preparation ancestry: 4 junction cases rejected, ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $materializer = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $launcher = Join-Path $script:RepositoryRoot 'validation\v11\tools\run_pinned_pip.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $materializer, $launcher)
+            if ($run.ExitCode -ne 0) { throw ('Python preparation ancestry probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'Python preparation ancestry: 4 junction cases rejected, ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 bounded Python preparation inputs (claim-free)' {
     It 'bounds dependency lock and pip METADATA reads before parsing' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-preparation-bounds-' + [Guid]::NewGuid().ToString('N'))
