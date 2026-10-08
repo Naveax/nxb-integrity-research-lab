@@ -80,9 +80,31 @@ def _walk_strings(value: Any, label: str = "$") -> None:
             _walk_strings(item, f"{label}.{key}")
 
 
+def _assert_stable_lock_source(expected: os.stat_result, observed: os.stat_result) -> None:
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or getattr(observed, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or any(getattr(expected, field) != getattr(observed, field) for field in fields)
+    ):
+        fail("lock source file changed during canonical read")
+
+
 def load_canonical_json(path: str) -> dict[str, Any]:
-    with open(path, "rb") as stream:
-        raw = stream.read(MAX_LOCK_BYTES + 1)
+    # The earlier CLI path preflight is not a bound read: recheck both source
+    # ancestry and opened descriptor so replacement cannot silently change lock.
+    full = assert_ordinary_file(path, "lock")
+    try:
+        expected = os.lstat(full)
+        with open(full, "rb") as stream:
+            _assert_stable_lock_source(expected, os.fstat(stream.fileno()))
+            raw = stream.read(MAX_LOCK_BYTES + 1)
+            _assert_stable_lock_source(expected, os.fstat(stream.fileno()))
+        _assert_stable_lock_source(expected, os.lstat(full))
+    except OSError:
+        fail("lock source became unavailable during canonical read")
     if not raw or len(raw) > MAX_LOCK_BYTES:
         fail("lock byte ceiling exceeded")
     if raw.startswith(b"\xef\xbb\xbf"):
