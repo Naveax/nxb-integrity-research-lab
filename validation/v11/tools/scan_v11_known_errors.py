@@ -330,6 +330,14 @@ def preview(value: str) -> str:
     return compact[:180]
 
 
+def assert_output_path(path: str) -> str:
+    full = os.path.abspath(path)
+    assert_ordinary_directory_chain(os.path.dirname(full), "output parent")
+    if os.path.lexists(full):
+        fail("output already exists")
+    return full
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--repository-root", required=True)
@@ -338,8 +346,7 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    if os.path.exists(args.output):
-        fail("output already exists")
+    output_path = assert_output_path(args.output)
     root = assert_repository_root(args.repository_root)
     policy_obj, policy_raw = load_canonical_json(args.policy, "policy")
     rules = validate_policy(policy_obj)
@@ -385,8 +392,9 @@ def main() -> int:
     }
     payload = canonical_bytes(result)
 
+    assert_output_path(output_path)
     descriptor = os.open(
-        args.output,
+        output_path,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL,
         0o600,
     )

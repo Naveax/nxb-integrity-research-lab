@@ -946,6 +946,68 @@ print("native-impact policy/input byte bounds: ordinary controls and 2 oversized
 }
 
 
+Describe 'V11 known-error scanner output ancestry (claim-free)' {
+    It 'rejects junction-backed scanner output and preserves an ordinary output path' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scan-output-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+tool, repo, policy = sys.argv[1:]
+with tempfile.TemporaryDirectory(prefix="nxb-scan-output-probe-") as scratch:
+    base = Path(scratch)
+    real = base / "real"
+    real.mkdir()
+    inp = base / "input.json"
+    document = {
+        "authority": "nxb-v11-known-error-scan-input-v1",
+        "schema_version": 1,
+        "repository": "Naveax/nxb-integrity-research-lab",
+        "entries": [{"path":"README.md","validation_class":"authority_documentation"}],
+    }
+    inp.write_bytes(json.dumps(document,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode("utf-8"))
+    alias = base / "alias"
+    if os.name == "nt":
+        r = subprocess.run(["cmd","/d","/c","mklink","/J",str(alias),str(real)], capture_output=True,text=True)
+        assert r.returncode == 0, r.stderr
+    else:
+        alias.symlink_to(real,target_is_directory=True)
+    try:
+        args=[sys.executable,tool,"--repository-root",repo,"--policy",policy,"--input",str(inp),"--output"]
+        control=subprocess.run(args+[str(real/"ordinary.json")],capture_output=True,text=True)
+        assert control.returncode==0, "ordinary scanner failed: "+control.stderr
+        assert (real/"ordinary.json").is_file()
+        bad=subprocess.run(args+[str(alias/"indirect.json")],capture_output=True,text=True)
+        assert bad.returncode!=0, "scanner accepted junction-backed output ancestor"
+        assert not (real/"indirect.json").exists(), "scanner created output through junction"
+    finally:
+        if os.name=="nt":
+            alias.rmdir()
+        else:
+            alias.unlink()
+print("known-error scanner output ancestor: junction rejected, ordinary control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $policy = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $script:RepositoryRoot, $policy)
+            if ($run.ExitCode -ne 0) { throw ('Known-error scanner output probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'known-error scanner output ancestor: junction rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 successor known-error scanner' {
     BeforeAll {
         $script:KnownErrorPolicyPath = Join-Path $script:RepositoryRoot 'config\nxb-v11-known-error-signatures.json'
