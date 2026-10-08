@@ -4653,6 +4653,81 @@ print("artifact manifest output parent: late junction rejected, ordinary control
 }
 
 
+Describe 'V11 artifact manifest nested source ancestry recheck (claim-free)' {
+    It 'rejects a nested source directory swapped to a junction after traversal preflight' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-nested-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import hashlib
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-manifest-source-swap-") as scratch:
+    base=Path(scratch)
+    source=base/"source"
+    source.mkdir()
+    child=source/"child"
+    child.mkdir()
+    (child/"file.txt").write_bytes(b"source-bytes")
+    outside=base/"outside"
+    outside.mkdir()
+    (outside/"file.txt").write_bytes(b"external-bytes")
+    expected=hashlib.sha256(b"source-bytes").hexdigest()
+    ordinary=module.build_manifest(str(source),"archive")
+    assert ordinary["file_count"]==1
+    assert ordinary["files"][0]["sha256"]==expected
+    original_validate=module.validate_relative_path
+    child_calls=[0]
+    def redirect_nested_source(relative):
+        if relative=="child":
+            child_calls[0]+=1
+            if child_calls[0]==2:
+                child.rename(source/"saved-child")
+                if os.name=="nt":
+                    r=subprocess.run(["cmd","/d","/c","mklink","/J",str(child),str(outside)],capture_output=True,text=True)
+                    assert r.returncode==0, r.stderr
+                else:
+                    child.symlink_to(outside,target_is_directory=True)
+        return original_validate(relative)
+    module.validate_relative_path=redirect_nested_source
+    try:
+        try:
+            module.build_manifest(str(source),"archive")
+        except module.ManifestError:
+            pass
+        else:
+            raise AssertionError("manifest hashed source bytes through a newly substituted junction directory")
+        assert child_calls[0]>=2
+    finally:
+        if child.is_symlink() or child.exists():
+            if os.name=="nt":
+                child.rmdir()
+            else:
+                child.unlink()
+print("artifact manifest nested source ancestry: late junction rejected, ordinary source control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Artifact manifest nested-source probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'artifact manifest nested source ancestry: late junction rejected'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

@@ -192,6 +192,9 @@ def build_manifest(root: str, root_role: str) -> dict:
 
         for name in file_names:
             path = os.path.join(current, name)
+            # Enumeration can outlive the initial directory preflight. A
+            # nested parent replaced with a junction must not become a source.
+            assert_ordinary_directory(current, "artifact source parent")
             if is_reparse_or_link(path):
                 fail(f"file is reparse/symlink-backed: {path}")
             st = os.lstat(path)
@@ -214,6 +217,7 @@ def build_manifest(root: str, root_role: str) -> dict:
             seen_folded.add(folded_key)
 
             size, digest = sha256_file(path, st)
+            assert_ordinary_directory(current, "artifact source parent")
             if not SHA256_RE.fullmatch(digest):
                 fail("internal SHA-256 formatting failure")
             rows.append({
