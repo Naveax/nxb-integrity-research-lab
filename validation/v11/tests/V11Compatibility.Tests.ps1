@@ -4653,6 +4653,65 @@ print("artifact manifest output parent: late junction rejected, ordinary control
 }
 
 
+Describe 'V11 artifact manifest enumeration error fail-closed (claim-free)' {
+    It 'rejects an unreadable nested directory rather than silently omitting its files' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-walk-error-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="nxb-manifest-enumeration-") as scratch:
+    root=Path(scratch)/"source"
+    visible=root/"visible"
+    blocked=root/"blocked"
+    visible.mkdir(parents=True)
+    blocked.mkdir()
+    (visible/"open.bin").write_bytes(b"ordinary")
+    (blocked/"required.bin").write_bytes(b"must-be-included")
+    assert module.build_manifest(str(root),"archive")["file_count"]==2,"normal two-file control failed"
+    original_scandir=os.scandir
+    injections=[0]
+    def denied_scandir(path):
+        if os.path.normcase(os.fspath(path))==os.path.normcase(str(blocked)):
+            injections[0]+=1
+            raise PermissionError(13,"injected nested scandir denial",str(blocked))
+        return original_scandir(path)
+    os.scandir=denied_scandir
+    try:
+        try:
+            module.build_manifest(str(root),"archive")
+        except module.ManifestError as exc:
+            if "enumeration" not in str(exc):
+                raise AssertionError(f"wrong failure reason: {exc}") from exc
+        else:
+            raise AssertionError("artifact manifest silently accepted an unreadable source subtree")
+    finally:
+        os.scandir=original_scandir
+    assert injections[0]==1,"nested scandir error was not induced"
+print("artifact manifest enumeration: ordinary control passed, unreadable nested source rejected")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Manifest enumeration error probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'artifact manifest enumeration: ordinary control passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

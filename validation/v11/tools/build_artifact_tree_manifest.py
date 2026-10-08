@@ -155,7 +155,14 @@ def build_manifest(root: str, root_role: str) -> dict:
     seen_directories_exact: set[str] = set()
     seen_directories_folded: set[str] = set()
 
-    for current, dir_names, file_names in os.walk(root_full, topdown=True, followlinks=False):
+    def reject_walk_error(error: OSError) -> None:
+        # os.walk suppresses nested scandir errors without an onerror hook.
+        # A partial enumeration must never become a trusted tree manifest.
+        fail(f"artifact source enumeration failed: {error.filename or root_full}")
+
+    for current, dir_names, file_names in os.walk(
+        root_full, topdown=True, followlinks=False, onerror=reject_walk_error
+    ):
         if is_reparse_or_link(current):
             fail(f"traversed directory is reparse/symlink-backed: {current}")
 
