@@ -30,6 +30,14 @@ CENTRAL_TOOLCHAIN_AUTHORITY=nxb-v11-validation-toolchain-lock-v1
 COMPATIBILITY_POLICY_AUTHORITY=nxb-v11-compatibility-policy-v1
 PHYSICAL_COMPATIBILITY_CLAIMS=0
 NATIVE_WPT_DISPATCH_PERFORMED=false
+LIVE6_AUTHORITY_HOST=DESKTOP-ONDD84S\umut
+LIVE6_DIAGNOSTIC_PROMOTION_COMMENT=6000434321
+LIVE6_DIAGNOSTIC_PROMOTION_STATE=ISSUED_UNCONSUMED
+LIVE6_DIAGNOSTIC_SHA256=4bf7a001ab7f161151f5b9a4feaf092c46f45acd847a7ff445476c1ccd8a099e
+LIVE6_DIAGNOSTIC_RESULT_STATE=ABSENT
+LIVE6_RUNTIME_PROMOTION_STATE=ABSENT
+A0_REMAINING_MANDATORY_EXACT_PATHS=7
+LIVE6_BLOCKER_CHECKPOINT_COMMENT=6053582069
 ```
 
 These tokens are documentation assertions only. Runtime authority comes from exact source bytes, schemas, Git/GitHub metadata, external digests, and independently reconstructed evidence.
@@ -246,7 +254,23 @@ Ordinary A0 pull-request validation may run once for a new exact head through th
 
 The retained live-6 PowerShell runtime / trusted-preparation execution chain remains a separate HOLD until an exact admitted runtime-v2 receipt and successor trusted-preparation evidence exist. Therefore unresolved provenance must not be converted into committed child-lock, central-lock or final policy bytes.
 
-Schema and synthetic-fixture closure is allowed while this runtime evidence is absent because synthetic values are test data and make no support/admission claim.
+The current physical-console gate is bound to `DESKTOP-ONDD84S\umut`. The exact diagnostic source SHA-256 is `4bf7a001ab7f161151f5b9a4feaf092c46f45acd847a7ff445476c1ccd8a099e`, and single-use promotion `6000434321` remains `ISSUED / UNCONSUMED`. The canonical diagnostic result, live-6 S3/S4 work roots, and runtime promotion remain absent. Current read-only prerequisite reconciliation is clean, but a legitimate elevated physical-console grant has not been admitted. Issue #49 checkpoint `6053582069` records the latest failed grant attempt without consuming the promotion.
+
+Exactly seven mandatory A0 exact paths remain unresolved:
+
+```text
+.github/workflows/nxb-v11-compatibility.yml
+config/nxb-v11-compatibility-policy.json
+config/nxb-v11-validation-toolchain-lock.json
+validation/v11/locks/powershell-modules.lock.json
+validation/v11/locks/validator-py312.lock
+validation/v11/locks/validator-py313.lock
+validation/v11/locks/validator-py314.lock
+```
+
+They are intentionally ordered by authority rather than convenience: runtime-v2 admission -> fresh trusted-preparation successor -> Pester/module and Python child locks -> central validation-toolchain lock -> claim-free compatibility policy -> final workflow. A missing digest at any lower layer blocks the parent. Planning values, public candidate hashes, placeholders, `TBD`, all-zero hashes, historical receipts, or a different machine are not substitutes.
+
+Schema and synthetic-fixture closure is allowed while this runtime evidence is absent because synthetic values are test data and make no support/admission claim. No SYSTEM, scheduled-task, token-substitution, private-desktop, alternate-host, or CI workaround may be used to turn this HOLD into runtime authority.
 
 ## 14. Non-authority rule
 
