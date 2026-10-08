@@ -331,6 +331,60 @@ Describe 'V11 A0 Python dependency authority' {
         }
     }
 
+    It 'rejects junction-backed nested pip modules before executing the entrypoint' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-tree-junction-{0}' -f [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        $bootstrap = Join-Path $work 'pip-bootstrap'
+        $pipRoot = Join-Path $bootstrap 'pip'
+        $distRoot = Join-Path $bootstrap 'pip-26.2.1.dist-info'
+        $external = Join-Path $root 'external'
+        $junction = Join-Path $pipRoot 'rogue'
+        [void][IO.Directory]::CreateDirectory($pipRoot)
+        [void][IO.Directory]::CreateDirectory($distRoot)
+        [void][IO.Directory]::CreateDirectory($external)
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__init__.py') -Text ('__version__ = "26.2.1"' + $script:Lf)
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__main__.py') -Text (
+            'import pip.rogue.payload' + $script:Lf +
+            'print("FAKE_PIP_MAIN")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $external 'payload.py') -Text (
+            'print("EXTERNAL_PIP_JUNCTION_MODULE_EXECUTED")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $distRoot 'METADATA') -Text (
+            'Metadata-Version: 2.1' + $script:Lf +
+            'Name: pip' + $script:Lf +
+            'Version: 26.2.1' + $script:Lf + $script:Lf
+        )
+        $saved = Save-EnvironmentSubset
+        try {
+            $mklink = 'mklink /J "' + $junction + '" "' + $external + '"'
+            & cmd.exe /d /c $mklink | Out-Null
+            $LASTEXITCODE | Should -Be 0
+            Set-HermeticPipEnvironment
+            $run = Invoke-V11Python -Arguments @(
+                '-I', '-S', $script:LauncherPath,
+                '--work-root', $work,
+                '--bootstrap-root', $bootstrap,
+                '--runtime-root', (Split-Path -Parent $script:PythonPath),
+                '--repository-root', $script:RepositoryRoot,
+                '--expected-python-executable', $script:PythonPath,
+                '--expected-version', '26.2.1',
+                '--', '--version'
+            )
+            $run.ExitCode | Should -Be 2
+            $run.Text | Should -Match 'pip package contains non-ordinary entry'
+            $run.Text | Should -Not -Match 'EXTERNAL_PIP_JUNCTION_MODULE_EXECUTED'
+            $run.Text | Should -Not -Match 'FAKE_PIP_MAIN'
+        }
+        finally {
+            Restore-EnvironmentSubset -Saved $saved
+            if (Test-Path -LiteralPath $junction) {
+                & cmd.exe /d /c ('rmdir "' + $junction + '"') | Out-Null
+            }
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'rejects a shadow pip.py module when the owned pip directory is not an importable package' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-shadow-pip-{0}' -f [Guid]::NewGuid().ToString('N'))
         $work = Join-Path $root 'work'

@@ -132,6 +132,28 @@ def _assert_metadata_source_identity(expected: os.stat_result, observed: os.stat
         fail("pip METADATA source file changed during checked read")
 
 
+def assert_owned_pip_tree(pip_root: str) -> None:
+    """Reject linked or non-ordinary source anywhere inside the pip package."""
+    def reject_walk_error(error: OSError) -> None:
+        fail(f"pip package enumeration failed: {error.filename or pip_root}")
+
+    try:
+        for current, directories, files in os.walk(
+            pip_root, topdown=True, followlinks=False, onerror=reject_walk_error
+        ):
+            assert_ordinary_directory(current, "pip package")
+            for name in directories:
+                child = os.path.join(current, name)
+                if is_reparse_or_link(child) or not os.path.isdir(child):
+                    fail(f"pip package contains non-ordinary entry: {child}")
+            for name in files:
+                child = os.path.join(current, name)
+                if is_reparse_or_link(child) or not os.path.isfile(child):
+                    fail(f"pip package contains non-ordinary entry: {child}")
+    except OSError as exc:
+        fail(f"pip package traversal became unavailable: {exc}")
+
+
 def read_dist_info_version(dist_info: str) -> tuple[str, str]:
     metadata = assert_ordinary_file(os.path.join(dist_info, "METADATA"), "pip METADATA")
     try:
@@ -231,6 +253,9 @@ def main() -> int:
     dist_root = os.path.join(bootstrap_root, expected_dist)
     assert_ancestry_ordinary(pip_root, bootstrap_root, "pip package root")
     assert_ancestry_ordinary(dist_root, bootstrap_root, "pip dist-info root")
+    # A clean top-level package does not prove nested import paths are safe:
+    # -I/-S still allows imports from junction-backed pip subpackages.
+    assert_owned_pip_tree(pip_root)
     metadata_name, metadata_version = read_dist_info_version(dist_root)
     if metadata_name.casefold() != "pip" or metadata_version != args.expected_version:
         fail("pip METADATA identity/version drift")
