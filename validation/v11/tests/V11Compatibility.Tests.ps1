@@ -6318,3 +6318,57 @@ print("review ZIP identity check: replaced ZIP rejected, unchanged control passe
         }
     }
 }
+
+Describe 'V11 canonical JSON deep nesting fail-closed (claim-free)' {
+    It 'rejects excessive JSON nesting in all three canonical loaders with structured errors' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-json-depth-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @"
+import importlib.util
+import pathlib
+import sys
+import tempfile
+
+tools = pathlib.Path(sys.argv[1])
+loaders = (
+    ("classify_native_impact.py", "ImpactError"),
+    ("scan_v11_known_errors.py", "ScanError"),
+    ("materialize_python_requirements.py", "ProjectionError"),
+)
+with tempfile.TemporaryDirectory(prefix="nxb-deep-canonical-") as td:
+    base = pathlib.Path(td)
+    ordinary = base / "ordinary.json"
+    ordinary.write_bytes(b'{"x":1}')
+    nested = base / "nested.json"
+    nested.write_bytes(b'{"x":' + b"[" * 1400 + b"0" + b"]" * 1400 + b"}")
+    for filename, error_name in loaders:
+        spec = importlib.util.spec_from_file_location("nxb_depth_" + filename.replace(".", "_"), tools / filename)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        load = module.load_canonical_json
+        args = (str(ordinary),) if filename == "materialize_python_requirements.py" else (str(ordinary), "control")
+        result = load(*args)
+        assert result is not None, filename + " rejected ordinary JSON"
+        bad_args = (str(nested),) if filename == "materialize_python_requirements.py" else (str(nested), "nested")
+        try:
+            load(*bad_args)
+        except getattr(module, error_name) as exc:
+            message = str(exc).lower()
+            assert "nest" in message or "recurs" in message, (filename, message)
+        else:
+            raise AssertionError(filename + " accepted excessive JSON nesting")
+print("V11 canonical JSON nesting: 3 structured rejects and 3 valid controls passed")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $toolsRoot = Join-Path $script:RepositoryRoot 'validation\v11\tools'
+            $run = Invoke-V11Python -Arguments @($probePath, $toolsRoot)
+            if ($run.ExitCode -ne 0) { throw ('Canonical JSON nesting probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '3 structured rejects and 3 valid controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
