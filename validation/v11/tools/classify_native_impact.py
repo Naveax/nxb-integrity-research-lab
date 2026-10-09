@@ -251,7 +251,7 @@ def validate_rule(rule: Any, label: str) -> dict[str, str]:
     if TOKEN_RE.fullmatch(rule_id) is None or TOKEN_RE.fullmatch(reason) is None:
         fail(f"{label} rule/reason syntax invalid")
     match_type = row["match_type"]
-    if match_type not in {"exact", "prefix"}:
+    if not isinstance(match_type, str) or match_type not in {"exact", "prefix"}:
         fail(f"{label}.match_type invalid")
     path = validate_path(
         row["path"],

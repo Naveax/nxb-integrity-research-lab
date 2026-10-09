@@ -6035,6 +6035,46 @@ print("known-error scanner JSON types: 6 structured negatives and 2 valid contro
 }
 
 
+Describe 'V11 native-impact policy rule match-type JSON scalar validation (claim-free)' {
+    It 'rejects non-string match_type objects before membership tests' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-rule-type-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact_rule_type",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+rule={"rule_id":"rule_safe","match_type":"exact","path":"docs/example.py","reason_code":"test_reason"}
+for invalid in (["exact"],{"value":"exact"},True,None):
+    bad=dict(rule,match_type=invalid)
+    try:
+        mod.validate_rule(bad,"policy.native_roots[0]")
+    except mod.ImpactError as exc:
+        assert "match_type" in str(exc), str(exc)
+    else:
+        raise AssertionError("invalid JSON rule match_type accepted: "+repr(invalid))
+valid_exact=mod.validate_rule(rule,"policy.native_roots[0]")
+assert valid_exact["match_type"]=="exact"
+valid_prefix=mod.validate_rule(dict(rule,match_type="prefix",path="docs/safe/"),"policy.native_roots[0]")
+assert valid_prefix["match_type"]=="prefix" and valid_prefix["path"]=="docs/safe/"
+print("native-impact match_type: four invalid JSON values rejected; exact/prefix controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact rule match-type probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'four invalid JSON values rejected; exact/prefix controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
