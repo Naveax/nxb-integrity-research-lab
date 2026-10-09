@@ -278,7 +278,12 @@ def main() -> int:
     # newly substituted junction/symlink ancestor before exclusive creation.
     assert_output_path(output)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    descriptor = os.open(output, flags, 0o600)
+    try:
+        descriptor = os.open(output, flags, 0o600)
+    except FileExistsError:
+        fail(f"output already exists: {output}")
+    except OSError:
+        fail(f"output became unavailable during exclusive creation: {output}")
     try:
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             descriptor = -1
