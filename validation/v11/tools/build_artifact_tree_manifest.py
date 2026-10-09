@@ -91,6 +91,9 @@ def validate_relative_path(relative_path: str) -> str:
         fail(f"path is not NFC-normalized: {relative_path!r}")
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in relative_path):
         fail(f"path contains control character: {relative_path!r}")
+    # Strict UTF-8 manifests cannot serialize isolated UTF-16 surrogates.
+    if any(0xD800 <= ord(ch) <= 0xDFFF for ch in relative_path):
+        fail("path contains invalid Unicode surrogate")
     parts = relative_path.split("/")
     if any(part in ("", ".", "..") for part in parts):
         fail(f"path contains empty/dot/traversal segment: {relative_path!r}")

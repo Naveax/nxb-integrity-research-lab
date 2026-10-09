@@ -66,6 +66,10 @@ def _assert_nfc(value: str, label: str) -> None:
         fail(f"{label} is not NFC-normalized")
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value):
         fail(f"{label} contains a control character")
+    # Escaped JSON surrogates survive json.loads but are not UTF-8
+    # scalar values. Reject before canonical serialization.
+    if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+        fail(f"{label} contains invalid Unicode surrogate")
 
 
 def _walk_strings(value: Any, label: str = "$") -> None:
