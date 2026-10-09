@@ -604,6 +604,11 @@ def main() -> int:
         parsed_policy["limits"]["max_graph_nodes"],
     )
     native_closure_casefold = {path.casefold() for path in native_closure}
+    # Preserve the reason provenance of a graph target even when the
+    # changed-file spelling differs only by Windows case equivalence.
+    edge_reasons_casefold: dict[str, set[str]] = defaultdict(set)
+    for target, codes in edge_reasons.items():
+        edge_reasons_casefold[target.casefold()].update(codes)
 
     changed_records = sorted(
         changes,
@@ -667,7 +672,7 @@ def main() -> int:
             if rank[impact_class] > rank[highest]:
                 highest = impact_class
             reasons.update(path_reasons)
-            reasons.update(edge_reasons.get(path, ()))
+            reasons.update(edge_reasons_casefold.get(path.casefold(), ()))
             endpoint_results.append(
                 {
                     "side": side,
