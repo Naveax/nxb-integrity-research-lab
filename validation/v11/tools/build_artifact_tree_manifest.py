@@ -19,7 +19,7 @@ CONTRACT_ID = "nxb-artifact-tree-manifest-v1"
 ROOT_ROLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 WINDOWS_RESERVED = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
     # Win32 also reserves ISO-8859-1 superscript 1/2/3 with COM and LPT.

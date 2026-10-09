@@ -84,6 +84,8 @@ def validate_path(value: Any, label: str, *, prefix: bool = False) -> str:
     for part in parts:
         if ":" in part or part.endswith((" ", ".")):
             fail(f"{label} contains ADS or trailing-dot/space segment")
+        if any(ch in '<>"|' for ch in part):
+            fail(f"{label} contains Windows forbidden character")
         if part.split(".", 1)[0].upper() in WINDOWS_RESERVED_STEMS:
             fail(f"{label} contains reserved Windows device segment")
     if not prefix and path.endswith("/"):

@@ -4963,6 +4963,83 @@ print("superscript COM/LPT device aliases: 18 negatives and 4 ordinary controls 
 }
 
 
+Describe 'V11 portable Windows path policy alignment (claim-free)' {
+    It 'rejects forbidden Win32 punctuation in native-impact graph paths' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-winpath-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for symbol in '<>"|':
+    for path in (f'leaf{symbol}name.py',f'src/leaf{symbol}name.py',f'src{symbol}bad/safe.py'):
+        try:
+            module.validate_path(path,"fixture.path")
+        except module.ImpactError as exc:
+            assert "Windows forbidden character" in str(exc),f"{path!r}: {exc}"
+        else:
+            raise AssertionError(f'Win32 forbidden filename character accepted in graph: {path!r}')
+for path in ('src/normal_file.py','src/normal+file.py','src/a(b).py','src/a[b].py'):
+    if '[' in path:
+        try:
+            module.validate_path(path,"fixture.path")
+        except module.ImpactError:
+            continue
+        raise AssertionError("pre-existing wildcard restriction was lost")
+    assert module.validate_path(path,"fixture.path")==path
+print("native-impact Win32 punctuation: 12 forbidden paths and 4 controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact Win32 path probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '12 forbidden paths and 4 controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects console pseudo-device names in artifact manifest paths' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-console-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for name in ("CONIN$","CONOUT$"):
+    for path in (name,name.lower()+".txt","nested/"+name+".json"):
+        try:
+            module.validate_relative_path(path)
+        except module.ManifestError as exc:
+            assert "reserved Windows device" in str(exc),f"{path!r}: {exc}"
+        else:
+            raise AssertionError(f'Win32 reserved console pseudo-device accepted: {path!r}')
+for path in ("CONSOLE.txt","CONINPUT.txt","nested/CONOUT2.txt"):
+    assert module.validate_relative_path(path)==path
+print("manifest console pseudo-devices: 6 forbidden paths and 3 controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Manifest console device path probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '6 forbidden paths and 3 controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
