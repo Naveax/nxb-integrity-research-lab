@@ -5977,6 +5977,64 @@ print("scanner output faults: 2 structured rejects, competitor bytes preserved, 
 }
 
 
+Describe 'V11 known-error scanner JSON array element types (claim-free)' {
+    It 'rejects nested JSON values in policy lists and scan classes via ScanError' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scanner-list-types-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import copy
+import importlib.util
+import json
+import sys
+spec=importlib.util.spec_from_file_location("nxb_scan_types",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+policy={"authority":mod.POLICY_AUTHORITY,"schema_version":1,"rules":[{
+"id":"NXB-V11-ERR-001","description":"sample signature","applies_to":["executable_python"],
+"regex":"TODO","flags":["IGNORECASE"],"severity":"error","failure_override_permitted":False}]}
+request={"authority":mod.INPUT_AUTHORITY,"schema_version":1,"repository":"Naveax/nxb-integrity-research-lab",
+"entries":[{"path":"docs/example.py","validation_class":"executable_python"}]}
+assert len(mod.validate_policy(policy))==1
+assert len(mod.validate_input(request))==1
+bad_count=0
+def rejects(run,field):
+    global bad_count
+    try:
+        run()
+    except mod.ScanError as error:
+        assert field in str(error), str(error)
+        bad_count+=1
+    else:
+        raise AssertionError("unhashable JSON value bypassed structured scanner error: "+field)
+for field in ("applies_to","flags"):
+    for candidate in (["executable_python",["unexpected"]] if field=="applies_to" else ["IGNORECASE",["unexpected"]],
+                      [{"nested":"object"}]):
+        row=copy.deepcopy(policy)
+        row["rules"][0][field]=candidate
+        rejects(lambda row=row:mod.validate_policy(row),field)
+for candidate in (["executable_python"],{"unexpected":"class"}):
+    entry=copy.deepcopy(request)
+    entry["entries"][0]["validation_class"]=candidate
+    rejects(lambda entry=entry:mod.validate_input(entry),"validation_class")
+assert bad_count==6
+assert json.loads(json.dumps(request))==request
+print("known-error scanner JSON types: 6 structured negatives and 2 valid controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Known-error scanner JSON type probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '6 structured negatives and 2 valid controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

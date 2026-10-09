@@ -293,6 +293,8 @@ def validate_policy(value: dict[str, Any]) -> list[dict[str, Any]]:
         applies = row["applies_to"]
         if not isinstance(applies, list) or not applies:
             fail(f"policy.rules[{index}].applies_to must be non-empty")
+        if any(not isinstance(item, str) for item in applies):
+            fail(f"policy.rules[{index}].applies_to must contain only strings")
         if len(applies) != len(set(applies)):
             fail(f"policy.rules[{index}].applies_to contains duplicates")
         if any(x not in VALIDATION_CLASSES for x in applies):
@@ -300,7 +302,11 @@ def validate_policy(value: dict[str, Any]) -> list[dict[str, Any]]:
 
         pattern = validate_string(row["regex"], f"policy.rules[{index}].regex")
         flags = row["flags"]
-        if not isinstance(flags, list) or len(flags) != len(set(flags)):
+        if not isinstance(flags, list):
+            fail(f"policy.rules[{index}].flags invalid")
+        if any(not isinstance(flag, str) for flag in flags):
+            fail(f"policy.rules[{index}].flags must contain only strings")
+        if len(flags) != len(set(flags)):
             fail(f"policy.rules[{index}].flags invalid")
         if any(flag not in FLAG_MAP for flag in flags):
             fail(f"policy.rules[{index}].flags contains unknown flag")
@@ -344,6 +350,8 @@ def validate_input(value: dict[str, Any]) -> list[dict[str, str]]:
         row = exact_keys(item, {"path", "validation_class"}, f"input.entries[{index}]")
         path = validate_repo_path(row["path"], f"input.entries[{index}].path")
         validation_class = row["validation_class"]
+        if not isinstance(validation_class, str):
+            fail(f"input.entries[{index}].validation_class must be a string")
         if validation_class not in VALIDATION_CLASSES:
             fail(f"input.entries[{index}].validation_class unknown")
         if path in seen_exact:
