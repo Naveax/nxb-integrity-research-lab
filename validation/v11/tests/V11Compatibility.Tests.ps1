@@ -5977,6 +5977,53 @@ print("scanner output faults: 2 structured rejects, competitor bytes preserved, 
 }
 
 
+Describe 'V11 native-impact changed-path JSON field element types (claim-free)' {
+    It 'rejects unhashable change and file types using structured ImpactError' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-change-types-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import copy
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact_types",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+valid={"change_type":"modified","old_path":"docs/existing.py","new_path":"docs/existing.py",
+"old_type":"regular","new_type":"regular"}
+assert mod.validate_change(valid,"probe")["change_type"]=="modified"
+added={"change_type":"added","old_path":None,"new_path":"docs/new.py",
+"old_type":"missing","new_type":"regular"}
+assert mod.validate_change(added,"probe")["new_path"]=="docs/new.py"
+negative_count=0
+for field in ("change_type","old_type","new_type"):
+    for invalid in (["modified"],{"value":"modified"}):
+        row=copy.deepcopy(valid)
+        row[field]=invalid
+        try:
+            mod.validate_change(row,"probe")
+        except mod.ImpactError as error:
+            assert field in str(error) or "file type" in str(error),str(error)
+        else:
+            raise AssertionError("unhashable JSON "+field+" escaped structured ImpactError")
+        negative_count+=1
+assert negative_count==6
+print("native-impact change types: 6 malformed JSON scalar rejects and 2 valid shapes passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact change-type probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '6 malformed JSON scalar rejects and 2 valid shapes passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 known-error scanner JSON array element types (claim-free)' {
     It 'rejects nested JSON values in policy lists and scan classes via ScanError' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scanner-list-types-' + [Guid]::NewGuid().ToString('N'))
