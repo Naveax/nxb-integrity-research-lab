@@ -5230,6 +5230,49 @@ print("native-impact case-fold dependency closure: aliased target native, unrela
 }
 
 
+Describe 'V11 native-impact Windows case-fold native-root graph seeds (claim-free)' {
+    It 'preserves native transitive impact when an edge source differs in case from a native root' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-root-casefold-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+policy=module.validate_policy(json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")))
+native=policy["rules"]["native_roots"]
+source="VALIDATION/V11/TOOLS/Native.PY"
+target="docs/hosted-authority-fixture/leaf.py"
+edges=[(source,target,"native_alias_edge")]
+visited,_=module.closure_from_native(native,edges,20)
+assert source in visited and target in visited, f"native root case alias missed graph seed or target: {visited!r}"
+assert module.classify_path(target,policy,visited)[0]=="native_required"
+kind,reasons,unmatched=module.classify_path(source,policy,visited)
+assert kind=="native_required" and not unmatched
+assert "v11-tool-root" in reasons,f"native root case alias missed authority rule: {reasons!r}"
+ordinary="docs/hosted-authority-fixture/independent.py"
+assert module.classify_path(ordinary,policy,visited)[0]=="hosted_authority_only"
+print("native-root Windows case-fold seed: source + target native, hosted unrelated control passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $policy = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $policy)
+            if ($run.ExitCode -ne 0) { throw ('Native root case-fold seed probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'source \+ target native, hosted unrelated control passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
