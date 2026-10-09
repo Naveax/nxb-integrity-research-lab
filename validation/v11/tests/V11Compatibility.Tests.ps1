@@ -4925,6 +4925,44 @@ print("Win32 invalid characters: 18 forbidden paths and 4 ordinary controls pass
 }
 
 
+Describe 'V11 artifact manifest Windows superscript device-name aliases (claim-free)' {
+    It 'rejects COM and LPT superscript one two three aliases at any path depth' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-superscript-devices-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for prefix in ("COM","LPT"):
+    for digit in ("\u00b9","\u00b2","\u00b3"):
+        for path in (prefix+digit,prefix.lower()+digit+".tar.gz","nested/"+prefix+digit+".bin"):
+            try:
+                module.validate_relative_path(path)
+            except module.ManifestError as exc:
+                assert "reserved Windows device" in str(exc),f"{path!r}: {exc}"
+            else:
+                raise AssertionError(f"reserved superscript Windows device name accepted: {path!r}")
+for path in ("COM10.txt","COM\u2074.txt","nested/LPT10.data","ordinary/\u00b9.txt"):
+    assert module.validate_relative_path(path)==path
+print("superscript COM/LPT device aliases: 18 negatives and 4 ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Manifest superscript Windows device alias probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '18 negatives and 4 ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
