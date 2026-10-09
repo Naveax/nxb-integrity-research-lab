@@ -5612,6 +5612,63 @@ Describe 'V11 artifact manifest dangling junction output rejection (claim-free)'
 }
 
 
+Describe 'V11 Python requirements exclusive-create race handling (claim-free)' {
+    It 'rejects a competing requirements output with a structured ProjectionError and preserves its bytes' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-projection-open-race-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import sys
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location("nxb_projection_race",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+scratch=Path(sys.argv[2])
+work=scratch/"work"
+work.mkdir()
+lock=scratch/"lock.json"
+lock.write_bytes(b"{}")
+package=[{"normalized_name":"sample","version":"1.0","wheel_sha256":"a"*64}]
+module.validate_lock=lambda _:package
+module.load_canonical_json=lambda _: {}
+normal=work/"ordinary.txt"
+sys.argv=[sys.argv[1],"--lock",str(lock),"--work-root",str(work),"--output",str(normal)]
+assert module.main()==0
+assert normal.read_bytes().startswith(b"sample==1.0")
+contested=work/"contested.txt"
+sys.argv[-1]=str(contested)
+original_open=os.open
+def competing_open(path,flags,*args,**kwargs):
+    if os.path.abspath(str(path))==os.path.abspath(str(contested)):
+        contested.write_bytes(b"COMPETITOR-OWNED")
+    return original_open(path,flags,*args,**kwargs)
+try:
+    with patch.object(module.os,"open",side_effect=competing_open):
+        module.main()
+except module.ProjectionError as exc:
+    assert "output" in str(exc).lower(),str(exc)
+else:
+    raise AssertionError("projection accepted competing output during exclusive create")
+assert contested.read_bytes()==b"COMPETITOR-OWNED","projection overwrote competitor-owned output"
+print("Python requirements exclusive create: structured race rejection, preserved bytes and ordinary projection passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Python projection exclusive create race probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'structured race rejection, preserved bytes and ordinary projection passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
