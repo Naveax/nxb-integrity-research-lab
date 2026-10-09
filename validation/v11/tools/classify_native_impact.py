@@ -533,12 +533,22 @@ def classify_path(
     path: str,
     policy: dict[str, Any],
     native_closure: set[str],
+    native_closure_casefold: set[str] | None = None,
 ) -> tuple[str, list[str], bool]:
     for rule in policy["rules"]["native_roots"]:
         if rule_match(path, rule):
             return "native_required", [rule["reason_code"], rule["rule_id"]], False
 
-    if path in native_closure:
+    # On Windows a case-only alias denotes the same dependency. Never
+    # downgrade the aliased native target to a lower-trust hosted class.
+    # The caller supplies the precomputed case-folded set for bounded graph
+    # processing; direct classifier callers get the same semantics.
+    folded = (
+        native_closure_casefold
+        if native_closure_casefold is not None
+        else {native_path.casefold() for native_path in native_closure}
+    )
+    if path in native_closure or path.casefold() in folded:
         return "native_required", ["native_dependency_closure"], False
 
     for rule in policy["rules"]["hosted_authority_only_roots"]:
@@ -585,6 +595,7 @@ def main() -> int:
         edge_set,
         parsed_policy["limits"]["max_graph_nodes"],
     )
+    native_closure_casefold = {path.casefold() for path in native_closure}
 
     changed_records = sorted(
         changes,
@@ -635,6 +646,7 @@ def main() -> int:
                 path,
                 parsed_policy,
                 native_closure,
+                native_closure_casefold,
             )
             if file_type in {"symlink", "submodule"}:
                 impact_class = "native_required"

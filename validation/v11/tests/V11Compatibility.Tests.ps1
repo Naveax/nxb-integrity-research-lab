@@ -5189,6 +5189,47 @@ print("native-impact Windows case-fold graph transit: 2 hops preserved, unrelate
 }
 
 
+Describe 'V11 native-impact Windows case-fold dependency closure (claim-free)' {
+    It 'does not downgrade a case-aliased native dependency into hosted authority metadata' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-casefold-closure-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+native=[{"match_type":"prefix","path":"validation/v11/tools/","reason_code":"native_tool","rule_id":"native-tool"}]
+hosted=[{"match_type":"prefix","path":"docs/hosted-authority-fixture/","reason_code":"hosted_fixture","rule_id":"hosted-fixture"}]
+policy={"rules":{"native_roots":native,"hosted_authority_only_roots":hosted,"non_authority_metadata_roots":[]}}
+source="validation/v11/tools/native.py"
+target="docs/hosted-authority-fixture/Helper.py"
+closure,reasons=module.closure_from_native(native,[(source,target,"source_dependency")],20)
+assert target in closure
+assert module.classify_path(target,policy,closure)[0]=="native_required"
+case_alias="docs/hosted-authority-fixture/helper.py"
+assert case_alias not in closure
+actual=module.classify_path(case_alias,policy,closure)[0]
+assert actual=="native_required",f"native dependency downgraded through Windows case alias: {actual}"
+safe="docs/hosted-authority-fixture/independent.py"
+assert module.classify_path(safe,policy,closure)[0]=="hosted_authority_only"
+print("native-impact case-fold dependency closure: aliased target native, unrelated hosted control retained")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact case-fold closure probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'aliased target native, unrelated hosted control retained'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
