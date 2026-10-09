@@ -5143,6 +5143,52 @@ print("native-impact lower-trust directory prefix: 2 unsafe policies rejected, n
 }
 
 
+Describe 'V11 native-impact Windows case-fold graph traversal (claim-free)' {
+    It 'propagates native classification over multi-hop case-aliased dependency sources' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-casefold-graph-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+native=[{"match_type":"prefix","path":"validation/v11/tools/","reason_code":"native_tool","rule_id":"native-tool"}]
+hosted=[{"match_type":"prefix","path":"docs/hosted-authority-fixture/","reason_code":"hosted_fixture","rule_id":"hosted-fixture"}]
+policy={"rules":{"native_roots":native,"hosted_authority_only_roots":hosted,"non_authority_metadata_roots":[]}}
+root="validation/v11/tools/native.py"
+first="docs/hosted-authority-fixture/Helper.py"
+middle="docs/hosted-authority-fixture/helper.py"
+downstream="docs/hosted-authority-fixture/leaf.py"
+edges=[(root,first,"first_hop"),(middle,downstream,"second_hop")]
+visited,reasons=module.closure_from_native(native,edges,10)
+assert root in visited and first in visited
+assert downstream in visited,f"Windows case-fold transit failed to propagate native dependency: {sorted(visited)!r}"
+assert module.classify_path(downstream,policy,visited)[0]=="native_required"
+assert module.classify_path("docs/hosted-authority-fixture/unrelated.py",policy,visited)[0]=="hosted_authority_only"
+try:
+    module.closure_from_native(native,edges,2)
+except module.ImpactError as exc:
+    assert "max_graph_nodes" in str(exc),str(exc)
+else:
+    raise AssertionError("multi-hop case-fold traversal bypassed graph node limit")
+print("native-impact Windows case-fold graph transit: 2 hops preserved, unrelated hosted and graph budget controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact case-fold graph transit probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '2 hops preserved, unrelated hosted and graph budget controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

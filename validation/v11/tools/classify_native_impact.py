@@ -496,7 +496,10 @@ def closure_from_native(
     adjacency: dict[str, set[str]] = defaultdict(set)
     reasons: dict[str, set[str]] = defaultdict(set)
     for source, target, reason in edges:
-        adjacency[source].add(target)
+        # Preserve canonical edge identity, but traverse Windows-equivalent
+        # source aliases as one dependency node. A case-only intermediary
+        # must not break a native-required multi-hop dependency chain.
+        adjacency[source.casefold()].add(target)
         reasons[target].add(reason)
 
     seeds = {
@@ -517,7 +520,7 @@ def closure_from_native(
     visited = set(seeds)
     while queue:
         node = queue.popleft()
-        for target in sorted(adjacency.get(node, ())):
+        for target in sorted(adjacency.get(node.casefold(), ())):
             if target not in visited:
                 visited.add(target)
                 if len(visited) > max_nodes:
