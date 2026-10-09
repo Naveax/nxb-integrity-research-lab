@@ -5433,6 +5433,55 @@ print("native-impact case-fold edge reason provenance: exact and alias reasons r
 }
 
 
+Describe 'V11 Python lock and manifest Unicode scalar validation (claim-free)' {
+    It 'rejects unpaired surrogate strings before source manifest or lock canonical bytes' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-python-tree-scalars-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+from pathlib import Path
+import sys
+def load(label,path):
+    spec=importlib.util.spec_from_file_location(label,path)
+    module=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+lock=load("nxb_lock_materializer",sys.argv[1])
+manifest=load("nxb_artifact_manifest",sys.argv[2])
+scratch=Path(sys.argv[3])
+def rejects(func,error_type):
+    try:
+        func()
+    except error_type as exc:
+        assert "surrogate" in str(exc).lower(),str(exc)
+    else:
+        raise AssertionError("invalid Unicode surrogate passed ordinary validation")
+for scalar in ("\ud800","\udfff"):
+    rejects(lambda scalar=scalar: lock._assert_nfc(scalar,"lock.label"),lock.ProjectionError)
+    rejects(lambda scalar=scalar: manifest.validate_relative_path("docs/"+scalar+"/test.py"),manifest.ManifestError)
+serialized=scratch/"malformed.json"
+serialized.write_bytes(b'{"free":"\\ud800"}')
+rejects(lambda:lock.load_canonical_json(str(serialized)),lock.ProjectionError)
+assert lock._assert_nfc("熊猫😀","lock.label") is None
+assert manifest.validate_relative_path("docs/熊猫/😀.py")=="docs/熊猫/😀.py"
+print("Python lock and manifest Unicode scalars: 5 negatives and 2 valid controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $lockTool = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $manifestTool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $lockTool, $manifestTool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Python lock/manifest Unicode scalar probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '5 negatives and 2 valid controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact unpaired Unicode surrogate validation (claim-free)' {
     It 'rejects invalid UTF-8 scalar strings with a structured ImpactError before canonical output' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-surrogate-' + [Guid]::NewGuid().ToString('N'))
