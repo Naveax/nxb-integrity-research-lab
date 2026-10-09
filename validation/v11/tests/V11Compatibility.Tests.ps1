@@ -5669,6 +5669,68 @@ print("Python requirements exclusive create: structured race rejection, preserve
 }
 
 
+Describe 'V11 Python output durability failure handling (claim-free)' {
+    It 'rejects manifest and requirements fsync faults with structured errors and no success result' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-python-output-sync-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import sys
+from unittest.mock import patch
+def load(label,path):
+    spec=importlib.util.spec_from_file_location(label,path)
+    module=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+manifest=load("nxb_output_manifest",sys.argv[1])
+projector=load("nxb_output_projector",sys.argv[2])
+scratch=Path(sys.argv[3])
+source=scratch/"source"
+source.mkdir()
+(source/"item.bin").write_bytes(b"manifest-source")
+work=scratch/"work"
+work.mkdir()
+lock=scratch/"lock.json"
+lock.write_bytes(b"{}")
+projector.load_canonical_json=lambda _: {}
+projector.validate_lock=lambda _:[{"normalized_name":"sample","version":"1.0","wheel_sha256":"a"*64}]
+def run(label,mod,cli_args,error_type):
+    parent=work if label=="projection" else scratch
+    normal=parent/(label+"-normal.json")
+    sys.argv=[sys.argv[0],*cli_args,str(normal)]
+    assert mod.main()==0, f"{label}: ordinary output failed"
+    assert normal.is_file(),label
+    contested=parent/(label+"-unsynced.json")
+    sys.argv[-1]=str(contested)
+    with patch.object(mod.os,"fsync",side_effect=OSError(5,"simulated durability failure")):
+        try:
+            mod.main()
+        except error_type as exc:
+            assert "sync" in str(exc).lower() or "write" in str(exc).lower(),str(exc)
+        else:
+            raise AssertionError(f"{label}: fsync fault bypassed structured fail-closed exception")
+run("manifest",manifest,["--root",str(source),"--root-role","probe","--output"],manifest.ManifestError)
+run("projection",projector,["--lock",str(lock),"--work-root",str(work),"--output"],projector.ProjectionError)
+print("Python output durability: 2 fsync negative cases and 2 ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $manifest = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $projector = Join-Path $script:RepositoryRoot 'validation\v11\tools\materialize_python_requirements.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $manifest, $projector, $root)
+            if ($run.ExitCode -ne 0) { throw ('Python output durability fault probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '2 fsync negative cases and 2 ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
