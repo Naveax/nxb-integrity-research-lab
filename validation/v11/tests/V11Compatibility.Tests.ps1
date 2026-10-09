@@ -6438,3 +6438,47 @@ print("V11 schema version: 4 boolean rejects and 4 valid integer controls passed
         }
     }
 }
+Describe 'V11 known-error scanner regex compilation recursion fail-closed (claim-free)' {
+    It 'rejects excessively nested valid syntax with structured ScanError' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-regex-depth-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @"
+import copy
+import importlib.util
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+tool = root / "validation" / "v11" / "tools" / "scan_v11_known_errors.py"
+spec = importlib.util.spec_from_file_location("nxb_scanner_regex_depth", tool)
+scanner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(scanner)
+policy, _ = scanner.load_canonical_json(
+    str(root / "config" / "nxb-v11-known-error-signatures.json"), "policy"
+)
+assert len(scanner.validate_policy(copy.deepcopy(policy))) == len(policy["rules"])
+ordinary = copy.deepcopy(policy)
+ordinary["rules"][0]["regex"] = "(" * 25 + "a" + ")" * 25
+assert scanner.validate_policy(ordinary)[0]["regex"].fullmatch("a") is not None
+invalid = copy.deepcopy(policy)
+invalid["rules"][0]["regex"] = "(" * 1200 + "a" + ")" * 1200
+try:
+    scanner.validate_policy(invalid)
+except scanner.ScanError as exc:
+    assert "regex" in str(exc), str(exc)
+else:
+    raise AssertionError("excessive regex nesting was accepted")
+print("known-error regex compilation: deep nested rejected, ordinary and grouped controls passed")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Known-error regex compile probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'deep nested rejected, ordinary and grouped controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}

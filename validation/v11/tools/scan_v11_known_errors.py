@@ -325,7 +325,7 @@ def validate_policy(value: dict[str, Any]) -> list[dict[str, Any]]:
             options |= FLAG_MAP[flag]
         try:
             compiled = re.compile(pattern, options)
-        except re.error as exc:
+        except (re.error, RecursionError, OverflowError) as exc:
             fail(f"policy.rules[{index}].regex invalid: {exc}")
         parsed.append(
             {
