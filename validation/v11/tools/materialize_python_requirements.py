@@ -278,7 +278,8 @@ def validate_lock(document: dict[str, Any]) -> list[dict[str, Any]]:
     if type(root["schema_version"]) is not int or root["schema_version"] != 1:
         fail("lock.schema_version must equal integer 1")
     assert_string(root["python_full_version"], "lock.python_full_version", VERSION_RE)
-    if root["architecture"] not in {"x64", "arm64"}:
+    architecture = root["architecture"]
+    if not isinstance(architecture, str) or architecture not in {"x64", "arm64"}:
         fail("lock.architecture must be x64 or arm64")
     assert_string(root["platform_tag"], "lock.platform_tag", TAG_RE)
     assert_string(root["generation_python_version"], "lock.generation_python_version", VERSION_RE)
