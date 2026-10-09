@@ -367,10 +367,15 @@ def validate_change(row: Any, label: str) -> dict[str, Any]:
     expected = {"change_type", "old_path", "new_path", "old_type", "new_type"}
     item = exact_keys(row, expected, label)
     change_type = item["change_type"]
-    if change_type not in CHANGE_TYPES:
+    if not isinstance(change_type, str) or change_type not in CHANGE_TYPES:
         fail(f"{label}.change_type invalid")
     old_type, new_type = item["old_type"], item["new_type"]
-    if old_type not in FILE_TYPES or new_type not in FILE_TYPES:
+    if (
+        not isinstance(old_type, str)
+        or not isinstance(new_type, str)
+        or old_type not in FILE_TYPES
+        or new_type not in FILE_TYPES
+    ):
         fail(f"{label} file type invalid")
     old_path = (
         None
