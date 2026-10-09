@@ -290,6 +290,8 @@ def main() -> int:
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
+    except OSError:
+        fail(f"output write or sync failed: {output}")
     finally:
         if descriptor >= 0:
             os.close(descriptor)
