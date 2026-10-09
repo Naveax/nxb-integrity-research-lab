@@ -5530,6 +5530,59 @@ print("native-impact Unicode scalar guard: 7 invalid string checks rejected; non
 }
 
 
+Describe 'V11 artifact manifest exclusive-create race handling (claim-free)' {
+    It 'returns a structured error if the destination is occupied after the last preflight' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-open-race-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import os
+from pathlib import Path
+import sys
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location("nxb_manifest_race",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+scratch=Path(sys.argv[2])
+source=scratch/"source"
+source.mkdir()
+(source/"content.txt").write_text("source bytes",encoding="utf-8")
+normal=scratch/"normal.json"
+sys.argv=[sys.argv[1],"--root",str(source),"--root-role","probe","--output",str(normal)]
+assert module.main()==0
+assert normal.is_file()
+target=scratch/"contested.json"
+sys.argv[-1]=str(target)
+original_open=os.open
+def competing_create(path,flags,*args,**kwargs):
+    if os.path.abspath(str(path))==os.path.abspath(str(target)):
+        target.write_bytes(b"COMPETITOR-OWNED")
+    return original_open(path,flags,*args,**kwargs)
+try:
+    with patch.object(module.os,"open",side_effect=competing_create):
+        module.main()
+except module.ManifestError as exc:
+    assert "output" in str(exc).lower(),str(exc)
+else:
+    raise AssertionError("manifest did not fail closed on exclusive-create race")
+assert target.read_bytes()==b"COMPETITOR-OWNED","manifest overwrote competitor output"
+print("artifact manifest exclusive create: structured race rejection and ordinary output preserved")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Artifact manifest exclusive-create probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'structured race rejection and ordinary output preserved'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
