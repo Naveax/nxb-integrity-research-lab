@@ -6636,3 +6636,45 @@ print("predecessor NUnit oversized decimal field rejected, ordinary count accept
         }
     }
 }
+Describe 'V11 predecessor strict JSON nested text validation (claim-free)' {
+    It 'fail-closes deep parseable JSON nesting without leaking RecursionError' {
+        $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pred-json-depth-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($outer)
+        $probePath = Join-Path $outer 'probe.py'
+        $probe = @"
+import importlib.util
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location(
+    "nxb_pred_json_depth",
+    root / "validation" / "v11" / "tools" / "validate_v11_compatibility.py",
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+assert mod._predecessor_strict_json(b'{"findings":[]}', "known-error-scan.json") == {"findings": []}
+depth = 1010
+payload = ('{"findings":' + '{"nested":' * depth + '[]' + '}' * depth + '}').encode("utf-8")
+json.loads(payload)
+try:
+    mod._predecessor_strict_json(payload, "known-error-scan.json")
+except mod.PreflightError as exc:
+    assert "nesting" in str(exc), str(exc)
+else:
+    raise AssertionError("deeply nested JSON was accepted unexpectedly")
+print("predecessor strict JSON: deep parser-accepted nesting rejected through PreflightError")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Deep JSON strict parsing probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'deep parser-accepted nesting rejected through PreflightError'
+        }
+        finally {
+            Remove-Item -LiteralPath $outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}

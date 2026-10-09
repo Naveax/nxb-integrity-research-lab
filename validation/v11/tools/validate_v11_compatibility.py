@@ -1153,7 +1153,10 @@ def _predecessor_strict_json(content: bytes, name: str) -> dict[str, Any]:
         fail(f"{name}: invalid JSON")
     if not isinstance(document, dict):
         fail(f"{name}: JSON root must be an object")
-    _check_strings(document)
+    try:
+        _check_strings(document)
+    except RecursionError:
+        fail(f"{name}: JSON nesting invalid")
     return document
 
 
