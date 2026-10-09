@@ -99,6 +99,10 @@ def validate_relative_path(relative_path: str) -> str:
             fail(f"path has trailing space/dot segment: {relative_path!r}")
         if ":" in part:
             fail(f"path has ADS/colon segment: {relative_path!r}")
+        # Portable Windows manifests must not accept Win32-forbidden file
+        # punctuation, even if assembled or validated on a non-Windows host.
+        if any(character in '<>"|?*' for character in part):
+            fail(f"path has Windows forbidden character: {relative_path!r}")
         stem = part.split(".", 1)[0].upper()
         if stem in WINDOWS_RESERVED:
             fail(f"path has reserved Windows device segment: {relative_path!r}")

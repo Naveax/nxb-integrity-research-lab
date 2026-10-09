@@ -4888,6 +4888,43 @@ print("artifact manifest nested source ancestry: late junction rejected, ordinar
 }
 
 
+Describe 'V11 artifact manifest portable Windows forbidden characters (claim-free)' {
+    It 'rejects Win32 forbidden filename punctuation in nested and leaf components' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-win32-invalid-char-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_manifest",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for symbol in '<>"|?*':
+    for path in (f'leaf{symbol}name.txt',f'nested/leaf{symbol}name.txt',f'folder{symbol}name/ordinary.txt'):
+        try:
+            module.validate_relative_path(path)
+        except module.ManifestError as exc:
+            assert "Windows forbidden character" in str(exc),f"{path!r}: {exc}"
+        else:
+            raise AssertionError(f'Win32 forbidden filename character accepted: {path!r}')
+for path in ("file+name.txt","file_name.txt","nested/file(name).txt","nested/file[name].json"):
+    assert module.validate_relative_path(path)==path
+print("Win32 invalid characters: 18 forbidden paths and 4 ordinary controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Manifest Win32 invalid filename characters probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '18 forbidden paths and 4 ordinary controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact manifest Windows superscript device-name aliases (claim-free)' {
     It 'rejects COM and LPT superscript one two three aliases at any path depth' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-superscript-devices-' + [Guid]::NewGuid().ToString('N'))
