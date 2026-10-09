@@ -5320,6 +5320,64 @@ print("native-impact file/directory alias: 3 same-tree negatives and 2 valid con
 }
 
 
+Describe 'V11 native-impact case-fold dependency reason provenance (claim-free)' {
+    It 'preserves edge reason codes when changed paths use a Windows-equivalent spelling' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-alias-reason-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+from pathlib import Path
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+scratch=Path(sys.argv[3])
+source="validation/v11/tools/graph_anchor.py"
+target="docs/hosted-authority-fixture/Helper.py"
+reason="case_alias_dependency"
+for index,(changed,expected_class,expect_reason) in enumerate((
+    (target,"native_required",True),
+    ("docs/hosted-authority-fixture/helper.py","native_required",True),
+    ("docs/hosted-authority-fixture/unrelated.py","hosted_authority_only",False),
+)):
+    input_obj={
+        "authority":module.INPUT_AUTHORITY,"schema_version":1,
+        "repository":"Naveax/nxb-integrity-research-lab",
+        "base_sha":"a"*40,"head_sha":"b"*40,"merge_base_sha":"a"*40,
+        "changed_paths":[{
+            "change_type":"added","old_path":None,"new_path":changed,
+            "old_type":"missing","new_type":"regular"}],
+        "base_dependency_edges":[],
+        "candidate_dependency_edges":[{"source":source,"target":target,"reason_code":reason}],
+    }
+    inp=scratch/f"{index}.input.json"
+    out=scratch/f"{index}.output.json"
+    inp.write_bytes(module.canonical_bytes(input_obj))
+    sys.argv=[sys.argv[1],"--policy",sys.argv[2],"--input",str(inp),"--output",str(out)]
+    assert module.main()==0
+    result=json.loads(out.read_bytes())
+    assert result["impact_class"]==expected_class,(changed,result)
+    found=reason in result["impact_reason_codes"]
+    assert found==expect_reason,f"{changed}: edge reason provenance mismatch: {result['impact_reason_codes']}"
+print("native-impact case-fold edge reason provenance: exact and alias reasons retained; unrelated hosted clean")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $policy = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $policy, $root)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact case-fold edge-reason probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'exact and alias reasons retained; unrelated hosted clean'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
