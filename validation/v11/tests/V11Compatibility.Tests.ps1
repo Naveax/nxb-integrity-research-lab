@@ -5774,6 +5774,59 @@ print("known-error scan Unicode scalars: 7 negatives and valid international pat
 }
 
 
+Describe 'V11 artifact manifest self-inclusive output root guard (claim-free)' {
+    It 'rejects manifest outputs inside the enumerated source root without creating an incomplete manifest' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-self-output-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+from pathlib import Path
+import sys
+spec=importlib.util.spec_from_file_location("nxb_manifest_self_output",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+scratch=Path(sys.argv[2])
+source=scratch/"source"
+source.mkdir()
+(source/"original.txt").write_bytes(b"source")
+nested=source/"nested"
+nested.mkdir()
+for target in (source/"manifest.json",nested/"manifest.json"):
+    sys.argv=[sys.argv[1],"--root",str(source),"--root-role","probe","--output",str(target)]
+    try:
+        module.main()
+    except module.ManifestError as exc:
+        assert "output" in str(exc).lower() and "source" in str(exc).lower(), str(exc)
+    else:
+        raise AssertionError("manifest generated inside its own enumerated source tree")
+    assert not target.exists(),"self-inclusive output file unexpectedly created"
+ordinary=scratch/"ordinary.json"
+sys.argv[-1]=str(ordinary)
+assert module.main()==0
+doc=json.loads(ordinary.read_bytes())
+assert doc["file_count"]==1
+assert doc["files"][0]["relative_path"]=="original.txt"
+near=scratch/"source-other.json"
+sys.argv[-1]=str(near)
+assert module.main()==0
+print("artifact manifest self-output: two in-tree negatives and two external controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Manifest self-output probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'two in-tree negatives and two external controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

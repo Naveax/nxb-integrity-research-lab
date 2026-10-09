@@ -266,7 +266,19 @@ def main() -> int:
     args = parser.parse_args()
 
     output = assert_output_path(args.output)
-    manifest = build_manifest(args.root, args.root_role)
+    source_root = assert_ordinary_directory(args.root, "root")
+    # A generated manifest inside the enumerated tree would be absent from
+    # its own file inventory. Require an output outside the source root.
+    try:
+        output_under_source = os.path.commonpath(
+            (os.path.normcase(source_root), os.path.normcase(output))
+        ) == os.path.normcase(source_root)
+    except ValueError:
+        # Different Windows volumes cannot be ancestor/descendant paths.
+        output_under_source = False
+    if output_under_source:
+        fail("output must be outside the enumerated source root")
+    manifest = build_manifest(source_root, args.root_role)
     encoded = json.dumps(
         manifest,
         ensure_ascii=False,
