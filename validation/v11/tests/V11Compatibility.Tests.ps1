@@ -6591,3 +6591,48 @@ print("predecessor nested known-error findings: 650-level empty tree and nonempt
         }
     }
 }
+Describe 'V11 predecessor replay NUnit oversized integer parsing (claim-free)' {
+    It 'rejects more than Python integer digit limit through structured PreflightError' {
+        $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pred-xml-count-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($outer)
+        $probePath = Join-Path $outer 'probe.py'
+        $probe = @"
+import importlib.util
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location(
+    "nxb_pred_xml_count",
+    root / "validation" / "v11" / "tools" / "validate_v11_compatibility.py",
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+def xml(total):
+    return (
+        '<test-results name="Pester" total="' + total
+        + '" errors="0" failures="0" not-run="0" inconclusive="0"'
+        + ' ignored="0" skipped="0" invalid="0" />'
+    ).encode("utf-8")
+
+assert mod._predecessor_xml_results(xml("916"), "pester-ps7.xml")["total"] == 916
+try:
+    mod._predecessor_xml_results(xml("9" * 4400), "pester-ps7.xml")
+except mod.PreflightError as exc:
+    assert "total" in str(exc), str(exc)
+else:
+    raise AssertionError("oversized XML total integer accepted")
+print("predecessor NUnit oversized decimal field rejected, ordinary count accepted")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('NUnit XML count probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'oversized decimal field rejected, ordinary count accepted'
+        }
+        finally {
+            Remove-Item -LiteralPath $outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}

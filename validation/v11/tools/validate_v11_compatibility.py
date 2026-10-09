@@ -1288,7 +1288,10 @@ def _predecessor_xml_results(content: bytes, name: str) -> dict[str, int]:
         raw = root.attrib.get(field)
         if raw is None or not raw.isascii() or not raw.isdigit():
             fail(f"{name}: invalid NUnit {field} attribute")
-        result[field] = int(raw)
+        try:
+            result[field] = int(raw)
+        except ValueError:
+            fail(f"{name}: invalid NUnit {field} attribute")
     for field in ("errors", "failures", "inconclusive", "ignored", "skipped", "invalid"):
         if result[field] != 0:
             fail(f"{name}: NUnit failure/skip state is nonzero")
