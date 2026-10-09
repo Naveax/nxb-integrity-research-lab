@@ -126,18 +126,21 @@ def load_canonical_json(path: str) -> dict[str, Any]:
         )
     except ProjectionError:
         raise
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
         fail(f"lock is not strict JSON: {exc}")
     if not isinstance(document, dict):
         fail("lock root must be an object")
-    _walk_strings(document)
-    canonical = json.dumps(
-        document,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    try:
+        _walk_strings(document)
+        canonical = json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except RecursionError:
+        fail("lock JSON nesting exceeds safe recursion depth")
     if raw != canonical:
         fail("lock bytes are not NXB canonical JSON")
     return document

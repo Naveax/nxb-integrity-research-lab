@@ -141,11 +141,14 @@ def load_canonical_json(path: str, label: str) -> tuple[dict[str, Any], bytes]:
         )
     except ScanError:
         raise
-    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
         fail(f"{label} is not strict UTF-8 JSON: {exc}")
     if not isinstance(value, dict):
         fail(f"{label} root must be an object")
-    canonical = canonical_bytes(value)
+    try:
+        canonical = canonical_bytes(value)
+    except RecursionError:
+        fail(f"{label} JSON nesting exceeds safe recursion depth")
     if raw != canonical:
         fail(f"{label} bytes are not canonical JSON")
     return value, raw
