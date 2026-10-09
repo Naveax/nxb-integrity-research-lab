@@ -5827,6 +5827,81 @@ print("artifact manifest self-output: two in-tree negatives and two external con
 }
 
 
+Describe 'V11 known-error scanner output create and sync error contract (claim-free)' {
+    It 'fails closed on competing output creation and fsync errors with scanner-specific errors' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scanner-out-fault-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+import os
+from contextlib import ExitStack
+from pathlib import Path
+import sys
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location("nxb_scan_output_fault",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+scratch=Path(sys.argv[2])
+repository=scratch/"repository"
+repository.mkdir()
+policy=scratch/"policy.json"
+request=scratch/"input.json"
+policy.write_bytes(b"{}")
+request.write_bytes(b"{}")
+def run(output):
+    sys.argv=[sys.argv[1],"--repository-root",str(repository),"--policy",str(policy),"--input",str(request),"--output",str(output)]
+    return mod.main()
+with ExitStack() as stack:
+    stack.enter_context(patch.object(mod,"load_canonical_json",return_value=({},b"{}")))
+    stack.enter_context(patch.object(mod,"validate_policy",return_value=[]))
+    stack.enter_context(patch.object(mod,"validate_input",return_value=[]))
+    stack.enter_context(patch.object(mod,"assert_repository_root",return_value=str(repository)))
+    ordinary=scratch/"normal.json"
+    assert run(ordinary)==0
+    assert json.loads(ordinary.read_bytes())["status"]=="passed"
+    raced=scratch/"competitor.json"
+    original_open=os.open
+    def intercepted_open(path,flags,*args,**kwargs):
+        if os.path.abspath(str(path))==os.path.abspath(str(raced)):
+            raced.write_bytes(b"COMPETITOR-OWNS-OUTPUT")
+        return original_open(path,flags,*args,**kwargs)
+    with patch.object(mod.os,"open",side_effect=intercepted_open):
+        try:
+            run(raced)
+        except mod.ScanError as exc:
+            assert "output" in str(exc).lower(), str(exc)
+        else:
+            raise AssertionError("scanner create race escaped structured error")
+    assert raced.read_bytes()==b"COMPETITOR-OWNS-OUTPUT"
+    unsynced=scratch/"failed-sync.json"
+    with patch.object(mod.os,"fsync",side_effect=OSError(5,"simulated disk durability fault")):
+        try:
+            run(unsynced)
+        except mod.ScanError as exc:
+            assert "output" in str(exc).lower() and ("write" in str(exc).lower() or "sync" in str(exc).lower()),str(exc)
+        else:
+            raise AssertionError("scanner fsync fault escaped structured error")
+    final=scratch/"after-fault.json"
+    assert run(final)==0
+    assert json.loads(final.read_bytes())["status"]=="passed"
+print("scanner output faults: 2 structured rejects, competitor bytes preserved, 2 successful controls")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Known-error scan output failure probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'scanner output faults: 2 structured rejects, competitor bytes preserved, 2 successful controls'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
