@@ -5040,6 +5040,56 @@ print("manifest console pseudo-devices: 6 forbidden paths and 3 controls passed"
 }
 
 
+Describe 'V11 lower-trust native-impact policy prefix scope (claim-free)' {
+    It 'rejects non-directory hosted and metadata prefix roots without restricting native file prefixes' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-prefix-scope-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import copy
+import importlib.util
+import json
+import sys
+from pathlib import Path
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+policy=json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+original=module.validate_policy(policy)
+assert any(r["match_type"]=="prefix" and not r["path"].endswith("/") for r in original["rules"]["native_roots"])
+for field in ("hosted_authority_only_roots","non_authority_metadata_roots"):
+    mutated=copy.deepcopy(policy)
+    rule=mutated[field][0]
+    assert rule["match_type"]=="prefix" and rule["path"].endswith("/")
+    rule["path"]=rule["path"].rstrip("/")
+    try:
+        module.validate_policy(mutated)
+    except module.ImpactError as exc:
+        assert "lower-trust prefix must end with '/'" in str(exc),f"{field}: {exc}"
+    else:
+        parsed=module.validate_policy(mutated)
+        near_miss=rule["path"]+"-outside/sneaky.py"
+        got=module.classify_path(near_miss,parsed,set())[0]
+        expected="hosted_authority_only" if field=="hosted_authority_only_roots" else "non_authority_metadata"
+        assert got==expected,(field,near_miss,got)
+        raise AssertionError(f"{field} accepted a non-directory prefix and downgraded {near_miss}")
+print("native-impact lower-trust directory prefix: 2 unsafe policies rejected, native file prefix preserved")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $policy = Join-Path $script:RepositoryRoot 'config\nxb-native-impact-policy.json'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $policy)
+            if ($run.ExitCode -ne 0) { throw ('Native impact lower-trust prefix probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '2 unsafe policies rejected, native file prefix preserved'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
