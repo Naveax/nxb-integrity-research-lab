@@ -426,7 +426,12 @@ def main() -> int:
     assert_existing_ancestry_ordinary(parent, work_root, "output parent")
     if os.path.lexists(output):
         fail(f"output already exists: {output}")
-    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        fail(f"output already exists: {output}")
+    except OSError:
+        fail(f"output became unavailable during exclusive creation: {output}")
     try:
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             descriptor = -1
