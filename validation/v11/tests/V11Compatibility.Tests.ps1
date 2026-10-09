@@ -5731,6 +5731,49 @@ print("Python output durability: 2 fsync negative cases and 2 ordinary controls 
 }
 
 
+Describe 'V11 known-error scanner Unicode scalar rejection (claim-free)' {
+    It 'rejects JSON-escaped invalid surrogate scalar paths before canonical scan output' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-scan-unicode-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+import sys
+spec=importlib.util.spec_from_file_location("nxb_scan_unicode",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def rejects(fn):
+    try:
+        fn()
+    except module.ScanError as exc:
+        assert "surrogate" in str(exc).lower(),str(exc)
+    else:
+        raise AssertionError("unpaired Unicode surrogate was accepted")
+for value in ("\ud800","\udfff","docs/\ud800/source.py"):
+    rejects(lambda value=value: module.validate_string(value,"probe"))
+    rejects(lambda value=value: module.canonical_bytes({"path":value}))
+decoded=json.loads('"\\ud800"')
+rejects(lambda:module.validate_repo_path("docs/"+decoded+"/source.py","repository path"))
+legit="docs/熊猫/😀.py"
+assert module.validate_repo_path(legit,"repository path")==legit
+assert module.canonical_bytes({"path":legit}).decode("utf-8")
+print("known-error scan Unicode scalars: 7 negatives and valid international path passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\scan_v11_known_errors.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Known-error Unicode scalar scan probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '7 negatives and valid international path passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact manifest self-inclusive output root guard (claim-free)' {
     It 'rejects manifest outputs inside the enumerated source root without creating an incomplete manifest' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-self-output-' + [Guid]::NewGuid().ToString('N'))

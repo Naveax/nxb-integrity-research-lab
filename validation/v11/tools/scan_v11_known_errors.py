@@ -65,6 +65,10 @@ def validate_string(value: Any, label: str) -> str:
         fail(f"{label} must be NFC-normalized")
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value):
         fail(f"{label} contains a control character")
+    # JSON escapes can parse isolated UTF-16 surrogates that strict UTF-8
+    # canonical output cannot encode. Reject them as ordinary ScanError.
+    if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+        fail(f"{label} contains invalid Unicode surrogate")
     return value
 
 
