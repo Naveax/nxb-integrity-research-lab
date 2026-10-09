@@ -5583,6 +5583,35 @@ print("artifact manifest exclusive create: structured race rejection and ordinar
 }
 
 
+Describe 'V11 artifact manifest dangling junction output rejection (claim-free)' {
+    It 'rejects an existing dangling junction output before manifest hashing with a structured error' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-manifest-dangling-' + [Guid]::NewGuid().ToString('N'))
+        $source = Join-Path $root 'source'
+        $dangling = Join-Path $root 'dangling-output.json'
+        $missing = Join-Path $root 'missing-target'
+        [void][IO.Directory]::CreateDirectory($source)
+        Write-Utf8NoBom -Path (Join-Path $source 'sample.bin') -Text 'content'
+        $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\build_artifact_tree_manifest.py'
+        try {
+            $good = Invoke-V11Python -Arguments @($tool, '--root', $source, '--root-role', 'sample', '--output', (Join-Path $root 'ordinary.json'))
+            $good.ExitCode | Should -Be 0
+            & cmd.exe /d /c ('mklink /J "' + $dangling + '" "' + $missing + '"') | Out-Null
+            $LASTEXITCODE | Should -Be 0
+            $exists = Invoke-V11Python -Arguments @('-c', 'import os,sys;assert os.path.lexists(sys.argv[1]) and not os.path.exists(sys.argv[1])', $dangling)
+            $exists.ExitCode | Should -Be 0
+            $run = Invoke-V11Python -Arguments @($tool, '--root', $source, '--root-role', 'sample', '--output', $dangling)
+            $run.ExitCode | Should -Be 2
+            $run.Text | Should -Match 'NXB_ARTIFACT_TREE_MANIFEST_ERROR: output already exists'
+            $run.Text | Should -Not -Match 'Traceback'
+        }
+        finally {
+            & cmd.exe /d /c ('rmdir "' + $dangling + '"') 2>$null | Out-Null
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))

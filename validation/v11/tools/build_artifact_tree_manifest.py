@@ -75,7 +75,9 @@ def assert_output_path(path: str) -> str:
     full = os.path.abspath(path)
     if path != full:
         fail(f"output must be absolute: {path}")
-    if os.path.exists(full):
+    # A dangling junction/symlink still occupies the destination name.
+    # exists() follows its missing target and misses that occupied path.
+    if os.path.lexists(full):
         fail(f"output already exists: {full}")
     parent = os.path.dirname(full)
     assert_ordinary_directory(parent, "output parent")
