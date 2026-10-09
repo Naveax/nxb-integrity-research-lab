@@ -465,8 +465,16 @@ def validate_input(
     # legitimate case-only rename remains representable across trees.
     for side in ("old_path", "new_path"):
         present = [row[side].casefold() for row in parsed_changes if row[side] is not None]
-        if len(present) != len(set(present)):
+        unique = set(present)
+        if len(present) != len(unique):
             fail(f"Windows case-fold changed-path collision in {side}")
+        # An endpoint is a file/submodule/symlink, never a directory.
+        # It cannot also be a case-equivalent ancestor of another
+        # file endpoint in the same base or candidate tree.
+        for folded in unique:
+            parts = folded.split("/")
+            if any("/".join(parts[:depth]) in unique for depth in range(1, len(parts))):
+                fail(f"Windows file/directory changed-path collision in {side}")
 
     edges: list[tuple[str, str, str]] = []
     for field in ("base_dependency_edges", "candidate_dependency_edges"):

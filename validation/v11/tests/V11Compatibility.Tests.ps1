@@ -5273,6 +5273,53 @@ print("native-root Windows case-fold seed: source + target native, hosted unrela
 }
 
 
+Describe 'V11 native-impact Windows file-directory changed-path aliases (claim-free)' {
+    It 'rejects file paths that are case-folded parent directories of other files within one Git tree' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-file-dir-alias-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def row(kind,old,new,oldt,newt):
+    return {"change_type":kind,"old_path":old,"new_path":new,"old_type":oldt,"new_type":newt}
+def check(changes,reject):
+    doc={
+        "authority":module.INPUT_AUTHORITY,"schema_version":1,
+        "repository":"Naveax/nxb-integrity-research-lab",
+        "base_sha":"a"*40,"head_sha":"b"*40,"merge_base_sha":"a"*40,
+        "changed_paths":changes,"base_dependency_edges":[],"candidate_dependency_edges":[]}
+    try:
+        module.validate_input(doc,{"max_changed_paths":256,"max_dependency_edges":4096,"max_graph_nodes":4096})
+    except module.ImpactError as exc:
+        assert reject, f"valid tree change rejected: {exc}"
+        assert "Windows file/directory changed-path collision" in str(exc),str(exc)
+    else:
+        assert not reject,f"file and directory alias accepted in one tree: {changes!r}"
+check([row("added",None,"docs/safe/A","missing","regular"),row("added",None,"docs/safe/a/child.py","missing","regular")],True)
+check([row("deleted","docs/safe/A",None,"regular","missing"),row("deleted","docs/safe/a/child.py",None,"regular","missing")],True)
+check([row("renamed","docs/old/a.py","docs/safe/A","regular","regular"),row("added",None,"docs/safe/a/child.py","missing","regular")],True)
+check([row("deleted","docs/safe/A",None,"regular","missing"),row("added",None,"docs/safe/a/child.py","missing","regular")],False)
+check([row("added",None,"docs/safe/A","missing","regular"),row("added",None,"docs/safe/A-more/child.py","missing","regular")],False)
+print("native-impact file/directory alias: 3 same-tree negatives and 2 valid controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact file/directory alias probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '3 same-tree negatives and 2 valid controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
