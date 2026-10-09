@@ -2837,6 +2837,20 @@ elif mode == "bad-production":
     wrapper["production_boundary"]["signer_used"] = True
 elif mode == "bad-xml":
     ps7_xml = b'<!DOCTYPE x [<!ENTITY x "boom">]><test-results name="Pester" total="916" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" />'
+elif mode == "bad-hosted-schema-bool":
+    hosted["schema_version"] = True
+elif mode == "bad-known-schema-bool":
+    known_error["schema_version"] = True
+elif mode == "bad-hosted-count-bool":
+    hosted["ps7_not_run"] = False
+elif mode == "bad-hosted-known-findings-bool":
+    hosted["known_error_findings"] = False
+elif mode == "bad-hosted-analyzer-findings-bool":
+    hosted["analyzer_findings"] = False
+elif mode == "bad-known-findings-bool":
+    known_error["finding_count"] = False
+elif mode == "bad-summary-failed-bool":
+    summary["failed"] = False
 elif mode not in ("good", "bad-child"):
     raise SystemExit("unknown mode")
 
@@ -2883,6 +2897,13 @@ print(artifact_name)
                 @{ mode = 'bad-runner'; accepted = $false; pattern = 'frozen predecessor run-ps51.ps1 byte identity drift' },
                 @{ mode = 'bad-name'; accepted = $false; pattern = 'predecessor replay independent tuple mismatch: artifact_name' },
                 @{ mode = 'bad-production'; accepted = $false; pattern = 'predecessor replay wrapper schema semantic validation failed' },
+                @{ mode = 'bad-hosted-schema-bool'; accepted = $false; pattern = 'frozen hosted receipt status/schema mismatch' },
+                @{ mode = 'bad-known-schema-bool'; accepted = $false; pattern = 'frozen known-error scan status/schema mismatch' },
+                @{ mode = 'bad-hosted-count-bool'; accepted = $false; pattern = 'frozen hosted receipt partition mismatch: ps7_not_run' },
+                @{ mode = 'bad-hosted-known-findings-bool'; accepted = $false; pattern = 'frozen hosted receipt reports known-error findings' },
+                @{ mode = 'bad-hosted-analyzer-findings-bool'; accepted = $false; pattern = 'frozen hosted receipt reports analyzer findings' },
+                @{ mode = 'bad-known-findings-bool'; accepted = $false; pattern = 'frozen known-error scan contains findings' },
+                @{ mode = 'bad-summary-failed-bool'; accepted = $false; pattern = 'frozen PS5.1 summary partition mismatch: failed' },
                 @{ mode = 'bad-xml'; accepted = $false; pattern = 'pester-ps7.xml: XML DTD/entity declarations forbidden' }
             )) {
                 $zip = Join-Path $root (([string]$case.mode) + '.zip')

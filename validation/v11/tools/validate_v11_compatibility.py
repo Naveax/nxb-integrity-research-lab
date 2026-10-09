@@ -1456,7 +1456,8 @@ def inspect_predecessor_replay(
     known_error = _predecessor_strict_json(contents["known-error-scan.json"], "known-error-scan.json")
     ps51_summary = _predecessor_strict_json(contents["ps51-summary.json"], "ps51-summary.json")
 
-    if hosted.get("schema_version") != 1 or hosted.get("status") != "passed":
+    if (type(hosted.get("schema_version")) is not int or hosted.get("schema_version") != 1
+            or hosted.get("status") != "passed"):
         fail("frozen hosted receipt status/schema mismatch")
     if hosted.get("authority") != "nxb-v1-ci-hosted-v1":
         fail("frozen hosted receipt authority mismatch")
@@ -1476,9 +1477,11 @@ def inspect_predecessor_replay(
         fail("frozen hosted receipt Python version mismatch")
     if hosted.get("known_error_authority") != "nxb-v1-ci-known-error-scan-v1":
         fail("frozen hosted receipt known-error authority mismatch")
-    if hosted.get("known_error_findings") != 0:
+    if (type(hosted.get("known_error_findings")) is not int
+            or hosted.get("known_error_findings") != 0):
         fail("frozen hosted receipt reports known-error findings")
-    if hosted.get("analyzer_findings") != 0:
+    if (type(hosted.get("analyzer_findings")) is not int
+            or hosted.get("analyzer_findings") != 0):
         fail("frozen hosted receipt reports analyzer findings")
     if hosted.get("analyzer_process_isolated") is not True:
         fail("frozen hosted receipt analyzer isolation flag is false")
@@ -1496,14 +1499,16 @@ def inspect_predecessor_replay(
         "ps51_expected_excluded": PREDECESSOR_FROZEN_PS51_NOT_RUN,
     }
     for field, expected in frozen_hosted_counts.items():
-        if hosted.get(field) != expected:
+        if type(hosted.get(field)) is not type(expected) or hosted.get(field) != expected:
             fail(f"frozen hosted receipt partition mismatch: {field}")
 
-    if known_error.get("schema_version") != 1 or known_error.get("status") != "passed":
+    if (type(known_error.get("schema_version")) is not int
+            or known_error.get("schema_version") != 1
+            or known_error.get("status") != "passed"):
         fail("frozen known-error scan status/schema mismatch")
     if known_error.get("authority") != "nxb-v1-ci-known-error-scan-v1":
         fail("frozen known-error scan authority mismatch")
-    if known_error.get("finding_count") != 0:
+    if type(known_error.get("finding_count")) is not int or known_error.get("finding_count") != 0:
         fail("frozen known-error scan contains findings")
     if known_error.get("failed_contracts") != []:
         fail("frozen known-error scan contains failed contracts")
@@ -1520,7 +1525,7 @@ def inspect_predecessor_replay(
         "expected_excluded": PREDECESSOR_FROZEN_PS51_NOT_RUN,
     }
     for field, expected in expected_summary.items():
-        if ps51_summary.get(field) != expected:
+        if type(ps51_summary.get(field)) is not type(expected) or ps51_summary.get(field) != expected:
             fail(f"frozen PS5.1 summary partition mismatch: {field}")
 
     ps7_xml = _predecessor_xml_results(contents["pester-ps7.xml"], "pester-ps7.xml")
