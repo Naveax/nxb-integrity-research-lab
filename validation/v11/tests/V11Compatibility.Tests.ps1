@@ -6372,3 +6372,69 @@ print("V11 canonical JSON nesting: 3 structured rejects and 3 valid controls pas
         }
     }
 }
+
+Describe 'V11 schema-version boolean rejection (claim-free)' {
+    It 'rejects JSON boolean true masquerading as schema version one in four validators' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-schema-bool-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @"
+import copy
+import importlib.util
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+modules = {}
+for name in ("classify_native_impact", "scan_v11_known_errors"):
+    spec = importlib.util.spec_from_file_location(name, root / "validation" / "v11" / "tools" / (name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    modules[name] = module
+impact = modules["classify_native_impact"]
+scanner = modules["scan_v11_known_errors"]
+policy, _ = impact.load_canonical_json(str(root / "config" / "nxb-native-impact-policy.json"), "policy")
+scan_policy, _ = scanner.load_canonical_json(str(root / "config" / "nxb-v11-known-error-signatures.json"), "policy")
+limits = impact.validate_policy(policy)["limits"]
+native_input = {
+    "authority": impact.INPUT_AUTHORITY, "schema_version": 1,
+    "repository": "Naveax/nxb-integrity-research-lab",
+    "base_sha": "0" * 40, "head_sha": "1" * 40, "merge_base_sha": "0" * 40,
+    "changed_paths": [{"change_type": "added", "old_path": None,
+                       "new_path": "docs/sample.md", "old_type": "missing", "new_type": "regular"}],
+    "base_dependency_edges": [], "candidate_dependency_edges": [],
+}
+scan_input = {
+    "authority": scanner.INPUT_AUTHORITY, "schema_version": 1,
+    "repository": "Naveax/nxb-integrity-research-lab",
+    "entries": [{"path": "docs/sample.md", "validation_class": "authority_documentation"}],
+}
+cases = (
+    ("impact policy", impact.validate_policy, impact.ImpactError, policy),
+    ("impact input", lambda obj: impact.validate_input(obj, limits), impact.ImpactError, native_input),
+    ("scan policy", scanner.validate_policy, scanner.ScanError, scan_policy),
+    ("scan input", scanner.validate_input, scanner.ScanError, scan_input),
+)
+for label, validate, error_type, valid in cases:
+    validate(copy.deepcopy(valid))
+    malformed = copy.deepcopy(valid)
+    malformed["schema_version"] = True
+    try:
+        validate(malformed)
+    except error_type as exc:
+        assert "schema_version" in str(exc), (label, str(exc))
+    else:
+        raise AssertionError(label + " accepted JSON boolean true as schema_version=1")
+print("V11 schema version: 4 boolean rejects and 4 valid integer controls passed")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Schema-version boolean probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '4 boolean rejects and 4 valid integer controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}

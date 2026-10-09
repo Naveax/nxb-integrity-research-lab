@@ -293,7 +293,11 @@ def validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
         "limits",
     }
     root = exact_keys(policy, expected, "policy")
-    if root["authority"] != POLICY_AUTHORITY or root["schema_version"] != 1:
+    if (
+        root["authority"] != POLICY_AUTHORITY
+        or type(root["schema_version"]) is not int
+        or root["schema_version"] != 1
+    ):
         fail("policy authority/schema_version drift")
     if type(root["policy_version"]) is not int or root["policy_version"] < 1:
         fail("policy_version invalid")
@@ -445,7 +449,11 @@ def validate_input(
         "candidate_dependency_edges",
     }
     root = exact_keys(value, expected, "input")
-    if root["authority"] != INPUT_AUTHORITY or root["schema_version"] != 1:
+    if (
+        root["authority"] != INPUT_AUTHORITY
+        or type(root["schema_version"]) is not int
+        or root["schema_version"] != 1
+    ):
         fail("input authority/schema_version drift")
     validate_string(root["repository"], "input.repository")
     for field in ("base_sha", "head_sha", "merge_base_sha"):
