@@ -5040,6 +5040,59 @@ print("manifest console pseudo-devices: 6 forbidden paths and 3 controls passed"
 }
 
 
+Describe 'V11 native-impact Windows-equivalent changed-path identities (claim-free)' {
+    It 'rejects case-fold collisions separately in base and candidate endpoints' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-casefold-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def row(kind,old,new,oldt,newt):
+    return {"change_type":kind,"old_path":old,"new_path":new,"old_type":oldt,"new_type":newt}
+def check(changes,should_reject):
+    doc={
+        "authority":module.INPUT_AUTHORITY,"schema_version":1,
+        "repository":"Naveax/nxb-integrity-research-lab",
+        "base_sha":"a"*40,"head_sha":"b"*40,"merge_base_sha":"a"*40,
+        "changed_paths":changes,"base_dependency_edges":[],"candidate_dependency_edges":[]
+    }
+    try:
+        result=module.validate_input(doc,{"max_changed_paths":256,"max_dependency_edges":4096,"max_graph_nodes":4096})
+    except module.ImpactError as exc:
+        if not should_reject:
+            raise
+        assert "Windows case-fold changed-path collision" in str(exc),str(exc)
+    else:
+        assert not should_reject,(changes,result)
+check([row("added",None,"docs/safe/A.txt","missing","regular"),
+       row("added",None,"docs/safe/a.txt","missing","regular")],True)
+check([row("deleted","docs/safe/A.txt",None,"regular","missing"),
+       row("deleted","docs/safe/a.txt",None,"regular","missing")],True)
+check([row("renamed","docs/safe/one.txt","docs/safe/A.txt","regular","regular"),
+       row("renamed","docs/safe/two.txt","docs/safe/a.txt","regular","regular")],True)
+check([row("renamed","docs/safe/A.txt","docs/safe/a.txt","regular","regular")],False)
+check([row("added",None,"docs/safe/A.txt","missing","regular"),
+       row("added",None,"docs/safe/B.txt","missing","regular")],False)
+print("native-impact Windows case-fold aliases: 3 collisions rejected and 2 controls passed")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact case-fold identities probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '3 collisions rejected and 2 controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
