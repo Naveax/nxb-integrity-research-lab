@@ -1296,11 +1296,19 @@ def _predecessor_xml_results(content: bytes, name: str) -> dict[str, int]:
 
 
 def _predecessor_all_empty_known_error_findings(value: Any) -> bool:
-    if isinstance(value, list):
-        return len(value) == 0
-    if isinstance(value, dict):
-        return all(_predecessor_all_empty_known_error_findings(child) for child in value.values())
-    return False
+    # JSON is an acyclic, byte-bounded tree. An explicit stack preserves the
+    # recursive all-empty semantics without consuming Python call-stack depth.
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, list):
+            if current:
+                return False
+        elif isinstance(current, dict):
+            pending.extend(current.values())
+        else:
+            return False
+    return True
 
 
 def _verify_predecessor_zip_identity(

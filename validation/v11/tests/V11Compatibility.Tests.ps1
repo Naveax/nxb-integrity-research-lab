@@ -6551,3 +6551,43 @@ print("lock architecture: two malformed nested types rejected and two valid arch
         }
     }
 }
+Describe 'V11 predecessor replay known-error findings deep nesting (claim-free)' {
+    It 'classifies deep empty and nonempty JSON finding trees without recursive failure' {
+        $outer = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pred-findings-depth-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($outer)
+        $probePath = Join-Path $outer 'probe.py'
+        $probe = @"
+import importlib.util
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location(
+    "nxb_predecessor_findings_depth",
+    root / "validation" / "v11" / "tools" / "validate_v11_compatibility.py",
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+assert mod._predecessor_all_empty_known_error_findings({"base": [], "ci": []})
+assert not mod._predecessor_all_empty_known_error_findings({"base": ["error"], "ci": []})
+assert not mod._predecessor_all_empty_known_error_findings({"base": {"nested": [1]}})
+assert not mod._predecessor_all_empty_known_error_findings({"base": None})
+depth = 650
+raw = ('{"findings":' + '{"nested":' * depth + '[]' + '}' * depth + '}').encode("utf-8")
+document = mod._predecessor_strict_json(raw, "known-error-scan.json")
+if not mod._predecessor_all_empty_known_error_findings(document["findings"]):
+    raise AssertionError("nested empty JSON findings were classified as nonempty")
+print("predecessor nested known-error findings: 650-level empty tree and nonempty controls passed")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Predecessor nested findings probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '650-level empty tree and nonempty controls passed'
+        }
+        finally {
+            Remove-Item -LiteralPath $outer -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
