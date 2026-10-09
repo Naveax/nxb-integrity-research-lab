@@ -319,6 +319,15 @@ def validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
         parsed[field] = []
         for index, item in enumerate(rows):
             rule = validate_rule(item, f"policy.{field}[{index}]")
+            # Downgrade classes must use an actual directory boundary;
+            # otherwise docs/safe also matches docs/safe-unrelated.
+            # Native-required rules retain explicit filename prefixes.
+            if (
+                field != "native_roots"
+                and rule["match_type"] == "prefix"
+                and not rule["path"].endswith("/")
+            ):
+                fail("lower-trust prefix must end with '/'")
             if rule["rule_id"] in rule_ids:
                 fail(f"duplicate policy rule_id: {rule['rule_id']}")
             rule_ids.add(rule["rule_id"])
