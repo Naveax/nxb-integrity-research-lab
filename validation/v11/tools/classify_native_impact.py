@@ -460,6 +460,13 @@ def validate_input(
     ]
     if len(keys) != len(set(keys)):
         fail("duplicate changed-path record")
+    # Windows-equivalent paths may not denote two distinct files in the
+    # same Git tree. Check base and candidate identities separately so a
+    # legitimate case-only rename remains representable across trees.
+    for side in ("old_path", "new_path"):
+        present = [row[side].casefold() for row in parsed_changes if row[side] is not None]
+        if len(present) != len(set(present)):
+            fail(f"Windows case-fold changed-path collision in {side}")
 
     edges: list[tuple[str, str, str]] = []
     for field in ("base_dependency_edges", "candidate_dependency_edges"):
