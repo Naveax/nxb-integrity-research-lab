@@ -5320,6 +5320,61 @@ print("native-impact file/directory alias: 3 same-tree negatives and 2 valid con
 }
 
 
+Describe 'V11 pinned pip dist-info nested reparse guard (claim-free)' {
+    It 'rejects junction-backed dist-info descendants before executing pip entrypoint' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-pip-dist-junction-' + [Guid]::NewGuid().ToString('N'))
+        $work = Join-Path $root 'work'
+        $bootstrap = Join-Path $work 'pip-bootstrap'
+        $pipRoot = Join-Path $bootstrap 'pip'
+        $distRoot = Join-Path $bootstrap 'pip-26.2.1.dist-info'
+        $external = Join-Path $root 'external'
+        $junction = Join-Path $distRoot 'nested'
+        [void][IO.Directory]::CreateDirectory($pipRoot)
+        [void][IO.Directory]::CreateDirectory($distRoot)
+        [void][IO.Directory]::CreateDirectory($external)
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__init__.py') -Text ('__version__ = "26.2.1"' + $script:Lf)
+        Write-Utf8NoBom -Path (Join-Path $pipRoot '__main__.py') -Text (
+            'print("DIST_INFO_NESTED_JUNCTION_UNTRUSTED_PIP_EXECUTED")' + $script:Lf
+        )
+        Write-Utf8NoBom -Path (Join-Path $distRoot 'METADATA') -Text (
+            'Metadata-Version: 2.1' + $script:Lf +
+            'Name: pip' + $script:Lf +
+            'Version: 26.2.1' + $script:Lf + $script:Lf
+        )
+        $saved = Save-EnvironmentSubset
+        try {
+            Set-HermeticPipEnvironment
+            $args = @(
+                '-I', '-S', $script:LauncherPath,
+                '--work-root', $work,
+                '--bootstrap-root', $bootstrap,
+                '--runtime-root', (Split-Path -Parent $script:PythonPath),
+                '--repository-root', $script:RepositoryRoot,
+                '--expected-python-executable', $script:PythonPath,
+                '--expected-version', '26.2.1',
+                '--', '--version'
+            )
+            $ordinary = Invoke-V11Python -Arguments $args
+            $ordinary.ExitCode | Should -Be 0
+            $ordinary.Text | Should -Match 'DIST_INFO_NESTED_JUNCTION_UNTRUSTED_PIP_EXECUTED'
+            & cmd.exe /d /c ('mklink /J "' + $junction + '" "' + $external + '"') | Out-Null
+            $LASTEXITCODE | Should -Be 0
+            $run = Invoke-V11Python -Arguments $args
+            $run.ExitCode | Should -Be 2
+            $run.Text | Should -Match 'pip dist-info contains non-ordinary entry'
+            $run.Text | Should -Not -Match 'DIST_INFO_NESTED_JUNCTION_UNTRUSTED_PIP_EXECUTED'
+        }
+        finally {
+            Restore-EnvironmentSubset -Saved $saved
+            if (Test-Path -LiteralPath $junction) {
+                & cmd.exe /d /c ('rmdir "' + $junction + '"') | Out-Null
+            }
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 native-impact case-fold dependency reason provenance (claim-free)' {
     It 'preserves edge reason codes when changed paths use a Windows-equivalent spelling' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-alias-reason-' + [Guid]::NewGuid().ToString('N'))
