@@ -5482,6 +5482,54 @@ print("Python lock and manifest Unicode scalars: 5 negatives and 2 valid control
 }
 
 
+Describe 'V11 native-impact unpaired Unicode surrogate validation (claim-free)' {
+    It 'rejects invalid UTF-8 scalar strings with a structured ImpactError before canonical output' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-native-surrogate-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+import sys
+spec=importlib.util.spec_from_file_location("nxb_impact",sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for value in ("\ud800", "\udfff", "safe/\ud800/name.py"):
+    for function in (lambda:module.validate_string(value,"probe"),lambda:module.canonical_bytes({"probe":value})):
+        try:
+            function()
+        except module.ImpactError as exc:
+            assert "surrogate" in str(exc).lower(),str(exc)
+        else:
+            raise AssertionError("unpaired surrogate accepted into canonical decision")
+raw_json='"\\ud800"'
+decoded=json.loads(raw_json)
+assert decoded == "\ud800"
+try:
+    module.validate_path(decoded,"input.changed_paths[0].new_path")
+except module.ImpactError as exc:
+    assert "surrogate" in str(exc).lower(),str(exc)
+else:
+    raise AssertionError("JSON-escaped unpaired surrogate accepted as path")
+legit="docs/熊猫/😀.py"
+assert module.validate_path(legit,"path")==legit
+assert module.canonical_bytes({"path":legit}).decode("utf-8")
+print("native-impact Unicode scalar guard: 7 invalid string checks rejected; non-ASCII path preserved")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact Unicode scalar probe failed: ' + $run.Text) }
+            $run.Text | Should -Match '7 invalid string checks rejected; non-ASCII path preserved'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
