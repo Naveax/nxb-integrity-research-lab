@@ -6482,3 +6482,51 @@ print("known-error regex compilation: deep nested rejected, ordinary and grouped
         }
     }
 }
+Describe 'V11 requirements lock architecture JSON type validation (claim-free)' {
+    It 'rejects nested architecture arrays and objects via ProjectionError' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-lock-arch-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @"
+import importlib.util
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location(
+    "nxb_lock_arch", root / "validation" / "v11" / "tools" / "materialize_python_requirements.py"
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+def candidate(architecture):
+    row = dict.fromkeys(mod.TOP_LEVEL_KEYS)
+    row.update(authority=mod.AUTHORITY, schema_version=1,
+               python_full_version="3.12.10", architecture=architecture)
+    return row
+for invalid in (["x64"], {"value":"x64"}):
+    try:
+        mod.validate_lock(candidate(invalid))
+    except mod.ProjectionError as exc:
+        assert "architecture" in str(exc), str(exc)
+    else:
+        raise AssertionError("invalid JSON architecture accepted")
+for valid in ("x64", "arm64"):
+    try:
+        mod.validate_lock(candidate(valid))
+    except mod.ProjectionError as exc:
+        assert "platform_tag" in str(exc), str(exc)
+    else:
+        raise AssertionError("incomplete lock unexpectedly passed")
+print("lock architecture: two malformed nested types rejected and two valid architecture controls reached next validation")
+"@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $run = Invoke-V11Python -Arguments @($probePath, $script:RepositoryRoot)
+            if ($run.ExitCode -ne 0) { throw ('Requirements architecture probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'two malformed nested types rejected and two valid architecture controls'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
