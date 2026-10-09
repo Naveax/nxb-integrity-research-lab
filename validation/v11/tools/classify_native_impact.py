@@ -725,17 +725,24 @@ def main() -> int:
     payload = canonical_bytes(output)
 
     _ordinary_output_path(output_path)
-    descriptor = os.open(
-        output_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-        0o600,
-    )
+    try:
+        descriptor = os.open(
+            output_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError:
+        fail(f"output already exists: {output_path}")
+    except OSError:
+        fail(f"output became unavailable during exclusive creation: {output_path}")
     try:
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             descriptor = -1
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
+    except OSError:
+        fail(f"output write or sync failed: {output_path}")
     finally:
         if descriptor >= 0:
             os.close(descriptor)

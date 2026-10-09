@@ -5827,6 +5827,81 @@ print("artifact manifest self-output: two in-tree negatives and two external con
 }
 
 
+Describe 'V11 native-impact output exclusive creation and sync errors (claim-free)' {
+    It 'fails closed with ImpactError on competing destinations and fsync faults' {
+        $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-impact-output-fault-' + [Guid]::NewGuid().ToString('N'))
+        [void][IO.Directory]::CreateDirectory($root)
+        $probePath = Join-Path $root 'probe.py'
+        $probe = @'
+import importlib.util
+import json
+import os
+from contextlib import ExitStack
+from pathlib import Path
+import sys
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location("nxb_impact_output_fault",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+scratch=Path(sys.argv[2])
+policy_path=scratch/"policy.json"
+input_path=scratch/"input.json"
+policy_path.write_bytes(b"{}")
+input_path.write_bytes(b"{}")
+parsed_policy={"limits":{"max_graph_nodes":20},"edges":[],"rules":{"native_roots":[],"hosted_authority_only_roots":[],"non_authority_metadata_roots":[]}}
+changes=[{"change_type":"added","old_path":None,"new_path":"docs/control.py","old_type":"missing","new_type":"regular"}]
+def run(path):
+    sys.argv=[sys.argv[1],"--policy",str(policy_path),"--input",str(input_path),"--output",str(path)]
+    return mod.main()
+identity={"repository":"Naveax/nxb-integrity-research-lab","base_sha":"a"*40,"head_sha":"b"*40,"merge_base_sha":"a"*40}
+with ExitStack() as stack:
+    stack.enter_context(patch.object(mod,"load_canonical_json",side_effect=lambda path,label:(identity if label=="input" else {},b"{}")))
+    stack.enter_context(patch.object(mod,"validate_policy",return_value=parsed_policy))
+    stack.enter_context(patch.object(mod,"validate_input",return_value=(changes,[])))
+    ordinary=scratch/"ordinary.json"
+    assert run(ordinary)==0
+    assert json.loads(ordinary.read_bytes())["impact_class"]=="native_required"
+    competitor=scratch/"competitor.json"
+    original_open=os.open
+    def intercepted_open(path,flags,*args,**kwargs):
+        if os.path.abspath(str(path))==os.path.abspath(str(competitor)):
+            competitor.write_bytes(b"OTHER-WRITER-CONTENT")
+        return original_open(path,flags,*args,**kwargs)
+    with patch.object(mod.os,"open",side_effect=intercepted_open):
+        try:
+            run(competitor)
+        except mod.ImpactError as exc:
+            assert "output" in str(exc).lower(),str(exc)
+        else:
+            raise AssertionError("native-impact tool accepted competing output")
+    assert competitor.read_bytes()==b"OTHER-WRITER-CONTENT"
+    unsynced=scratch/"unsynced.json"
+    with patch.object(mod.os,"fsync",side_effect=OSError(5,"simulated disk sync failure")):
+        try:
+            run(unsynced)
+        except mod.ImpactError as exc:
+            assert "output" in str(exc).lower() and ("write" in str(exc).lower() or "sync" in str(exc).lower()),str(exc)
+        else:
+            raise AssertionError("native-impact tool accepted failed fsync")
+    after=scratch/"after.json"
+    assert run(after)==0
+    assert json.loads(after.read_bytes())["impact_class"]=="native_required"
+print("native-impact output fault contract: 2 structured rejects, competitor preserved, 2 valid controls")
+'@
+        try {
+            [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+            $tool = Join-Path $script:RepositoryRoot 'validation\v11\tools\classify_native_impact.py'
+            $run = Invoke-V11Python -Arguments @($probePath, $tool, $root)
+            if ($run.ExitCode -ne 0) { throw ('Native-impact output failure probe failed: ' + $run.Text) }
+            $run.Text | Should -Match 'native-impact output fault contract: 2 structured rejects, competitor preserved, 2 valid controls'
+        }
+        finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
 Describe 'V11 artifact tree manifest ancestor safety (claim-free)' {
     It 'rejects reparse/symlink ancestors for root and output without blocking ordinary paths' {
         $root = Join-Path ([IO.Path]::GetTempPath()) ('nxb-v11-tree-ancestor-' + [Guid]::NewGuid().ToString('N'))
