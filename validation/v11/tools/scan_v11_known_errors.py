@@ -263,7 +263,11 @@ def read_source(path: str, relative: str) -> str:
 
 def validate_policy(value: dict[str, Any]) -> list[dict[str, Any]]:
     root = exact_keys(value, {"authority", "schema_version", "rules"}, "policy")
-    if root["authority"] != POLICY_AUTHORITY or root["schema_version"] != 1:
+    if (
+        root["authority"] != POLICY_AUTHORITY
+        or type(root["schema_version"]) is not int
+        or root["schema_version"] != 1
+    ):
         fail("policy authority/schema_version drift")
     rules = root["rules"]
     if not isinstance(rules, list) or not rules:
@@ -339,7 +343,11 @@ def validate_input(value: dict[str, Any]) -> list[dict[str, str]]:
         {"authority", "schema_version", "repository", "entries"},
         "input",
     )
-    if root["authority"] != INPUT_AUTHORITY or root["schema_version"] != 1:
+    if (
+        root["authority"] != INPUT_AUTHORITY
+        or type(root["schema_version"]) is not int
+        or root["schema_version"] != 1
+    ):
         fail("input authority/schema_version drift")
     validate_string(root["repository"], "input.repository")
 
