@@ -496,6 +496,15 @@ def rule_match(path: str, rule: dict[str, str]) -> bool:
     return path.startswith(rule["path"])
 
 
+def native_rule_match(path: str, rule: dict[str, str]) -> bool:
+    """Treat Windows case aliases conservatively for native-required roots only."""
+    folded_path = path.casefold()
+    folded_root = rule["path"].casefold()
+    if rule["match_type"] == "exact":
+        return folded_path == folded_root
+    return folded_path.startswith(folded_root)
+
+
 def closure_from_native(
     native_rules: list[dict[str, str]],
     edges: list[tuple[str, str, str]],
@@ -516,7 +525,7 @@ def closure_from_native(
         if rule["match_type"] == "exact"
     }
     for source, _, _ in edges:
-        if any(rule_match(source, rule) for rule in native_rules):
+        if any(native_rule_match(source, rule) for rule in native_rules):
             seeds.add(source)
 
     # Exact and prefix-derived starting nodes count against the graph budget,
@@ -544,7 +553,7 @@ def classify_path(
     native_closure_casefold: set[str] | None = None,
 ) -> tuple[str, list[str], bool]:
     for rule in policy["rules"]["native_roots"]:
-        if rule_match(path, rule):
+        if native_rule_match(path, rule):
             return "native_required", [rule["reason_code"], rule["rule_id"]], False
 
     # On Windows a case-only alias denotes the same dependency. Never
